@@ -31,6 +31,7 @@ function defaultLayout() {
   return {
     fontSize: 12,
     photoSize: 120,
+    version: 3,
     schema: "",
     columns: []
   };
@@ -43,6 +44,7 @@ function loadLayout() {
     return {
       fontSize: Number(saved.fontSize) || 12,
       photoSize: Number(saved.photoSize) || 120,
+      version: Number(saved.version) || 1,
       schema: saved.schema || "",
       columns: saved.columns
     };
@@ -132,7 +134,8 @@ function isPhotoField(field) {
 }
 
 function isUserLevelField(field) {
-  if (field === state.userIdField || isPhotoField(field)) {
+  if (isPhotoField(field)) return false;
+  if (field === state.userIdField) {
     const byUser = new Map();
     for (const row of state.rows) {
       const user = row[state.userIdField];
@@ -152,7 +155,7 @@ function isUserLevelField(field) {
 }
 
 function defaultColumnWidth(field) {
-  if (isPhotoField(field)) return 160;
+  if (isPhotoField(field)) return 360;
   if (/comment|备注|description|说明/i.test(field)) return 220;
   if (/name|device|ear_|concha|耳/i.test(field)) return 135;
   return 100;
@@ -178,17 +181,18 @@ function buildSchema() {
     id: field,
     label: fieldLabels[field] || field,
     width: defaultColumnWidth(field),
-    visible: true,
+    visible: !/^(record_id|device_id)$/i.test(field),
     userLevel: isUserLevelField(field),
     photo: isPhotoField(field)
   }));
   const schema = state.headers.join("|||");
-  const orderedSaved = state.layout.schema === schema ? state.layout.columns
+  const orderedSaved = state.layout.version === 3 && state.layout.schema === schema ? state.layout.columns
     .filter(column => dynamicColumns.some(item => item.id === column.id))
     .map(column => ({ ...dynamicColumns.find(item => item.id === column.id), ...column })) : [];
   const newColumns = dynamicColumns.filter(column => !orderedSaved.some(item => item.id === column.id));
   const combined = [...orderedSaved, ...newColumns];
   state.layout.columns = [...combined.filter(column => !column.photo), ...combined.filter(column => column.photo)];
+  state.layout.version = 3;
   state.layout.schema = schema;
   saveLayout();
 }
@@ -332,13 +336,10 @@ function groupByUser(rows) {
   return [...users.values()];
 }
 
-function detailCell(column, row, stickyPhoto) {
+function detailCell(column, row) {
   const field = column.id;
   const value = row[field] ?? "";
-  const classes = [field === state.userIdField ? "user-cell" : "", stickyPhoto ? "sticky-photo" : ""].filter(Boolean).join(" ");
-  if (column.photo) {
-    return `<td class="${classes}">${value ? `<img class="ear-photo" src="${value}" alt="${row[state.userIdField]} ${column.label}" loading="lazy">` : "—"}</td>`;
-  }
+  const classes = [field === state.userIdField ? "user-cell" : ""].filter(Boolean).join(" ");
   if (/pressure_score$/i.test(field)) {
     return `<td class="${classes}"><span class="pressure ${pressureClass(value)}">${value || "—"}</span></td>`;
   }
@@ -346,6 +347,18 @@ function detailCell(column, row, stickyPhoto) {
     return `<td class="${classes}"><span class="score ${scoreClass(value)}">${value || "—"}</span></td>`;
   }
   return `<td class="${classes}">${field === state.userIdField ? `<strong>${value}</strong>` : value || "—"}</td>`;
+}
+
+function photoGalleryCell(column, userRows) {
+  const deviceField = state.headers.includes("device_name") ? "device_name" :
+    state.headers.find(field => /device|condition|设备|条件/i.test(field));
+  const items = userRows.filter(row => row[column.id]).map(row => `
+    <figure class="photo-thumb">
+      <img class="ear-photo" src="${row[column.id]}" alt="${row[state.userIdField]} ${row[deviceField] || column.label}" loading="lazy">
+      <figcaption>${row[deviceField] || column.label}</figcaption>
+    </figure>
+  `).join("");
+  return `<td class="photo-cell" rowspan="${userRows.length}"><div class="photo-gallery">${items || "—"}</div></td>`;
 }
 
 function detailRows(allFilteredRows, groups) {
@@ -377,14 +390,15 @@ function renderDetails(rows, groups) {
   els.groupStats.innerHTML = stats.map(([label, value]) => `<div class="group-stat">${label}<strong>${value}</strong></div>`).join("");
   els.detailCount.textContent = `显示 ${visibleRows.length} / ${baseRows.length} 条记录`;
   const visibleColumns = state.layout.columns.filter(column => column.visible);
-  const lastPhotoColumn = [...visibleColumns].reverse().find(column => column.photo)?.id;
-  els.detailColgroup.innerHTML = visibleColumns.map(column => `<col style="width:${column.width}px">`).join("");
-  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => `<th class="${column.id === lastPhotoColumn ? "sticky-photo" : ""}">${column.label}</th>`).join("")}</tr>`;
+  const totalWeight = visibleColumns.reduce((sum, column) => sum + column.width, 0);
+  els.detailColgroup.innerHTML = visibleColumns.map(column => `<col style="width:${column.width / totalWeight * 100}%">`).join("");
+  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => `<th>${column.label}</th>`).join("")}</tr>`;
   els.detailBody.innerHTML = visibleRows.length ? groupByUser(visibleRows).map(userRows =>
     userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}">
       ${visibleColumns.map(column => {
+        if (column.photo) return rowIndex === 0 ? photoGalleryCell(column, userRows) : "";
         if (column.userLevel && rowIndex > 0) return "";
-        const cell = detailCell(column, row, column.id === lastPhotoColumn);
+        const cell = detailCell(column, row);
         return column.userLevel ? cell.replace("<td", `<td rowspan="${userRows.length}"`) : cell;
       }).join("")}
     </tr>`).join("")
