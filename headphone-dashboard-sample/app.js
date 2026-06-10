@@ -59,6 +59,7 @@ const state = {
   primaryDimension: "device_name",
   secondaryDimension: "concha_size",
   metric: "comfort_score",
+  yAxisMode: "adaptive",
   search: "",
   headers: [],
   dimensionFields: [],
@@ -71,7 +72,7 @@ const state = {
 const els = Object.fromEntries([
   "csvInput", "resetButton", "dataSourceLabel", "deviceFilter", "genderFilter",
   "ageFilter", "earSizeFilter", "primaryDimension", "secondaryDimension",
-  "metricSelect", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
+  "metricSelect", "yAxisMode", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
   "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
@@ -234,6 +235,7 @@ function initializeControls() {
   els.primaryDimension.value = state.primaryDimension;
   els.secondaryDimension.value = state.secondaryDimension;
   els.metricSelect.value = state.metric;
+  els.yAxisMode.value = state.yAxisMode;
 }
 
 function selectedValues(select) {
@@ -306,16 +308,31 @@ function renderPivot(groups) {
 
 function renderChart(groups) {
   const metric = state.metric;
-  const max = Math.max(...groups.map(group => average(group.rows, metric)), 10);
+  const values = groups.map(group => average(group.rows, metric));
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  const padding = Math.max((dataMax - dataMin) * 0.2, 0.5);
+  const axisMin = state.yAxisMode === "full" ? 0 : Math.max(0, Math.floor((dataMin - padding) * 2) / 2);
+  const axisMax = state.yAxisMode === "full" ? 10 : Math.min(10, Math.ceil((dataMax + padding) * 2) / 2);
+  const range = axisMax - axisMin || 1;
+  const ticks = Array.from({ length: 6 }, (_, index) => axisMax - range * index / 5);
   els.chartTitle.textContent = `${fieldLabels[metric] || metric}组间柱状对比`;
-  els.barChart.innerHTML = groups.length ? `<div class="column-chart">${groups.slice(0, 12).map(group => {
+  els.barChart.innerHTML = groups.length ? `<div class="academic-chart">
+    <div class="y-axis-title">${fieldLabels[metric] || metric}均值</div>
+    <div class="y-axis">${ticks.map(tick => `<span style="top:${(axisMax - tick) / range * 100}%">${tick.toFixed(1)}</span>`).join("")}</div>
+    <div class="plot-area">
+      <div class="grid-lines">${ticks.map(tick => `<i style="top:${(axisMax - tick) / range * 100}%"></i>`).join("")}</div>
+      <div class="column-chart">${groups.slice(0, 12).map(group => {
     const value = average(group.rows, metric);
     return `<div class="column-item" title="${group.values.join(" / ")}：${value.toFixed(1)}">
       <span class="column-value">${value.toFixed(1)}</span>
-      <div class="column-bar" style="height:${value / max * 100}%"></div>
+      <div class="column-bar" style="height:${Math.max(0, (value - axisMin) / range * 100)}%"></div>
       <span class="column-label">${group.values.join(" / ")}</span>
     </div>`;
-  }).join("")}</div>` : '<div class="empty-state">没有可绘制的数据。</div>';
+  }).join("")}</div>
+    </div>
+    <div class="x-axis-title">${fieldLabels[state.primaryDimension] || state.primaryDimension}${state.secondaryDimension ? ` × ${fieldLabels[state.secondaryDimension] || state.secondaryDimension}` : ""}</div>
+  </div>` : '<div class="empty-state">没有可绘制的数据。</div>';
 }
 
 function scoreClass(value) {
@@ -422,6 +439,7 @@ function bindEvents() {
   els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); });
   els.secondaryDimension.addEventListener("change", () => { state.secondaryDimension = els.secondaryDimension.value; state.selectedGroup = null; render(); });
   els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); });
+  els.yAxisMode.addEventListener("change", () => { state.yAxisMode = els.yAxisMode.value; renderChart(groupedRows(filteredRows())); });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
   els.fontSizeControl.addEventListener("input", () => {
@@ -462,6 +480,7 @@ function bindEvents() {
   });
   els.resetButton.addEventListener("click", () => {
     state.primaryDimension = "device_name"; state.secondaryDimension = "concha_size"; state.metric = "comfort_score";
+    state.yAxisMode = "adaptive";
     state.selectedGroup = null; state.search = ""; els.detailSearch.value = "";
     [els.deviceFilter, els.genderFilter, els.ageFilter, els.earSizeFilter].forEach(select => [...select.options].forEach(option => option.selected = false));
     buildSchema();
