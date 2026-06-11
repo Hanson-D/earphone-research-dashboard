@@ -31,7 +31,7 @@ function defaultLayout() {
   return {
     fontSize: 12,
     photoSize: 120,
-    version: 4,
+    version: 5,
     schema: "",
     columns: []
   };
@@ -55,6 +55,13 @@ function loadLayout() {
 
 const state = {
   rows: [],
+  mappingRows: [],
+  mappedRows: [],
+  mappingFiles: [],
+  mappingViews: [],
+  viewLabels: {},
+  globalView: "",
+  userViews: {},
   selectedGroup: null,
   primaryDimension: "device_name",
   secondaryDimension: "concha_size",
@@ -71,12 +78,16 @@ const state = {
 };
 
 const els = Object.fromEntries([
-  "csvInput", "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
+  "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
   "metricSelect", "yAxisMode", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
   "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
-  "photoSizeValue", "resetLayoutButton", "columnConfigList", "clearColumnFilters"
+  "photoSizeValue", "resetLayoutButton", "columnConfigList", "clearColumnFilters",
+  "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput",
+  "mappingUserField", "mappingDeviceField", "viewNamesInput", "runMappingButton",
+  "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
+  "globalViewControl", "globalViewSelect", "resetViewsButton"
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
@@ -134,6 +145,13 @@ function isPhotoField(field) {
     state.rows.some(row => /\.(png|jpe?g|webp|gif)$/i.test(row[field] || ""));
 }
 
+function photoUrl(path) {
+  if (!path) return "";
+  if (/^(blob:|data:|https?:|\/api\/)/i.test(path)) return path;
+  if (/^[A-Za-z]:[\\/]|^\//.test(path)) return `/api/photo?path=${encodeURIComponent(path)}`;
+  return path;
+}
+
 function isUserLevelField(field) {
   if (isPhotoField(field)) return false;
   if (field === state.userIdField) {
@@ -168,6 +186,10 @@ function buildSchema() {
   state.headers = Object.keys(state.rows[0] || {});
   state.userIdField = state.headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || state.headers[0];
   state.photoFields = state.headers.filter(isPhotoField);
+  state.photoFields.forEach((field, index) => {
+    if (!state.viewLabels[field]) state.viewLabels[field] = fieldLabels[field] || field.replace(/^photo_/, "");
+  });
+  if (!state.photoFields.includes(state.globalView)) state.globalView = state.photoFields[0] || "";
   state.metricFields = state.headers.filter(field => isNumericField(field) && !/^(record_id|user_id|device_id)$/i.test(field));
   state.dimensionFields = state.headers.filter(field => {
     const count = unique(field).length;
@@ -184,7 +206,7 @@ function buildSchema() {
     id: field,
     label: fieldLabels[field] || field,
     width: defaultColumnWidth(field),
-    visible: !/^(record_id|device_id)$/i.test(field) && !/pressure_score$/i.test(field),
+    visible: !/^(record_id|device_id)$/i.test(field) && !/pressure_score$/i.test(field) && !isPhotoField(field),
     userLevel: isUserLevelField(field),
     photo: isPhotoField(field)
   }));
@@ -197,6 +219,15 @@ function buildSchema() {
     photo: false,
     derived: true
   });
+  if (state.photoFields.length) dynamicColumns.push({
+    id: "__photo_view",
+    label: "照片",
+    width: 360,
+    visible: true,
+    userLevel: true,
+    photo: true,
+    derived: true
+  });
   dynamicColumns.splice(Math.max(0, dynamicColumns.findIndex(column => column.id === state.userIdField) + 1), 0, {
     id: "__user_profile",
     label: "组间变量",
@@ -207,11 +238,11 @@ function buildSchema() {
     derived: true
   });
   dynamicColumns.forEach(column => {
-    if (column.userLevel && column.id !== state.userIdField && column.id !== "__user_profile") column.visible = false;
+    if (column.userLevel && !column.photo && column.id !== state.userIdField && column.id !== "__user_profile") column.visible = false;
     if (/pressure_score$/i.test(column.id)) column.visible = false;
   });
   const schema = state.headers.join("|||");
-  const orderedSaved = state.layout.version === 4 && state.layout.schema === schema ? state.layout.columns
+  const orderedSaved = state.layout.version === 5 && state.layout.schema === schema ? state.layout.columns
     .filter(column => dynamicColumns.some(item => item.id === column.id))
     .map(column => ({ ...dynamicColumns.find(item => item.id === column.id), ...column })) : [];
   const newColumns = dynamicColumns.filter(column => !orderedSaved.some(item => item.id === column.id));
@@ -220,7 +251,7 @@ function buildSchema() {
     if (/pressure_score$/i.test(column.id)) column.visible = false;
   });
   state.layout.columns = [...combined.filter(column => !column.photo), ...combined.filter(column => column.photo)];
-  state.layout.version = 4;
+  state.layout.version = 5;
   state.layout.schema = schema;
   saveLayout();
 }
@@ -255,6 +286,15 @@ function initializeControls() {
   els.secondaryDimension.value = state.secondaryDimension;
   els.metricSelect.value = state.metric;
   els.yAxisMode.value = state.yAxisMode;
+  renderViewControls();
+}
+
+function renderViewControls() {
+  els.globalViewControl.hidden = state.photoFields.length === 0;
+  els.resetViewsButton.hidden = state.photoFields.length === 0;
+  els.globalViewSelect.innerHTML = state.photoFields.map(field =>
+    `<option value="${field}" ${field === state.globalView ? "selected" : ""}>${state.viewLabels[field] || field}</option>`
+  ).join("");
 }
 
 function filteredRows() {
@@ -393,15 +433,25 @@ function detailCell(column, row) {
 }
 
 function photoGalleryCell(column, userRows) {
+  const user = userRows[0][state.userIdField];
   const deviceField = state.headers.includes("device_name") ? "device_name" :
     state.headers.find(field => /device|condition|设备|条件/i.test(field));
-  const items = userRows.filter(row => row[column.id]).map(row => `
+  const selectedView = state.userViews[user] || state.globalView || state.photoFields[0];
+  const items = userRows.filter(row => row[selectedView]).map(row => `
     <figure class="photo-thumb">
-      <img class="ear-photo" src="${row[column.id]}" alt="${row[state.userIdField]} ${row[deviceField] || column.label}" loading="lazy">
+      <img class="ear-photo" src="${photoUrl(row[selectedView])}" alt="${row[state.userIdField]} ${row[deviceField] || column.label}" loading="lazy">
       <figcaption>${row[deviceField] || column.label}</figcaption>
     </figure>
   `).join("");
-  return `<td class="photo-cell" rowspan="${userRows.length}"><div class="photo-gallery">${items || "—"}</div></td>`;
+  const options = state.photoFields.map(field =>
+    `<option value="${field}" ${state.userViews[user] === field ? "selected" : ""}>${state.viewLabels[field] || field}</option>`
+  ).join("");
+  return `<td class="photo-cell" rowspan="${userRows.length}">
+    <select class="user-view-select" data-user="${user}" aria-label="${user}照片视角">
+      <option value="">跟随全局</option>${options}
+    </select>
+    <div class="photo-gallery" style="--photo-count:${Math.max(1, userRows.length)}">${items || "—"}</div>
+  </td>`;
 }
 
 function detailRows(allFilteredRows, groups) {
@@ -434,7 +484,9 @@ function renderDetails(rows, groups) {
   els.detailCount.textContent = `显示 ${visibleRows.length} / ${baseRows.length} 条记录`;
   const visibleColumns = state.layout.columns.filter(column => column.visible);
   const maxPhotos = Math.max(1, ...groupByUser(visibleRows).map(userRows =>
-    Math.max(...visibleColumns.filter(column => column.photo).map(column => userRows.filter(row => row[column.id]).length), 0)
+    Math.max(...visibleColumns.filter(column => column.photo).map(column =>
+      column.id === "__photo_view" ? userRows.filter(row => row[state.globalView] || state.photoFields.some(field => row[field])).length : userRows.filter(row => row[column.id]).length
+    ), 0)
   ));
   visibleColumns.forEach(column => {
     if (column.photo) column.width = Math.max(column.width, maxPhotos * 78);
@@ -469,7 +521,195 @@ function render() {
   renderDetails(rows, groups);
 }
 
+function switchPage(page) {
+  document.querySelectorAll(".app-page").forEach(element => element.classList.toggle("active", element.id === `${page}Page`));
+  document.querySelectorAll(".page-tab").forEach(button => button.classList.toggle("active", button.dataset.page === page));
+}
+
+function mappingViews() {
+  return els.viewNamesInput.value.split(/[,，]/).map(value => value.trim()).filter(Boolean);
+}
+
+function photoFieldNames(views) {
+  const used = new Set();
+  return views.map((view, index) => {
+    const base = `photo_${view.replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "") || `view_${index + 1}`}`;
+    let field = base;
+    let suffix = 2;
+    while (used.has(field)) field = `${base}_${suffix++}`;
+    used.add(field);
+    return field;
+  });
+}
+
+function initializeMappingFields() {
+  const headers = Object.keys(state.mappingRows[0] || {});
+  fillSelect(els.mappingUserField, headers, false, fieldLabels);
+  fillSelect(els.mappingDeviceField, headers, false, fieldLabels);
+  els.mappingUserField.value = headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
+  els.mappingDeviceField.value = headers.find(field => /^device_name$/i.test(field)) ||
+    headers.find(field => /device_name|device_id|condition|设备|条件/i.test(field)) || headers[1] || "";
+}
+
+async function scanPhotoRoot() {
+  const root = els.photoRootInput.value.trim();
+  if (!root) throw new Error("请填写照片根文件夹路径。");
+  const response = await fetch("/api/scan-photos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ root })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "照片目录扫描失败。");
+  state.mappingFiles = result.photos;
+  return result;
+}
+
+function naturalCompare(a, b) {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function buildPhotoMapping() {
+  const views = mappingViews();
+  const userField = els.mappingUserField.value;
+  const deviceField = els.mappingDeviceField.value;
+  if (!state.mappingRows.length) throw new Error("请先选择 CSV。");
+  if (!views.length) throw new Error("请至少填写一个视角名称。");
+  if (!userField || !deviceField) throw new Error("请选择用户字段和设备字段。");
+
+  const photoFields = photoFieldNames(views);
+  const filesByUser = new Map();
+  state.mappingFiles.forEach(file => {
+    if (!filesByUser.has(file.user_folder)) filesByUser.set(file.user_folder, []);
+    filesByUser.get(file.user_folder).push(file);
+  });
+  filesByUser.forEach(files => files.sort((a, b) => naturalCompare(a.name, b.name)));
+
+  const rowsByUser = new Map();
+  state.mappingRows.forEach((row, rowIndex) => {
+    const user = row[userField];
+    if (!rowsByUser.has(user)) rowsByUser.set(user, []);
+    rowsByUser.get(user).push({ row, rowIndex });
+  });
+
+  const existingPhotoFields = Object.keys(state.mappingRows[0] || {}).filter(field =>
+    /photo|image|picture|照片|图片/i.test(field)
+  );
+  const mapped = state.mappingRows.map(row => {
+    const copy = { ...row };
+    existingPhotoFields.forEach(field => delete copy[field]);
+    return copy;
+  });
+  const reviews = [];
+  rowsByUser.forEach((entries, user) => {
+    const files = filesByUser.get(user) || [];
+    const expected = entries.length * views.length;
+    entries.forEach((entry, deviceIndex) => {
+      views.forEach((view, viewIndex) => {
+        const field = photoFields[viewIndex];
+        const file = files[deviceIndex * views.length + viewIndex];
+        mapped[entry.rowIndex][field] = file?.absolute_path || "";
+      });
+    });
+    reviews.push({
+      user,
+      entries,
+      files,
+      expected,
+      status: files.length === expected ? "ok" : files.length < expected ? "missing" : "extra"
+    });
+  });
+
+  state.mappedRows = mapped;
+  state.mappingViews = views;
+  photoFields.forEach((field, index) => {
+    state.viewLabels[field] = views[index];
+    fieldLabels[field] = views[index];
+  });
+  renderMappingPreview(reviews, userField, deviceField, photoFields);
+  els.applyMappingButton.disabled = false;
+  els.downloadMappedCsvButton.disabled = false;
+}
+
+function renderMappingPreview(reviews, userField, deviceField, photoFields) {
+  const ok = reviews.filter(review => review.status === "ok").length;
+  const issues = reviews.length - ok;
+  els.mappingSummary.innerHTML = `<strong>${reviews.length}</strong> 位用户 · <strong>${ok}</strong> 正常 · <strong>${issues}</strong> 异常`;
+  els.mappingPreview.innerHTML = reviews.map(review => `
+    <article class="mapping-user ${review.status}">
+      <div class="mapping-user-heading">
+        <strong>${review.user}</strong>
+        <span>预期 ${review.expected} 张 / 实际 ${review.files.length} 张</span>
+        <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
+      </div>
+      <div class="mapping-device-list">${review.entries.map(entry => `
+        <div class="mapping-device-row">
+          <strong>${entry.row[deviceField]}</strong>
+          ${photoFields.map(field => {
+            const path = state.mappedRows[entry.rowIndex][field];
+            return `<figure>${path ? `<img src="${photoUrl(path)}" alt="${state.viewLabels[field]}">` : `<div class="missing-photo">缺失</div>`}<figcaption>${state.viewLabels[field]}</figcaption></figure>`;
+          }).join("")}
+        </div>
+      `).join("")}</div>
+    </article>
+  `).join("");
+}
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function downloadMappedCsv() {
+  const headers = Object.keys(state.mappedRows[0] || {});
+  const csv = [headers.join(","), ...state.mappedRows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
+  link.download = "headphone_data_with_photos.csv";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function applyMappedRows() {
+  state.rows = state.mappedRows.map(row => ({ ...row }));
+  state.selectedGroup = null;
+  state.columnFilters = {};
+  state.userViews = {};
+  buildSchema();
+  initializeControls();
+  renderColumnConfig();
+  render();
+  els.dataSourceLabel.textContent = "照片映射数据";
+  switchPage("dashboard");
+}
+
 function bindEvents() {
+  document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
+  els.mappingCsvInput.addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.mappingRows = parseCSV(reader.result);
+      initializeMappingFields();
+      els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录`;
+    };
+    reader.readAsText(file, "UTF-8");
+  });
+  els.runMappingButton.addEventListener("click", async () => {
+    els.runMappingButton.disabled = true;
+    els.mappingSummary.textContent = "正在扫描并映射照片…";
+    try {
+      await scanPhotoRoot();
+      buildPhotoMapping();
+    } catch (error) {
+      els.mappingSummary.textContent = error.message;
+    } finally {
+      els.runMappingButton.disabled = false;
+    }
+  });
+  els.applyMappingButton.addEventListener("click", applyMappedRows);
+  els.downloadMappedCsvButton.addEventListener("click", downloadMappedCsv);
   els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); });
   els.secondaryDimension.addEventListener("change", () => { state.secondaryDimension = els.secondaryDimension.value; state.selectedGroup = null; render(); });
   els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); });
@@ -486,6 +726,23 @@ function bindEvents() {
     state.columnFilters = {};
     state.selectedGroup = null;
     render();
+  });
+  els.globalViewSelect.addEventListener("change", () => {
+    state.globalView = els.globalViewSelect.value;
+    renderDetails(filteredRows(), groupedRows(filteredRows()));
+  });
+  els.resetViewsButton.addEventListener("click", () => {
+    state.globalView = state.photoFields[0] || "";
+    state.userViews = {};
+    renderViewControls();
+    renderDetails(filteredRows(), groupedRows(filteredRows()));
+  });
+  els.detailBody.addEventListener("change", event => {
+    if (!event.target.classList.contains("user-view-select")) return;
+    const user = event.target.dataset.user;
+    if (event.target.value) state.userViews[user] = event.target.value;
+    else delete state.userViews[user];
+    renderDetails(filteredRows(), groupedRows(filteredRows()));
   });
   els.fontSizeControl.addEventListener("input", () => {
     state.layout.fontSize = Number(els.fontSizeControl.value);
@@ -530,24 +787,13 @@ function bindEvents() {
     buildSchema();
     initializeControls(); render();
   });
-  els.csvInput.addEventListener("change", event => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      state.rows = parseCSV(reader.result);
-      state.selectedGroup = null; state.columnFilters = {};
-      els.dataSourceLabel.textContent = file.name;
-      buildSchema();
-      initializeControls(); renderColumnConfig(); render();
-    };
-    reader.readAsText(file, "UTF-8");
-  });
 }
 
 async function start() {
   const response = await fetch(DEFAULT_CSV);
   state.rows = parseCSV(await response.text());
+  state.mappingRows = state.rows.map(row => ({ ...row }));
+  initializeMappingFields();
   buildSchema();
   initializeControls();
   applyLayoutVariables();

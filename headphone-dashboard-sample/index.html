@@ -13,15 +13,64 @@
       <h1>耳机佩戴研究看板</h1>
     </div>
     <div class="top-actions">
-      <label class="file-button">
-        导入 CSV
-        <input id="csvInput" type="file" accept=".csv,text/csv">
-      </label>
       <button id="resetButton" class="ghost-button">重置配置</button>
     </div>
   </header>
 
-  <main>
+  <nav class="page-nav">
+    <button class="page-tab active" data-page="mapping">01 · 照片映射</button>
+    <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
+  </nav>
+
+  <main id="mappingPage" class="app-page active">
+    <section class="mapping-layout">
+      <aside class="mapping-config">
+        <p class="panel-kicker">PHOTO INDEX BUILDER</p>
+        <h2>照片自动映射</h2>
+        <p class="mapping-intro">按用户文件夹内的文件名顺序，将照片依次映射到设备与视角。</p>
+
+        <label class="mapping-input">
+          <span>1. 选择原始 CSV</span>
+          <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
+        </label>
+        <label class="mapping-input">
+          <span>2. 输入照片根文件夹路径</span>
+          <input id="photoRootInput" type="text" placeholder="/Users/name/research/photos">
+          <small>由本项目的本地服务器扫描。目录下的一级文件夹名称应与用户编号一致。</small>
+        </label>
+        <div class="mapping-fields">
+          <label>用户字段<select id="mappingUserField"></select></label>
+          <label>设备字段<select id="mappingDeviceField"></select></label>
+        </div>
+        <label class="mapping-input">
+          <span>3. 按拍摄顺序填写视角名称</span>
+          <input id="viewNamesInput" type="text" value="正面,侧面,后侧" placeholder="例如：正面,侧面,后侧">
+          <small>使用逗号分隔。每个设备必须拍摄相同数量、相同顺序的视角。</small>
+        </label>
+        <button id="runMappingButton" class="primary-button">生成照片映射</button>
+
+        <div class="mapping-actions">
+          <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
+          <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
+        </div>
+      </aside>
+
+      <section class="mapping-results panel">
+        <div class="panel-heading">
+          <div>
+            <p class="panel-kicker">MAPPING REVIEW</p>
+            <h2>映射检查</h2>
+          </div>
+          <div id="mappingSummary" class="mapping-summary">等待选择 CSV 和照片文件夹</div>
+        </div>
+        <div id="mappingPreview" class="mapping-preview">
+          <div class="empty-state">照片将按用户文件夹名称匹配用户，并按文件名自然排序。</div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <main id="dashboardPage" class="app-page">
     <section class="hero-grid">
       <aside class="control-panel">
         <div class="section-heading">
@@ -102,6 +151,8 @@
       <div class="detail-toolbar">
         <input id="detailSearch" type="search" placeholder="搜索当前组内的用户、设备或备注">
         <span id="detailCount"></span>
+        <label id="globalViewControl" class="view-control">全局视角<select id="globalViewSelect"></select></label>
+        <button id="resetViewsButton" type="button" class="compact-button">重置视角</button>
         <button id="clearColumnFilters" type="button" class="compact-button">清除表头筛选</button>
         <details class="layout-config">
           <summary>显示与布局</summary>
