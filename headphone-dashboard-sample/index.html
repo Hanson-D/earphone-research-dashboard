@@ -29,33 +29,6 @@
           <small id="dataSourceLabel">示例数据</small>
         </div>
 
-        <div class="control-block">
-          <label for="deviceFilter">设备筛选</label>
-          <select id="deviceFilter" multiple></select>
-          <small>按住 Command / Ctrl 可多选；不选择表示全部。</small>
-        </div>
-
-        <div class="control-block">
-          <label for="genderFilter">性别</label>
-          <select id="genderFilter">
-            <option value="">全部</option>
-          </select>
-        </div>
-
-        <div class="control-block">
-          <label for="ageFilter">年龄段</label>
-          <select id="ageFilter">
-            <option value="">全部</option>
-          </select>
-        </div>
-
-        <div class="control-block">
-          <label for="earSizeFilter">耳甲腔大小</label>
-          <select id="earSizeFilter">
-            <option value="">全部</option>
-          </select>
-        </div>
-
         <div class="control-block split-control">
           <div>
             <label for="primaryDimension">主透视维度</label>
@@ -80,7 +53,7 @@
           </select>
         </div>
 
-        <button id="clearGroupButton" class="primary-button">查看全部筛选数据</button>
+        <button id="clearGroupButton" class="primary-button">清除透视分组选择</button>
       </aside>
 
       <section class="analysis-area">
@@ -129,6 +102,7 @@
       <div class="detail-toolbar">
         <input id="detailSearch" type="search" placeholder="搜索当前组内的用户、设备或备注">
         <span id="detailCount"></span>
+        <button id="clearColumnFilters" type="button" class="compact-button">清除表头筛选</button>
         <details class="layout-config">
           <summary>显示与布局</summary>
           <div class="layout-config-panel">

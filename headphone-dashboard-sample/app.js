@@ -31,7 +31,7 @@ function defaultLayout() {
   return {
     fontSize: 12,
     photoSize: 120,
-    version: 3,
+    version: 4,
     schema: "",
     columns: []
   };
@@ -61,6 +61,7 @@ const state = {
   metric: "comfort_score",
   yAxisMode: "adaptive",
   search: "",
+  columnFilters: {},
   headers: [],
   dimensionFields: [],
   metricFields: [],
@@ -70,13 +71,12 @@ const state = {
 };
 
 const els = Object.fromEntries([
-  "csvInput", "resetButton", "dataSourceLabel", "deviceFilter", "genderFilter",
-  "ageFilter", "earSizeFilter", "primaryDimension", "secondaryDimension",
+  "csvInput", "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
   "metricSelect", "yAxisMode", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
   "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
-  "photoSizeValue", "resetLayoutButton", "columnConfigList"
+  "photoSizeValue", "resetLayoutButton", "columnConfigList", "clearColumnFilters"
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
@@ -158,8 +158,10 @@ function isUserLevelField(field) {
 function defaultColumnWidth(field) {
   if (isPhotoField(field)) return 360;
   if (/comment|备注|description|说明/i.test(field)) return 220;
-  if (/name|device|ear_|concha|耳/i.test(field)) return 135;
-  return 100;
+  if (/score|rating|age$|年龄$|gender|性别/i.test(field)) return 65;
+  if (/name|device|设备/i.test(field)) return 105;
+  if (/ear_|concha|耳/i.test(field)) return 90;
+  return 82;
 }
 
 function buildSchema() {
@@ -182,18 +184,43 @@ function buildSchema() {
     id: field,
     label: fieldLabels[field] || field,
     width: defaultColumnWidth(field),
-    visible: !/^(record_id|device_id)$/i.test(field),
+    visible: !/^(record_id|device_id)$/i.test(field) && !/pressure_score$/i.test(field),
     userLevel: isUserLevelField(field),
     photo: isPhotoField(field)
   }));
+  dynamicColumns.splice(Math.max(0, dynamicColumns.findIndex(column => /fit_result|original_sound/i.test(column.id))), 0, {
+    id: "__pressure_summary",
+    label: "挤压",
+    width: 190,
+    visible: true,
+    userLevel: false,
+    photo: false,
+    derived: true
+  });
+  dynamicColumns.splice(Math.max(0, dynamicColumns.findIndex(column => column.id === state.userIdField) + 1), 0, {
+    id: "__user_profile",
+    label: "组间变量",
+    width: 260,
+    visible: true,
+    userLevel: true,
+    photo: false,
+    derived: true
+  });
+  dynamicColumns.forEach(column => {
+    if (column.userLevel && column.id !== state.userIdField && column.id !== "__user_profile") column.visible = false;
+    if (/pressure_score$/i.test(column.id)) column.visible = false;
+  });
   const schema = state.headers.join("|||");
-  const orderedSaved = state.layout.version === 3 && state.layout.schema === schema ? state.layout.columns
+  const orderedSaved = state.layout.version === 4 && state.layout.schema === schema ? state.layout.columns
     .filter(column => dynamicColumns.some(item => item.id === column.id))
     .map(column => ({ ...dynamicColumns.find(item => item.id === column.id), ...column })) : [];
   const newColumns = dynamicColumns.filter(column => !orderedSaved.some(item => item.id === column.id));
   const combined = [...orderedSaved, ...newColumns];
+  combined.forEach(column => {
+    if (/pressure_score$/i.test(column.id)) column.visible = false;
+  });
   state.layout.columns = [...combined.filter(column => !column.photo), ...combined.filter(column => column.photo)];
-  state.layout.version = 3;
+  state.layout.version = 4;
   state.layout.schema = schema;
   saveLayout();
 }
@@ -221,14 +248,6 @@ function fillSelect(select, values, includeBlank = false, labels = fieldLabels) 
 }
 
 function initializeControls() {
-  fillSelect(els.deviceFilter, unique("device_name"));
-  ["genderFilter", "ageFilter", "earSizeFilter"].forEach((id, index) => {
-    const field = ["gender", "age_group", "concha_size"][index];
-    const select = els[id], current = select.value;
-    select.innerHTML = '<option value="">全部</option>';
-    unique(field).forEach(value => select.add(new Option(value, value)));
-    select.value = current;
-  });
   fillSelect(els.primaryDimension, state.dimensionFields);
   fillSelect(els.secondaryDimension, state.dimensionFields, true);
   fillSelect(els.metricSelect, state.metricFields);
@@ -238,18 +257,10 @@ function initializeControls() {
   els.yAxisMode.value = state.yAxisMode;
 }
 
-function selectedValues(select) {
-  return [...select.selectedOptions].map(option => option.value);
-}
-
 function filteredRows() {
-  const devices = selectedValues(els.deviceFilter);
-  return state.rows.filter(row =>
-    (!state.headers.includes("device_name") || !devices.length || devices.includes(row.device_name)) &&
-    (!state.headers.includes("gender") || !els.genderFilter.value || row.gender === els.genderFilter.value) &&
-    (!state.headers.includes("age_group") || !els.ageFilter.value || row.age_group === els.ageFilter.value) &&
-    (!state.headers.includes("concha_size") || !els.earSizeFilter.value || row.concha_size === els.earSizeFilter.value)
-  );
+  return state.rows.filter(row => Object.entries(state.columnFilters).every(([field, value]) =>
+    !value || String(row[field] ?? "") === value
+  ));
 }
 
 function groupedRows(rows) {
@@ -357,6 +368,21 @@ function detailCell(column, row) {
   const field = column.id;
   const value = row[field] ?? "";
   const classes = [field === state.userIdField ? "user-cell" : ""].filter(Boolean).join(" ");
+  if (field === "__pressure_summary") {
+    const pressureFields = state.headers.filter(item => /pressure_score$/i.test(item));
+    return `<td><div class="pressure-tags">${pressureFields.map(item => {
+      const score = row[item];
+      return score === "" ? "" : `<span class="pressure-tag ${pressureClass(score)}">${fieldLabels[item] || item}：${score}</span>`;
+    }).join("") || "—"}</div></td>`;
+  }
+  if (field === "__user_profile") {
+    const profileFields = state.layout.columns.filter(item =>
+      item.userLevel && !item.derived && !item.photo && item.id !== state.userIdField
+    );
+    return `<td><div class="profile-tags">${profileFields.map(item =>
+      row[item.id] === "" ? "" : `<span class="profile-tag"><b>${item.label}</b>${row[item.id]}</span>`
+    ).join("") || "—"}</div></td>`;
+  }
   if (/pressure_score$/i.test(field)) {
     return `<td class="${classes}"><span class="pressure ${pressureClass(value)}">${value || "—"}</span></td>`;
   }
@@ -407,9 +433,20 @@ function renderDetails(rows, groups) {
   els.groupStats.innerHTML = stats.map(([label, value]) => `<div class="group-stat">${label}<strong>${value}</strong></div>`).join("");
   els.detailCount.textContent = `显示 ${visibleRows.length} / ${baseRows.length} 条记录`;
   const visibleColumns = state.layout.columns.filter(column => column.visible);
+  const maxPhotos = Math.max(1, ...groupByUser(visibleRows).map(userRows =>
+    Math.max(...visibleColumns.filter(column => column.photo).map(column => userRows.filter(row => row[column.id]).length), 0)
+  ));
+  visibleColumns.forEach(column => {
+    if (column.photo) column.width = Math.max(column.width, maxPhotos * 78);
+  });
   const totalWeight = visibleColumns.reduce((sum, column) => sum + column.width, 0);
   els.detailColgroup.innerHTML = visibleColumns.map(column => `<col style="width:${column.width / totalWeight * 100}%">`).join("");
-  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => `<th>${column.label}</th>`).join("")}</tr>`;
+  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => {
+    if (column.derived || column.photo) return `<th>${column.label}</th>`;
+    const values = [...new Set(rows.map(row => row[column.id]).filter(value => value !== ""))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
+    const options = values.length <= 80 ? values.map(value => `<option value="${value}" ${state.columnFilters[column.id] === String(value) ? "selected" : ""}>${value}</option>`).join("") : "";
+    return `<th><span>${column.label}</span><select class="header-filter" data-field="${column.id}" aria-label="${column.label}筛选"><option value="">全部</option>${options}</select></th>`;
+  }).join("")}</tr>`;
   els.detailBody.innerHTML = visibleRows.length ? groupByUser(visibleRows).map(userRows =>
     userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}">
       ${visibleColumns.map(column => {
@@ -433,15 +470,23 @@ function render() {
 }
 
 function bindEvents() {
-  [els.deviceFilter, els.genderFilter, els.ageFilter, els.earSizeFilter].forEach(select =>
-    select.addEventListener("change", () => { state.selectedGroup = null; render(); })
-  );
   els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); });
   els.secondaryDimension.addEventListener("change", () => { state.secondaryDimension = els.secondaryDimension.value; state.selectedGroup = null; render(); });
   els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); });
   els.yAxisMode.addEventListener("change", () => { state.yAxisMode = els.yAxisMode.value; renderChart(groupedRows(filteredRows())); });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
+  els.detailHead.addEventListener("change", event => {
+    if (!event.target.classList.contains("header-filter")) return;
+    state.columnFilters[event.target.dataset.field] = event.target.value;
+    state.selectedGroup = null;
+    render();
+  });
+  els.clearColumnFilters.addEventListener("click", () => {
+    state.columnFilters = {};
+    state.selectedGroup = null;
+    render();
+  });
   els.fontSizeControl.addEventListener("input", () => {
     state.layout.fontSize = Number(els.fontSizeControl.value);
     applyLayoutVariables(); saveLayout();
@@ -481,8 +526,7 @@ function bindEvents() {
   els.resetButton.addEventListener("click", () => {
     state.primaryDimension = "device_name"; state.secondaryDimension = "concha_size"; state.metric = "comfort_score";
     state.yAxisMode = "adaptive";
-    state.selectedGroup = null; state.search = ""; els.detailSearch.value = "";
-    [els.deviceFilter, els.genderFilter, els.ageFilter, els.earSizeFilter].forEach(select => [...select.options].forEach(option => option.selected = false));
+    state.selectedGroup = null; state.search = ""; state.columnFilters = {}; els.detailSearch.value = "";
     buildSchema();
     initializeControls(); render();
   });
@@ -492,7 +536,7 @@ function bindEvents() {
     const reader = new FileReader();
     reader.onload = () => {
       state.rows = parseCSV(reader.result);
-      state.selectedGroup = null;
+      state.selectedGroup = null; state.columnFilters = {};
       els.dataSourceLabel.textContent = file.name;
       buildSchema();
       initializeControls(); renderColumnConfig(); render();

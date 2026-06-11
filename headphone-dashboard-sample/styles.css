@@ -190,7 +190,9 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .detail-table th { position: sticky; top: 0; z-index: 2; }
 .detail-table tbody tr:hover { background: #faf1e9; }
 .detail-table th, .detail-table td { padding: 6px 7px; }
-.detail-table th { overflow: hidden; font-size: 9px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.detail-table th { overflow: hidden; font-size: 9px; line-height: 1.2; text-overflow: ellipsis; }
+.detail-table th > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-filter { width: 100%; margin-top: 3px; padding: 2px 1px; color: var(--muted); background: #fff; border: 1px solid var(--line); font-size: 8px; }
 .detail-table td { overflow: hidden; font-size: min(var(--detail-font-size), 11px); line-height: 1.25; overflow-wrap: anywhere; }
 .detail-table td.photo-cell { padding: 4px; text-align: center; }
 .detail-table tbody tr.user-group-start td { border-top: 3px solid var(--sage-dark); }
@@ -202,6 +204,12 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .score.low { color: var(--accent-dark); }
 .pressure { display: inline-block; min-width: 28px; padding: 4px; color: #fff; background: var(--sage); text-align: center; }
 .pressure.hot { background: var(--accent-dark); }
+.pressure-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.pressure-tag { display: inline-block; padding: 3px 5px; color: #fff; background: var(--sage); border-radius: 2px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.pressure-tag.hot { background: var(--accent-dark); }
+.profile-tags { display: flex; flex-wrap: wrap; gap: 3px 7px; }
+.profile-tag { display: inline-flex; gap: 3px; color: var(--ink); font-size: 9px; white-space: nowrap; }
+.profile-tag b { color: var(--muted); font-size: 8px; font-weight: 700; }
 .ear-photo { width: min(var(--photo-size), 92px); height: min(var(--photo-size), 92px); object-fit: cover; border: 2px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,.14); }
 .photo-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 3px; }
 .photo-thumb { min-width: 0; margin: 0; }
