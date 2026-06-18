@@ -26,7 +26,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        if self.path != "/api/scan-photos":
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/save-project":
+            self.save_project()
+            return
+        if parsed.path != "/api/scan-photos":
             self.send_error(404)
             return
 
@@ -58,8 +62,47 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         photos.sort(key=lambda item: (item["user_folder"], item["name"].lower(), item["relative_path"].lower()))
         self.send_json({"root": str(root), "photos": photos})
 
+    def save_project(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            project_path = Path(payload.get("path", "")).expanduser().resolve()
+            project = payload.get("project")
+        except (ValueError, json.JSONDecodeError):
+            self.send_json({"error": "无效的项目保存请求。"}, 400)
+            return
+
+        if not project_path.name.endswith(".json"):
+            self.send_json({"error": "项目文件必须是 .json。"}, 400)
+            return
+        if not project_path.parent.is_dir():
+            self.send_json({"error": f"项目目录不存在：{project_path.parent}"}, 400)
+            return
+        if not isinstance(project, dict):
+            self.send_json({"error": "项目内容必须是 JSON 对象。"}, 400)
+            return
+
+        project_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.send_json({"path": str(project_path)})
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/load-project":
+            values = parse_qs(parsed.query).get("path", [])
+            if not values:
+                self.send_error(400, "Missing path")
+                return
+            project_path = Path(values[0]).expanduser().resolve()
+            if not project_path.is_file():
+                self.send_json({"error": f"项目文件不存在：{project_path}"}, 404)
+                return
+            try:
+                project = json.loads(project_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                self.send_json({"error": "项目文件不是有效 JSON。"}, 400)
+                return
+            self.send_json({"path": str(project_path), "project": project})
+            return
         if parsed.path != "/api/photo":
             super().do_GET()
             return

@@ -1,4 +1,5 @@
 const DEFAULT_CSV = "headphone_sample.csv";
+const Core = globalThis.DashboardCore;
 
 const fieldLabels = {
   record_id: "记录编号",
@@ -53,12 +54,21 @@ function loadLayout() {
   }
 }
 
+function loadFieldRoleOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem("headphoneDashboardFieldRoles")) || {};
+  } catch {
+    return {};
+  }
+}
+
 const state = {
   rows: [],
   mappingRows: [],
   mappedRows: [],
   mappingFiles: [],
   mappingViews: [],
+  photoMappingOverrides: {},
   viewLabels: {},
   globalView: "",
   userViews: {},
@@ -67,31 +77,155 @@ const state = {
   secondaryDimension: "concha_size",
   metric: "comfort_score",
   yAxisMode: "adaptive",
+  showErrorBars: true,
   search: "",
   columnFilters: {},
   headers: [],
+  fieldRoles: {},
+  fieldRoleOverrides: loadFieldRoleOverrides(),
   dimensionFields: [],
   metricFields: [],
   userIdField: "user_id",
   photoFields: [],
-  layout: loadLayout()
+  layout: loadLayout(),
+  projectPath: ""
 };
 
 const els = Object.fromEntries([
   "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
-  "metricSelect", "yAxisMode", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
+  "metricSelect", "yAxisMode", "showErrorBars", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
-  "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
+  "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
-  "photoSizeValue", "resetLayoutButton", "columnConfigList", "clearColumnFilters",
+  "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput",
   "mappingUserField", "mappingDeviceField", "viewNamesInput", "runMappingButton",
   "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
-  "globalViewControl", "globalViewSelect", "resetViewsButton"
+  "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
+  "projectPathInput", "loadProjectButton", "saveProjectButton", "projectStatus"
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
   localStorage.setItem("headphoneDashboardLayout", JSON.stringify(state.layout));
+}
+
+function saveFieldRoleOverrides() {
+  localStorage.setItem("headphoneDashboardFieldRoles", JSON.stringify(state.fieldRoleOverrides));
+}
+
+function exportDashboardConfig() {
+  const config = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    ...dashboardConfigSnapshot()
+  };
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([JSON.stringify(config, null, 2)], { type: "application/json;charset=utf-8" }));
+  link.download = "headphone_dashboard_config.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function dashboardConfigSnapshot() {
+  return {
+    layout: state.layout,
+    fieldRoleOverrides: state.fieldRoleOverrides,
+    primaryDimension: state.primaryDimension,
+    secondaryDimension: state.secondaryDimension,
+    metric: state.metric,
+    yAxisMode: state.yAxisMode,
+    showErrorBars: state.showErrorBars
+  };
+}
+
+function projectDocumentSnapshot() {
+  return Core.buildProjectDocument({
+    rows: state.rows,
+    mappingRows: state.mappingRows,
+    photoRoot: els.photoRootInput.value.trim(),
+    mappingViews: mappingViews(),
+    photoMappingOverrides: state.photoMappingOverrides,
+    dashboardConfig: dashboardConfigSnapshot()
+  });
+}
+
+function setProjectPath(path) {
+  state.projectPath = path || "";
+  els.projectPathInput.value = state.projectPath;
+  if (!state.projectPath) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("project", state.projectPath);
+  history.replaceState(null, "", url);
+}
+
+function setProjectStatus(message) {
+  els.projectStatus.textContent = message;
+}
+
+async function saveProject() {
+  const path = els.projectPathInput.value.trim();
+  if (!path) throw new Error("请先填写项目 JSON 路径。");
+  const response = await fetch("/api/save-project", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, project: projectDocumentSnapshot() })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "项目保存失败。");
+  setProjectPath(result.path);
+  setProjectStatus(`已保存：${result.path}`);
+}
+
+async function loadProject(path) {
+  const projectPath = path || els.projectPathInput.value.trim();
+  if (!projectPath) throw new Error("请先填写项目 JSON 路径。");
+  const response = await fetch(`/api/load-project?path=${encodeURIComponent(projectPath)}`);
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "项目加载失败。");
+  const project = Core.sanitizeProjectDocument(result.project);
+  state.rows = project.rows.map(row => ({ ...row }));
+  state.mappingRows = project.mappingRows.map(row => ({ ...row }));
+  state.mappedRows = [];
+  state.mappingViews = project.mappingViews;
+  state.photoMappingOverrides = project.photoMappingOverrides;
+  els.photoRootInput.value = project.photoRoot;
+  if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
+  buildSchema();
+  applyDashboardConfig(project.dashboardConfig);
+  initializeMappingFields();
+  if (project.photoRoot) {
+    try {
+      await scanPhotoRoot();
+    } catch (error) {
+      setProjectStatus(`项目已加载，但照片目录未授权：${error.message}`);
+    }
+  }
+  setProjectPath(result.path);
+  setProjectStatus(`已加载：${result.path}`);
+  els.dataSourceLabel.textContent = "项目数据";
+  switchPage("dashboard");
+}
+
+function applyDashboardConfig(config) {
+  const clean = Core.sanitizeDashboardConfig(config, state.headers);
+  if (clean.layout.columns?.length) {
+    state.layout = { ...defaultLayout(), ...state.layout, ...clean.layout };
+    saveLayout();
+    applyLayoutVariables();
+  }
+  state.fieldRoleOverrides = clean.fieldRoleOverrides;
+  saveFieldRoleOverrides();
+  if (clean.primaryDimension) state.primaryDimension = clean.primaryDimension;
+  if (clean.secondaryDimension) state.secondaryDimension = clean.secondaryDimension;
+  if (clean.metric) state.metric = clean.metric;
+  if (clean.yAxisMode) state.yAxisMode = clean.yAxisMode;
+  if (typeof clean.showErrorBars === "boolean") state.showErrorBars = clean.showErrorBars;
+  state.selectedGroup = null;
+  buildSchema();
+  initializeControls();
+  renderFieldRoleConfig();
+  renderColumnConfig();
+  render();
 }
 
 function applyLayoutVariables() {
@@ -115,6 +249,35 @@ function renderColumnConfig() {
   `).join("");
 }
 
+function fieldRole(field) {
+  return state.fieldRoles[field] || Core.inferFieldRole(field, state.rows);
+}
+
+function renderFieldRoleConfig() {
+  const labels = {
+    user_id: "用户编号",
+    device: "设备/条件",
+    user: "组间变量",
+    dimension: "透视维度",
+    metric: "评分/数值指标",
+    pressure: "挤压分数",
+    photo: "照片视角",
+    ignore: "忽略"
+  };
+  const options = Object.entries(labels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+  els.fieldRoleList.innerHTML = state.headers.map(field => `
+    <label class="field-role-row">
+      <span>${fieldLabels[field] || field}<small>${field}</small></span>
+      <select data-field="${field}">
+        ${options}
+      </select>
+    </label>
+  `).join("");
+  els.fieldRoleList.querySelectorAll("select").forEach(select => {
+    select.value = fieldRole(select.dataset.field);
+  });
+}
+
 function parseCSV(text) {
   const rows = [];
   let row = [], cell = "", quoted = false;
@@ -136,13 +299,11 @@ function parseCSV(text) {
 }
 
 function isNumericField(field) {
-  const values = state.rows.map(row => row[field]).filter(value => value !== "");
-  return values.length > 0 && values.every(value => Number.isFinite(Number(value)));
+  return Core.isNumericField(field, state.rows);
 }
 
 function isPhotoField(field) {
-  return /photo|image|picture|照片|图片/i.test(field) ||
-    state.rows.some(row => /\.(png|jpe?g|webp|gif)$/i.test(row[field] || ""));
+  return fieldRole(field) === "photo";
 }
 
 function photoUrl(path) {
@@ -153,6 +314,9 @@ function photoUrl(path) {
 }
 
 function isUserLevelField(field) {
+  const role = fieldRole(field);
+  if (role === "user" || role === "user_id") return true;
+  if (role !== "dimension") return false;
   if (isPhotoField(field)) return false;
   if (field === state.userIdField) {
     const byUser = new Map();
@@ -184,17 +348,19 @@ function defaultColumnWidth(field) {
 
 function buildSchema() {
   state.headers = Object.keys(state.rows[0] || {});
-  state.userIdField = state.headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || state.headers[0];
-  state.photoFields = state.headers.filter(isPhotoField);
+  state.fieldRoleOverrides = Object.fromEntries(Object.entries(state.fieldRoleOverrides).filter(([field]) => state.headers.includes(field)));
+  state.fieldRoles = Core.resolveFieldRoles(state.headers, state.rows, state.fieldRoleOverrides);
+  state.userIdField = state.headers.find(field => fieldRole(field) === "user_id") || state.headers[0];
+  state.photoFields = state.headers.filter(field => fieldRole(field) === "photo");
   state.photoFields.forEach((field, index) => {
     if (!state.viewLabels[field]) state.viewLabels[field] = fieldLabels[field] || field.replace(/^photo_/, "");
   });
   if (!state.photoFields.includes(state.globalView)) state.globalView = state.photoFields[0] || "";
-  state.metricFields = state.headers.filter(field => isNumericField(field) && !/^(record_id|user_id|device_id)$/i.test(field));
+  state.metricFields = state.headers.filter(field => fieldRole(field) === "metric" && isNumericField(field));
   state.dimensionFields = state.headers.filter(field => {
     const count = unique(field).length;
-    return !isPhotoField(field) && !isNumericField(field) &&
-      field !== state.userIdField && !/record|comment|备注/i.test(field) && count > 0 && count <= 50;
+    return ["device", "user", "dimension"].includes(fieldRole(field)) &&
+      field !== state.userIdField && count > 0 && count <= 50;
   });
 
   if (!state.dimensionFields.includes(state.primaryDimension)) state.primaryDimension = state.dimensionFields[0] || state.userIdField;
@@ -206,7 +372,7 @@ function buildSchema() {
     id: field,
     label: fieldLabels[field] || field,
     width: defaultColumnWidth(field),
-    visible: !/^(record_id|device_id)$/i.test(field) && !/pressure_score$/i.test(field) && !isPhotoField(field),
+    visible: !/^(record_id|device_id)$/i.test(field) && fieldRole(field) !== "pressure" && fieldRole(field) !== "photo" && fieldRole(field) !== "ignore",
     userLevel: isUserLevelField(field),
     photo: isPhotoField(field)
   }));
@@ -239,7 +405,7 @@ function buildSchema() {
   });
   dynamicColumns.forEach(column => {
     if (column.userLevel && !column.photo && column.id !== state.userIdField && column.id !== "__user_profile") column.visible = false;
-    if (/pressure_score$/i.test(column.id)) column.visible = false;
+    if (fieldRole(column.id) === "pressure") column.visible = false;
   });
   const schema = state.headers.join("|||");
   const orderedSaved = state.layout.version === 5 && state.layout.schema === schema ? state.layout.columns
@@ -248,7 +414,7 @@ function buildSchema() {
   const newColumns = dynamicColumns.filter(column => !orderedSaved.some(item => item.id === column.id));
   const combined = [...orderedSaved, ...newColumns];
   combined.forEach(column => {
-    if (/pressure_score$/i.test(column.id)) column.visible = false;
+    if (fieldRole(column.id) === "pressure") column.visible = false;
   });
   state.layout.columns = [...combined.filter(column => !column.photo), ...combined.filter(column => column.photo)];
   state.layout.version = 5;
@@ -257,9 +423,7 @@ function buildSchema() {
 }
 
 function average(rows, field) {
-  if (!field) return 0;
-  const values = rows.map(row => Number(row[field])).filter(Number.isFinite);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  return Core.numericSummary(rows, field).mean;
 }
 
 function unique(field) {
@@ -286,6 +450,7 @@ function initializeControls() {
   els.secondaryDimension.value = state.secondaryDimension;
   els.metricSelect.value = state.metric;
   els.yAxisMode.value = state.yAxisMode;
+  els.showErrorBars.checked = state.showErrorBars;
   renderViewControls();
 }
 
@@ -333,6 +498,30 @@ function renderKPIs(rows) {
   `).join("");
 }
 
+function renderDataQuality() {
+  const deviceField = state.headers.find(field => fieldRole(field) === "device");
+  const scoreFields = state.metricFields.filter(field => Core.isScoreMetric(field) || /score|rating|评分|得分|满意|舒适|稳定/i.test(field));
+  const userLevelFields = state.layout.columns
+    .filter(column => column.userLevel && !column.derived && !column.photo && column.id !== state.userIdField)
+    .map(column => column.id);
+  const report = Core.validateRows(state.rows, {
+    userIdField: state.userIdField,
+    deviceField,
+    scoreFields,
+    userLevelFields
+  });
+  els.dataQualitySummary.textContent = report.totalIssues ?
+    `${report.errors} 个错误 · ${report.warnings} 个提醒` :
+    "未发现明显问题";
+  els.dataQualityList.innerHTML = report.totalIssues ?
+    report.items.slice(0, 12).map(item => `<div class="quality-item ${item.severity}">
+      <strong>${item.severity === "error" ? "错误" : "提醒"}</strong>
+      <span>${item.message}</span>
+    </div>`).join("") +
+    (report.items.length > 12 ? `<div class="quality-more">还有 ${report.items.length - 12} 条问题未展开。</div>` : "") :
+    `<div class="quality-empty">当前数据通过基础检查：用户编号、设备条件、评分范围和组间变量一致性均正常。</div>`;
+}
+
 function renderPivot(groups) {
   const summaryFields = ["satisfaction_score", "comfort_score", "stability_score"].filter(field => state.headers.includes(field));
   els.pivotHead.innerHTML = `<tr>
@@ -359,12 +548,9 @@ function renderPivot(groups) {
 
 function renderChart(groups) {
   const metric = state.metric;
-  const values = groups.map(group => average(group.rows, metric));
-  const dataMin = Math.min(...values);
-  const dataMax = Math.max(...values);
-  const padding = Math.max((dataMax - dataMin) * 0.2, 0.5);
-  const axisMin = state.yAxisMode === "full" ? 0 : Math.max(0, Math.floor((dataMin - padding) * 2) / 2);
-  const axisMax = state.yAxisMode === "full" ? 10 : Math.min(10, Math.ceil((dataMax + padding) * 2) / 2);
+  const summaries = groups.map(group => ({ group, ...Core.numericSummary(group.rows, metric) }));
+  const values = summaries.map(summary => summary.mean + summary.sd);
+  const { axisMin, axisMax } = Core.computeAxisRange(values, state.yAxisMode, metric);
   const range = axisMax - axisMin || 1;
   const ticks = Array.from({ length: 6 }, (_, index) => axisMax - range * index / 5);
   els.chartTitle.textContent = `${fieldLabels[metric] || metric}组间柱状对比`;
@@ -373,12 +559,15 @@ function renderChart(groups) {
     <div class="y-axis">${ticks.map(tick => `<span style="top:${(axisMax - tick) / range * 100}%">${tick.toFixed(1)}</span>`).join("")}</div>
     <div class="plot-area">
       <div class="grid-lines">${ticks.map(tick => `<i style="top:${(axisMax - tick) / range * 100}%"></i>`).join("")}</div>
-      <div class="column-chart">${groups.slice(0, 12).map(group => {
-    const value = average(group.rows, metric);
-    return `<div class="column-item" title="${group.values.join(" / ")}：${value.toFixed(1)}">
+      <div class="column-chart">${summaries.slice(0, 12).map(({ group, mean, sd, n }) => {
+    const value = mean;
+    const errorTop = Math.max(0, Math.min(100, (axisMax - (mean + sd)) / range * 100));
+    const errorBottom = Math.max(0, Math.min(100, (axisMax - (mean - sd)) / range * 100));
+    return `<div class="column-item" title="${group.values.join(" / ")}：${value.toFixed(1)} ± ${sd.toFixed(1)}，n=${n}">
       <span class="column-value">${value.toFixed(1)}</span>
+      ${state.showErrorBars ? `<span class="error-bar" style="top:${errorTop}%;height:${Math.max(0, errorBottom - errorTop)}%"></span>` : ""}
       <div class="column-bar" style="height:${Math.max(0, (value - axisMin) / range * 100)}%"></div>
-      <span class="column-label">${group.values.join(" / ")}</span>
+      <span class="column-label">${group.values.join(" / ")}<small>n=${n}</small></span>
     </div>`;
   }).join("")}</div>
     </div>
@@ -409,7 +598,7 @@ function detailCell(column, row) {
   const value = row[field] ?? "";
   const classes = [field === state.userIdField ? "user-cell" : ""].filter(Boolean).join(" ");
   if (field === "__pressure_summary") {
-    const pressureFields = state.headers.filter(item => /pressure_score$/i.test(item));
+    const pressureFields = state.headers.filter(field => fieldRole(field) === "pressure");
     return `<td><div class="pressure-tags">${pressureFields.map(item => {
       const score = row[item];
       return score === "" ? "" : `<span class="pressure-tag ${pressureClass(score)}">${fieldLabels[item] || item}：${score}</span>`;
@@ -423,7 +612,7 @@ function detailCell(column, row) {
       row[item.id] === "" ? "" : `<span class="profile-tag"><b>${item.label}</b>${row[item.id]}</span>`
     ).join("") || "—"}</div></td>`;
   }
-  if (/pressure_score$/i.test(field)) {
+  if (fieldRole(field) === "pressure") {
     return `<td class="${classes}"><span class="pressure ${pressureClass(value)}">${value || "—"}</span></td>`;
   }
   if (/score$|rating$|satisfaction|comfort|stability/i.test(field) && isNumericField(field)) {
@@ -516,6 +705,7 @@ function render() {
   const groups = groupedRows(rows);
   if (state.selectedGroup && !groups.some(group => group.key === state.selectedGroup)) state.selectedGroup = null;
   renderKPIs(rows);
+  renderDataQuality();
   renderPivot(groups);
   renderChart(groups);
   renderDetails(rows, groups);
@@ -528,18 +718,6 @@ function switchPage(page) {
 
 function mappingViews() {
   return els.viewNamesInput.value.split(/[,，]/).map(value => value.trim()).filter(Boolean);
-}
-
-function photoFieldNames(views) {
-  const used = new Set();
-  return views.map((view, index) => {
-    const base = `photo_${view.replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "") || `view_${index + 1}`}`;
-    let field = base;
-    let suffix = 2;
-    while (used.has(field)) field = `${base}_${suffix++}`;
-    used.add(field);
-    return field;
-  });
 }
 
 function initializeMappingFields() {
@@ -565,10 +743,6 @@ async function scanPhotoRoot() {
   return result;
 }
 
-function naturalCompare(a, b) {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-}
-
 function buildPhotoMapping() {
   const views = mappingViews();
   const userField = els.mappingUserField.value;
@@ -577,49 +751,11 @@ function buildPhotoMapping() {
   if (!views.length) throw new Error("请至少填写一个视角名称。");
   if (!userField || !deviceField) throw new Error("请选择用户字段和设备字段。");
 
-  const photoFields = photoFieldNames(views);
-  const filesByUser = new Map();
-  state.mappingFiles.forEach(file => {
-    if (!filesByUser.has(file.user_folder)) filesByUser.set(file.user_folder, []);
-    filesByUser.get(file.user_folder).push(file);
+  const { mapped, reviews, photoFields } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
+    userField,
+    views,
+    overrides: state.photoMappingOverrides
   });
-  filesByUser.forEach(files => files.sort((a, b) => naturalCompare(a.name, b.name)));
-
-  const rowsByUser = new Map();
-  state.mappingRows.forEach((row, rowIndex) => {
-    const user = row[userField];
-    if (!rowsByUser.has(user)) rowsByUser.set(user, []);
-    rowsByUser.get(user).push({ row, rowIndex });
-  });
-
-  const existingPhotoFields = Object.keys(state.mappingRows[0] || {}).filter(field =>
-    /photo|image|picture|照片|图片/i.test(field)
-  );
-  const mapped = state.mappingRows.map(row => {
-    const copy = { ...row };
-    existingPhotoFields.forEach(field => delete copy[field]);
-    return copy;
-  });
-  const reviews = [];
-  rowsByUser.forEach((entries, user) => {
-    const files = filesByUser.get(user) || [];
-    const expected = entries.length * views.length;
-    entries.forEach((entry, deviceIndex) => {
-      views.forEach((view, viewIndex) => {
-        const field = photoFields[viewIndex];
-        const file = files[deviceIndex * views.length + viewIndex];
-        mapped[entry.rowIndex][field] = file?.absolute_path || "";
-      });
-    });
-    reviews.push({
-      user,
-      entries,
-      files,
-      expected,
-      status: files.length === expected ? "ok" : files.length < expected ? "missing" : "extra"
-    });
-  });
-
   state.mappedRows = mapped;
   state.mappingViews = views;
   photoFields.forEach((field, index) => {
@@ -629,6 +765,13 @@ function buildPhotoMapping() {
   renderMappingPreview(reviews, userField, deviceField, photoFields);
   els.applyMappingButton.disabled = false;
   els.downloadMappedCsvButton.disabled = false;
+}
+
+function photoSelectOptions(files, selectedPath) {
+  const selectedKnown = files.some(file => file.absolute_path === selectedPath);
+  return `<option value="">缺失/不使用</option>` +
+    (!selectedKnown && selectedPath ? `<option value="${selectedPath}" selected>当前手动路径</option>` : "") +
+    files.map(file => `<option value="${file.absolute_path}" ${file.absolute_path === selectedPath ? "selected" : ""}>${file.name}</option>`).join("");
 }
 
 function renderMappingPreview(reviews, userField, deviceField, photoFields) {
@@ -647,7 +790,13 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
           <strong>${entry.row[deviceField]}</strong>
           ${photoFields.map(field => {
             const path = state.mappedRows[entry.rowIndex][field];
-            return `<figure>${path ? `<img src="${photoUrl(path)}" alt="${state.viewLabels[field]}">` : `<div class="missing-photo">缺失</div>`}<figcaption>${state.viewLabels[field]}</figcaption></figure>`;
+            return `<figure>
+              ${path ? `<img src="${photoUrl(path)}" alt="${state.viewLabels[field]}">` : `<div class="missing-photo">缺失</div>`}
+              <figcaption>${state.viewLabels[field]}</figcaption>
+              <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
+                ${photoSelectOptions(review.files, path)}
+              </select>
+            </figure>`;
           }).join("")}
         </div>
       `).join("")}</div>
@@ -677,6 +826,7 @@ function applyMappedRows() {
   state.userViews = {};
   buildSchema();
   initializeControls();
+  renderFieldRoleConfig();
   renderColumnConfig();
   render();
   els.dataSourceLabel.textContent = "照片映射数据";
@@ -685,12 +835,35 @@ function applyMappedRows() {
 
 function bindEvents() {
   document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
+  els.loadProjectButton.addEventListener("click", async () => {
+    els.loadProjectButton.disabled = true;
+    setProjectStatus("正在加载项目…");
+    try {
+      await loadProject();
+    } catch (error) {
+      setProjectStatus(error.message);
+    } finally {
+      els.loadProjectButton.disabled = false;
+    }
+  });
+  els.saveProjectButton.addEventListener("click", async () => {
+    els.saveProjectButton.disabled = true;
+    setProjectStatus("正在保存项目…");
+    try {
+      await saveProject();
+    } catch (error) {
+      setProjectStatus(error.message);
+    } finally {
+      els.saveProjectButton.disabled = false;
+    }
+  });
   els.mappingCsvInput.addEventListener("change", event => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       state.mappingRows = parseCSV(reader.result);
+      state.photoMappingOverrides = {};
       initializeMappingFields();
       els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录`;
     };
@@ -701,6 +874,7 @@ function bindEvents() {
     els.mappingSummary.textContent = "正在扫描并映射照片…";
     try {
       await scanPhotoRoot();
+      state.photoMappingOverrides = {};
       buildPhotoMapping();
     } catch (error) {
       els.mappingSummary.textContent = error.message;
@@ -710,10 +884,42 @@ function bindEvents() {
   });
   els.applyMappingButton.addEventListener("click", applyMappedRows);
   els.downloadMappedCsvButton.addEventListener("click", downloadMappedCsv);
+  els.mappingPreview.addEventListener("change", event => {
+    if (!event.target.classList.contains("mapping-photo-select")) return;
+    const key = `${event.target.dataset.rowIndex}::${event.target.dataset.field}`;
+    if (event.target.value) state.photoMappingOverrides[key] = event.target.value;
+    else state.photoMappingOverrides[key] = "";
+    buildPhotoMapping();
+  });
+  els.fieldRoleList.addEventListener("change", event => {
+    if (!event.target.matches("select[data-field]")) return;
+    const field = event.target.dataset.field;
+    const inferred = Core.inferFieldRole(field, state.rows);
+    if (event.target.value === inferred) delete state.fieldRoleOverrides[field];
+    else state.fieldRoleOverrides[field] = event.target.value;
+    saveFieldRoleOverrides();
+    state.selectedGroup = null;
+    buildSchema();
+    initializeControls();
+    renderFieldRoleConfig();
+    renderColumnConfig();
+    render();
+  });
+  els.resetFieldRolesButton.addEventListener("click", () => {
+    state.fieldRoleOverrides = {};
+    saveFieldRoleOverrides();
+    state.selectedGroup = null;
+    buildSchema();
+    initializeControls();
+    renderFieldRoleConfig();
+    renderColumnConfig();
+    render();
+  });
   els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); });
   els.secondaryDimension.addEventListener("change", () => { state.secondaryDimension = els.secondaryDimension.value; state.selectedGroup = null; render(); });
   els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); });
   els.yAxisMode.addEventListener("change", () => { state.yAxisMode = els.yAxisMode.value; renderChart(groupedRows(filteredRows())); });
+  els.showErrorBars.addEventListener("change", () => { state.showErrorBars = els.showErrorBars.checked; renderChart(groupedRows(filteredRows())); });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
   els.detailHead.addEventListener("change", event => {
@@ -752,6 +958,22 @@ function bindEvents() {
     state.layout.photoSize = Number(els.photoSizeControl.value);
     applyLayoutVariables(); saveLayout();
   });
+  els.exportConfigButton.addEventListener("click", exportDashboardConfig);
+  els.importConfigInput.addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        applyDashboardConfig(JSON.parse(reader.result));
+      } catch (error) {
+        alert(`配置导入失败：${error.message}`);
+      } finally {
+        els.importConfigInput.value = "";
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  });
   els.columnConfigList.addEventListener("change", event => {
     const row = event.target.closest(".column-config-row");
     if (!row) return;
@@ -783,9 +1005,10 @@ function bindEvents() {
   els.resetButton.addEventListener("click", () => {
     state.primaryDimension = "device_name"; state.secondaryDimension = "concha_size"; state.metric = "comfort_score";
     state.yAxisMode = "adaptive";
+    state.showErrorBars = true;
     state.selectedGroup = null; state.search = ""; state.columnFilters = {}; els.detailSearch.value = "";
     buildSchema();
-    initializeControls(); render();
+    initializeControls(); renderFieldRoleConfig(); render();
   });
 }
 
@@ -797,9 +1020,21 @@ async function start() {
   buildSchema();
   initializeControls();
   applyLayoutVariables();
+  renderFieldRoleConfig();
   renderColumnConfig();
   bindEvents();
   render();
+  const projectFromUrl = new URL(window.location.href).searchParams.get("project");
+  if (projectFromUrl) {
+    els.projectPathInput.value = projectFromUrl;
+    try {
+      await loadProject(projectFromUrl);
+    } catch (error) {
+      setProjectStatus(`自动加载失败：${error.message}`);
+    }
+  } else if (window.location.protocol === "file:") {
+    setProjectStatus("当前是 file:// 打开；保存/加载项目需要通过 python3 server.py 访问。");
+  }
 }
 
 start().catch(error => {
