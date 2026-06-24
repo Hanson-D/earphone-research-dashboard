@@ -75,9 +75,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if not project_path.name.endswith(".json"):
             self.send_json({"error": "项目文件必须是 .json。"}, 400)
             return
-        if not project_path.parent.is_dir():
-            self.send_json({"error": f"项目目录不存在：{project_path.parent}"}, 400)
-            return
+        project_path.parent.mkdir(parents=True, exist_ok=True)
         if not isinstance(project, dict):
             self.send_json({"error": "项目内容必须是 JSON 对象。"}, 400)
             return

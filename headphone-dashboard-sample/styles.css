@@ -172,7 +172,7 @@ select[multiple] { min-height: 84px; }
 .mapping-config { align-self: start; padding: 22px; border-top: 4px solid var(--accent); }
 .project-panel { margin: -4px 0 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .project-panel h2 { margin-bottom: 12px; }
-.project-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.project-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .mapping-intro { margin: 8px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .mapping-input, .mapping-fields label { display: block; margin-bottom: 16px; color: var(--ink); font-size: 11px; font-weight: 800; }

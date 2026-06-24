@@ -88,7 +88,8 @@ const state = {
   userIdField: "user_id",
   photoFields: [],
   layout: loadLayout(),
-  projectPath: ""
+  projectPath: "",
+  projectDirty: false
 };
 
 const els = Object.fromEntries([
@@ -102,7 +103,7 @@ const els = Object.fromEntries([
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "runMappingButton",
   "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
-  "projectPathInput", "loadProjectButton", "saveProjectButton", "projectStatus"
+  "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus"
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
@@ -155,6 +156,19 @@ function projectDocumentSnapshot() {
   });
 }
 
+function mappingConfigSnapshot() {
+  return {
+    photoRoot: els.photoRootInput.value.trim(),
+    mappingMode: els.mappingMode.value,
+    mappingFields: {
+      userField: els.mappingUserField.value,
+      earField: els.mappingEarField.value,
+      deviceField: els.mappingDeviceField.value
+    },
+    mappingViews: mappingViews()
+  };
+}
+
 function setProjectPath(path) {
   state.projectPath = path || "";
   els.projectPathInput.value = state.projectPath;
@@ -164,22 +178,64 @@ function setProjectPath(path) {
   history.replaceState(null, "", url);
 }
 
-function setProjectStatus(message) {
-  els.projectStatus.textContent = message;
+function defaultProjectPath() {
+  return "projects/我的耳机项目.json";
+}
+
+function setProjectStatus(message, dirty = state.projectDirty) {
+  els.projectStatus.textContent = dirty ? `${message} · 有未保存更改` : message;
+}
+
+function markProjectDirty() {
+  state.projectDirty = true;
+  setProjectStatus(state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件");
+}
+
+function markProjectSaved(message) {
+  state.projectDirty = false;
+  setProjectStatus(message, false);
 }
 
 async function saveProject() {
   const path = els.projectPathInput.value.trim();
   if (!path) throw new Error("请先填写项目 JSON 路径。");
+  await writeProject(path, projectDocumentSnapshot(), "已保存完整项目");
+}
+
+async function writeProject(path, project, successPrefix) {
   const response = await fetch("/api/save-project", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, project: projectDocumentSnapshot() })
+    body: JSON.stringify({ path, project })
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "项目保存失败。");
   setProjectPath(result.path);
-  setProjectStatus(`已保存：${result.path}`);
+  markProjectSaved(`${successPrefix}：${result.path}`);
+}
+
+async function saveCurrentProjectConfig() {
+  const path = els.projectPathInput.value.trim();
+  if (!path) throw new Error("请先填写项目 JSON 路径。");
+  let project = null;
+  try {
+    const response = await fetch(`/api/load-project?path=${encodeURIComponent(path)}`);
+    const result = await response.json();
+    if (response.ok && result.project && typeof result.project === "object") project = result.project;
+  } catch {
+    project = null;
+  }
+  if (!project) project = projectDocumentSnapshot();
+  const mappingConfig = mappingConfigSnapshot();
+  await writeProject(path, {
+    ...project,
+    savedAt: new Date().toISOString(),
+    photoRoot: mappingConfig.photoRoot,
+    mappingMode: mappingConfig.mappingMode,
+    mappingFields: mappingConfig.mappingFields,
+    mappingViews: mappingConfig.mappingViews,
+    dashboardConfig: dashboardConfigSnapshot()
+  }, "已保存当前配置");
 }
 
 async function loadProject(path) {
@@ -212,7 +268,7 @@ async function loadProject(path) {
     }
   }
   setProjectPath(result.path);
-  setProjectStatus(`已加载：${result.path}`);
+  markProjectSaved(`已加载：${result.path}`);
   els.dataSourceLabel.textContent = "项目数据";
   switchPage("dashboard");
 }
@@ -858,6 +914,7 @@ function applyMappedRows() {
   render();
   els.dataSourceLabel.textContent = "照片映射数据";
   switchPage("dashboard");
+  markProjectDirty();
 }
 
 function bindEvents() {
@@ -875,13 +932,24 @@ function bindEvents() {
   });
   els.saveProjectButton.addEventListener("click", async () => {
     els.saveProjectButton.disabled = true;
-    setProjectStatus("正在保存项目…");
+    setProjectStatus("正在保存完整项目…");
     try {
       await saveProject();
     } catch (error) {
       setProjectStatus(error.message);
     } finally {
       els.saveProjectButton.disabled = false;
+    }
+  });
+  els.saveProjectConfigButton.addEventListener("click", async () => {
+    els.saveProjectConfigButton.disabled = true;
+    setProjectStatus("正在保存当前配置…");
+    try {
+      await saveCurrentProjectConfig();
+    } catch (error) {
+      setProjectStatus(error.message);
+    } finally {
+      els.saveProjectConfigButton.disabled = false;
     }
   });
   els.mappingCsvInput.addEventListener("change", event => {
@@ -893,6 +961,7 @@ function bindEvents() {
       state.photoMappingOverrides = {};
       initializeMappingFields();
       els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录`;
+      markProjectDirty();
     };
     reader.readAsText(file, "UTF-8");
   });
@@ -903,6 +972,7 @@ function bindEvents() {
       await scanPhotoRoot();
       state.photoMappingOverrides = {};
       buildPhotoMapping();
+      markProjectDirty();
     } catch (error) {
       els.mappingSummary.textContent = error.message;
     } finally {
@@ -914,6 +984,7 @@ function bindEvents() {
   els.mappingMode.addEventListener("change", () => {
     state.photoMappingOverrides = {};
     renderMappingMode();
+    markProjectDirty();
   });
   els.mappingPreview.addEventListener("change", event => {
     if (!event.target.classList.contains("mapping-photo-select")) return;
@@ -921,6 +992,7 @@ function bindEvents() {
     if (event.target.value) state.photoMappingOverrides[key] = event.target.value;
     else state.photoMappingOverrides[key] = "";
     buildPhotoMapping();
+    markProjectDirty();
   });
   els.fieldRoleList.addEventListener("change", event => {
     if (!event.target.matches("select[data-field]")) return;
@@ -935,6 +1007,7 @@ function bindEvents() {
     renderFieldRoleConfig();
     renderColumnConfig();
     render();
+    markProjectDirty();
   });
   els.resetFieldRolesButton.addEventListener("click", () => {
     state.fieldRoleOverrides = {};
@@ -945,12 +1018,13 @@ function bindEvents() {
     renderFieldRoleConfig();
     renderColumnConfig();
     render();
+    markProjectDirty();
   });
-  els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); });
-  els.secondaryDimension.addEventListener("change", () => { state.secondaryDimension = els.secondaryDimension.value; state.selectedGroup = null; render(); });
-  els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); });
-  els.yAxisMode.addEventListener("change", () => { state.yAxisMode = els.yAxisMode.value; renderChart(groupedRows(filteredRows())); });
-  els.showErrorBars.addEventListener("change", () => { state.showErrorBars = els.showErrorBars.checked; renderChart(groupedRows(filteredRows())); });
+  els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); markProjectDirty(); });
+  els.secondaryDimension.addEventListener("change", () => { state.secondaryDimension = els.secondaryDimension.value; state.selectedGroup = null; render(); markProjectDirty(); });
+  els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); markProjectDirty(); });
+  els.yAxisMode.addEventListener("change", () => { state.yAxisMode = els.yAxisMode.value; renderChart(groupedRows(filteredRows())); markProjectDirty(); });
+  els.showErrorBars.addEventListener("change", () => { state.showErrorBars = els.showErrorBars.checked; renderChart(groupedRows(filteredRows())); markProjectDirty(); });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
   els.detailHead.addEventListener("change", event => {
@@ -967,12 +1041,14 @@ function bindEvents() {
   els.globalViewSelect.addEventListener("change", () => {
     state.globalView = els.globalViewSelect.value;
     renderDetails(filteredRows(), groupedRows(filteredRows()));
+    markProjectDirty();
   });
   els.resetViewsButton.addEventListener("click", () => {
     state.globalView = state.photoFields[0] || "";
     state.userViews = {};
     renderViewControls();
     renderDetails(filteredRows(), groupedRows(filteredRows()));
+    markProjectDirty();
   });
   els.detailBody.addEventListener("change", event => {
     if (!event.target.classList.contains("user-view-select")) return;
@@ -980,14 +1056,15 @@ function bindEvents() {
     if (event.target.value) state.userViews[user] = event.target.value;
     else delete state.userViews[user];
     renderDetails(filteredRows(), groupedRows(filteredRows()));
+    markProjectDirty();
   });
   els.fontSizeControl.addEventListener("input", () => {
     state.layout.fontSize = Number(els.fontSizeControl.value);
-    applyLayoutVariables(); saveLayout();
+    applyLayoutVariables(); saveLayout(); markProjectDirty();
   });
   els.photoSizeControl.addEventListener("input", () => {
     state.layout.photoSize = Number(els.photoSizeControl.value);
-    applyLayoutVariables(); saveLayout();
+    applyLayoutVariables(); saveLayout(); markProjectDirty();
   });
   els.exportConfigButton.addEventListener("click", exportDashboardConfig);
   els.importConfigInput.addEventListener("change", event => {
@@ -1010,14 +1087,14 @@ function bindEvents() {
     if (!row) return;
     const column = state.layout.columns.find(item => item.id === row.dataset.columnId);
     if (event.target.classList.contains("column-visible")) column.visible = event.target.checked;
-    saveLayout(); render();
+    saveLayout(); render(); markProjectDirty();
   });
   els.columnConfigList.addEventListener("input", event => {
     if (!event.target.classList.contains("column-width")) return;
     const row = event.target.closest(".column-config-row");
     const column = state.layout.columns.find(item => item.id === row.dataset.columnId);
     column.width = Math.max(60, Math.min(500, Number(event.target.value) || column.width));
-    saveLayout(); render();
+    saveLayout(); render(); markProjectDirty();
   });
   els.columnConfigList.addEventListener("click", event => {
     const row = event.target.closest(".column-config-row");
@@ -1026,12 +1103,12 @@ function bindEvents() {
     const targetIndex = event.target.classList.contains("column-up") ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= state.layout.columns.length) return;
     [state.layout.columns[index], state.layout.columns[targetIndex]] = [state.layout.columns[targetIndex], state.layout.columns[index]];
-    saveLayout(); renderColumnConfig(); render();
+    saveLayout(); renderColumnConfig(); render(); markProjectDirty();
   });
   els.resetLayoutButton.addEventListener("click", () => {
     state.layout = defaultLayout();
     buildSchema();
-    saveLayout(); applyLayoutVariables(); renderColumnConfig(); render();
+    saveLayout(); applyLayoutVariables(); renderColumnConfig(); render(); markProjectDirty();
   });
   els.resetButton.addEventListener("click", () => {
     state.primaryDimension = "device_name"; state.secondaryDimension = "concha_size"; state.metric = "comfort_score";
@@ -1040,6 +1117,7 @@ function bindEvents() {
     state.selectedGroup = null; state.search = ""; state.columnFilters = {}; els.detailSearch.value = "";
     buildSchema();
     initializeControls(); renderFieldRoleConfig(); render();
+    markProjectDirty();
   });
 }
 
@@ -1055,6 +1133,8 @@ async function start() {
   renderColumnConfig();
   bindEvents();
   render();
+  setProjectPath(defaultProjectPath());
+  setProjectStatus(`默认项目路径：${state.projectPath}`);
   const projectFromUrl = new URL(window.location.href).searchParams.get("project");
   if (projectFromUrl) {
     els.projectPathInput.value = projectFromUrl;
