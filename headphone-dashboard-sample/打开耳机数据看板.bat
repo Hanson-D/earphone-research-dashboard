@@ -3,7 +3,17 @@ setlocal
 
 cd /d "%~dp0"
 
-if "%PORT%"=="" set "PORT=8000"
+if "%PORT%"=="" (
+  for /f %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$listener=$null; foreach($p in 8000..8099){ try { $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), $p); $listener.Start(); $listener.Stop(); Write-Output $p; exit 0 } catch { if($listener){ try { $listener.Stop() } catch {} } } }; exit 1"') do set "PORT=%%P"
+)
+
+if "%PORT%"=="" (
+  echo No available local port was found between 8000 and 8099.
+  echo Please ask IT to allow localhost access for Python, or set PORT manually.
+  pause
+  exit /b 1
+)
+
 set "URL=http://127.0.0.1:%PORT%"
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 '%URL%' | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
@@ -35,5 +45,6 @@ echo Browser will open: %URL%
 echo Keep this window open while using the dashboard.
 echo.
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1; Start-Process '%URL%'"
+set "PORT=%PORT%"
 %PYTHON_CMD% server.py
 pause

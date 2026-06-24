@@ -129,7 +129,19 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parent)
     port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
+    except PermissionError as error:
+        print(f"无法启动本地看板服务：127.0.0.1:{port} 被系统拒绝。")
+        print("Windows 常见原因是该端口被系统保留、安全软件拦截，或 Python 没有本地网络权限。")
+        print("请优先使用“打开耳机数据看板.bat”，它会自动换一个可用端口。")
+        print(f"原始错误：{error}")
+        raise SystemExit(1)
+    except OSError as error:
+        print(f"无法启动本地看板服务：127.0.0.1:{port} 不可用。")
+        print("请检查是否已有看板窗口正在运行，或换一个 PORT 环境变量后重试。")
+        print(f"原始错误：{error}")
+        raise SystemExit(1)
     print(f"Dashboard: http://127.0.0.1:{port}")
     print("Press Ctrl+C to stop.")
     server.serve_forever()
