@@ -51,11 +51,20 @@
         <label class="mapping-input">
           <span>2. 输入照片根文件夹路径</span>
           <input id="photoRootInput" type="text" placeholder="/Users/name/research/photos">
-          <small>由本项目的本地服务器扫描。目录下的一级文件夹名称应与用户编号一致。</small>
+          <small>由本项目的本地服务器扫描。可选择按拍摄顺序映射，或按姓名/左右耳/样机/方向子文件夹匹配。</small>
+        </label>
+        <label class="mapping-input">
+          <span>照片匹配方式</span>
+          <select id="mappingMode">
+            <option value="sequence">照片顺序逻辑</option>
+            <option value="folders">子文件夹逻辑：姓名 / 左右耳 / 样机 / 方向</option>
+          </select>
+          <small>子文件夹逻辑不要求层级顺序固定，但路径中必须包含这四类目录名。</small>
         </label>
         <div class="mapping-fields">
-          <label>用户字段<select id="mappingUserField"></select></label>
-          <label>设备字段<select id="mappingDeviceField"></select></label>
+          <label>姓名/用户字段<select id="mappingUserField"></select></label>
+          <label id="mappingEarFieldWrap">左右耳字段<select id="mappingEarField"></select></label>
+          <label>样机/设备字段<select id="mappingDeviceField"></select></label>
         </div>
         <label class="mapping-input">
           <span>3. 按拍摄顺序填写视角名称</span>

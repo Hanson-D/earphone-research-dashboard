@@ -89,6 +89,64 @@ test("photo mapping follows user folders and supports per-cell overrides", () =>
   assert.equal(result.reviews[0].status, "missing");
 });
 
+test("photo mapping can match folder levels by name, ear side, prototype, and direction in any order", () => {
+  const rows = [
+    { name: "张三", ear_side: "左耳", prototype: "样机A" },
+    { name: "张三", ear_side: "右耳", prototype: "样机A" }
+  ];
+  const files = [
+    {
+      relative_path: "左耳/正面/张三/样机A/001.jpg",
+      absolute_path: "/photos/左耳/正面/张三/样机A/001.jpg",
+      name: "001.jpg"
+    },
+    {
+      relative_path: "样机A/张三/侧面/左耳/002.jpg",
+      absolute_path: "/photos/样机A/张三/侧面/左耳/002.jpg",
+      name: "002.jpg"
+    },
+    {
+      relative_path: "张三/右耳/样机A/正面/003.jpg",
+      absolute_path: "/photos/张三/右耳/样机A/正面/003.jpg",
+      name: "003.jpg"
+    }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "ear_side",
+    deviceField: "prototype",
+    views: ["正面", "侧面"]
+  });
+  assert.equal(result.mapped[0].photo_正面, "/photos/左耳/正面/张三/样机A/001.jpg");
+  assert.equal(result.mapped[0].photo_侧面, "/photos/样机A/张三/侧面/左耳/002.jpg");
+  assert.equal(result.mapped[1].photo_正面, "/photos/张三/右耳/样机A/正面/003.jpg");
+  assert.equal(result.mapped[1].photo_侧面, "");
+  assert.equal(result.reviews[1].status, "missing");
+});
+
+test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {
+  const rows = [
+    { name: "张三", ear_side: "左耳", prototype: "样机A" }
+  ];
+  const files = [
+    {
+      relative_path: "姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg",
+      absolute_path: "/photos/姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg",
+      name: "001.jpg"
+    }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "ear_side",
+    deviceField: "prototype",
+    views: ["正面"]
+  });
+  assert.equal(result.mapped[0].photo_正面, "/photos/姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg");
+  assert.equal(result.reviews[0].status, "ok");
+});
+
 test("numeric summaries include n, mean, and sample standard deviation", () => {
   const summary = core.numericSummary([{ score: "2" }, { score: "4" }, { score: "" }, { score: "6" }], "score");
   assert.equal(summary.n, 3);
@@ -116,6 +174,8 @@ test("project documents keep rows, mapping state, and dashboard config together"
     rows: [{ user_id: "U001", comfort_score: "8" }],
     mappingRows: [{ user_id: "U001" }],
     photoRoot: "/photos",
+    mappingMode: "folders",
+    mappingFields: { userField: "user_id", earField: "ear_side", deviceField: "device_name" },
     mappingViews: ["正面"],
     photoMappingOverrides: { "0::photo_正面": "/photos/U001/1.jpg" },
     dashboardConfig: {
@@ -126,6 +186,8 @@ test("project documents keep rows, mapping state, and dashboard config together"
   });
   assert.equal(project.version, 1);
   assert.equal(project.photoRoot, "/photos");
+  assert.equal(project.mappingMode, "folders");
+  assert.equal(project.mappingFields.earField, "ear_side");
   assert.equal(project.rows.length, 1);
   assert.equal(project.dashboardConfig.showErrorBars, false);
 

@@ -179,7 +179,7 @@ select[multiple] { min-height: 84px; }
 .mapping-input span { display: block; margin-bottom: 6px; }
 .mapping-input input { width: 100%; padding: 9px 10px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
 .mapping-input small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 500; line-height: 1.5; }
-.mapping-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.mapping-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .mapping-fields select { margin-top: 6px; }
 .mapping-actions { display: grid; gap: 8px; margin-top: 10px; }
 .mapping-summary { color: var(--muted); font-size: 11px; }

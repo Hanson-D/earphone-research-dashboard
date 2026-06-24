@@ -88,9 +88,76 @@
     });
   }
 
+  function pathParts(file) {
+    return String(file.relative_path || file.path || file.absolute_path || "")
+      .split(/[\\/]/)
+      .filter(Boolean)
+      .slice(0, -1);
+  }
+
+  function normalizeToken(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_\-—–/\\()[\]{}【】（）:：,，.。]+/g, "");
+  }
+
+  function folderPartMatches(part, value) {
+    const token = normalizeToken(value);
+    const folder = normalizeToken(part);
+    return token && folder && (folder === token || folder.includes(token) || token.includes(folder));
+  }
+
+  function partsInclude(parts, value) {
+    return parts.some(part => folderPartMatches(part, value));
+  }
+
+  function emptyPhotoRows(rows, photoFields) {
+    const existingPhotoFields = Object.keys(rows[0] || {}).filter(field => /photo|image|picture|照片|图片/i.test(field));
+    return rows.map(row => {
+      const copy = { ...row };
+      existingPhotoFields.forEach(field => delete copy[field]);
+      photoFields.forEach(field => { copy[field] = ""; });
+      return copy;
+    });
+  }
+
   function mapPhotosToRows(rows = [], files = [], options = {}) {
-    const { userField, views = [], overrides = {} } = options;
+    const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {} } = options;
     const photoFields = photoFieldNames(views);
+    if (mode === "folders") {
+      const mapped = emptyPhotoRows(rows, photoFields);
+      const reviews = [];
+      rows.forEach((row, rowIndex) => {
+        const matchedFiles = [];
+        views.forEach((view, viewIndex) => {
+          const field = photoFields[viewIndex];
+          const overrideKey = `${rowIndex}::${field}`;
+          const file = files
+            .slice()
+            .sort((a, b) => naturalCompare(a.relative_path || a.name, b.relative_path || b.name))
+            .find(candidate => {
+              const parts = pathParts(candidate);
+              return partsInclude(parts, row[userField]) &&
+                (!earField || partsInclude(parts, row[earField])) &&
+                (!deviceField || partsInclude(parts, row[deviceField])) &&
+                partsInclude(parts, view);
+            });
+          if (file) matchedFiles.push(file);
+          mapped[rowIndex][field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+        });
+        const expected = views.length;
+        reviews.push({
+          user: row[userField] || `第 ${rowIndex + 1} 行`,
+          entries: [{ row, rowIndex }],
+          files: matchedFiles,
+          expected,
+          status: matchedFiles.length === expected ? "ok" : matchedFiles.length < expected ? "missing" : "extra"
+        });
+      });
+      return { mapped, reviews, photoFields };
+    }
+
     const filesByUser = new Map();
     files.forEach(file => {
       if (!filesByUser.has(file.user_folder)) filesByUser.set(file.user_folder, []);
@@ -105,12 +172,7 @@
       rowsByUser.get(user).push({ row, rowIndex });
     });
 
-    const existingPhotoFields = Object.keys(rows[0] || {}).filter(field => /photo|image|picture|照片|图片/i.test(field));
-    const mapped = rows.map(row => {
-      const copy = { ...row };
-      existingPhotoFields.forEach(field => delete copy[field]);
-      return copy;
-    });
+    const mapped = emptyPhotoRows(rows, photoFields);
     const reviews = [];
 
     rowsByUser.forEach((entries, user) => {
@@ -229,6 +291,8 @@
       rows: Array.isArray(state.rows) ? state.rows : [],
       mappingRows: Array.isArray(state.mappingRows) ? state.mappingRows : [],
       photoRoot: state.photoRoot || "",
+      mappingMode: state.mappingMode || "sequence",
+      mappingFields: state.mappingFields || {},
       mappingViews: Array.isArray(state.mappingViews) ? state.mappingViews : [],
       photoMappingOverrides: state.photoMappingOverrides || {},
       dashboardConfig: state.dashboardConfig || {}
@@ -244,6 +308,8 @@
       rows,
       mappingRows: Array.isArray(project.mappingRows) ? project.mappingRows : rows.map(row => ({ ...row })),
       photoRoot: String(project.photoRoot || ""),
+      mappingMode: project.mappingMode === "folders" ? "folders" : "sequence",
+      mappingFields: project.mappingFields && typeof project.mappingFields === "object" ? project.mappingFields : {},
       mappingViews: Array.isArray(project.mappingViews) ? project.mappingViews.map(String).filter(Boolean) : [],
       photoMappingOverrides: project.photoMappingOverrides && typeof project.photoMappingOverrides === "object" ? project.photoMappingOverrides : {},
       dashboardConfig: sanitizeDashboardConfig(project.dashboardConfig || {}, headers)

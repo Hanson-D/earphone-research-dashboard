@@ -99,7 +99,7 @@ const els = Object.fromEntries([
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput",
-  "mappingUserField", "mappingDeviceField", "viewNamesInput", "runMappingButton",
+  "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "runMappingButton",
   "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectButton", "projectStatus"
@@ -143,6 +143,12 @@ function projectDocumentSnapshot() {
     rows: state.rows,
     mappingRows: state.mappingRows,
     photoRoot: els.photoRootInput.value.trim(),
+    mappingMode: els.mappingMode.value,
+    mappingFields: {
+      userField: els.mappingUserField.value,
+      earField: els.mappingEarField.value,
+      deviceField: els.mappingDeviceField.value
+    },
     mappingViews: mappingViews(),
     photoMappingOverrides: state.photoMappingOverrides,
     dashboardConfig: dashboardConfigSnapshot()
@@ -189,10 +195,15 @@ async function loadProject(path) {
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   els.photoRootInput.value = project.photoRoot;
+  els.mappingMode.value = project.mappingMode;
+  renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
   applyDashboardConfig(project.dashboardConfig);
   initializeMappingFields();
+  if (project.mappingFields.userField && [...els.mappingUserField.options].some(option => option.value === project.mappingFields.userField)) els.mappingUserField.value = project.mappingFields.userField;
+  if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
+  if (project.mappingFields.deviceField && [...els.mappingDeviceField.options].some(option => option.value === project.mappingFields.deviceField)) els.mappingDeviceField.value = project.mappingFields.deviceField;
   if (project.photoRoot) {
     try {
       await scanPhotoRoot();
@@ -723,10 +734,19 @@ function mappingViews() {
 function initializeMappingFields() {
   const headers = Object.keys(state.mappingRows[0] || {});
   fillSelect(els.mappingUserField, headers, false, fieldLabels);
+  fillSelect(els.mappingEarField, headers, false, fieldLabels);
   fillSelect(els.mappingDeviceField, headers, false, fieldLabels);
-  els.mappingUserField.value = headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
+  els.mappingUserField.value = headers.find(field => /^(name|姓名|user_name|用户姓名)$/i.test(field)) ||
+    headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
+  els.mappingEarField.value = headers.find(field => /ear_side|左右耳|耳侧|left_right|side/i.test(field)) || headers[0] || "";
   els.mappingDeviceField.value = headers.find(field => /^device_name$/i.test(field)) ||
-    headers.find(field => /device_name|device_id|condition|设备|条件/i.test(field)) || headers[1] || "";
+    headers.find(field => /prototype|sample|样机|device_name|device_id|condition|设备|条件/i.test(field)) || headers[1] || "";
+  renderMappingMode();
+}
+
+function renderMappingMode() {
+  const folderMode = els.mappingMode.value === "folders";
+  els.mappingEarFieldWrap.hidden = !folderMode;
 }
 
 async function scanPhotoRoot() {
@@ -745,14 +765,20 @@ async function scanPhotoRoot() {
 
 function buildPhotoMapping() {
   const views = mappingViews();
+  const mode = els.mappingMode.value;
   const userField = els.mappingUserField.value;
+  const earField = els.mappingEarField.value;
   const deviceField = els.mappingDeviceField.value;
   if (!state.mappingRows.length) throw new Error("请先选择 CSV。");
   if (!views.length) throw new Error("请至少填写一个视角名称。");
   if (!userField || !deviceField) throw new Error("请选择用户字段和设备字段。");
+  if (mode === "folders" && !earField) throw new Error("子文件夹逻辑需要选择左右耳字段。");
 
   const { mapped, reviews, photoFields } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
+    mode,
     userField,
+    earField: mode === "folders" ? earField : "",
+    deviceField,
     views,
     overrides: state.photoMappingOverrides
   });
@@ -777,6 +803,7 @@ function photoSelectOptions(files, selectedPath) {
 function renderMappingPreview(reviews, userField, deviceField, photoFields) {
   const ok = reviews.filter(review => review.status === "ok").length;
   const issues = reviews.length - ok;
+  const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
   els.mappingSummary.innerHTML = `<strong>${reviews.length}</strong> 位用户 · <strong>${ok}</strong> 正常 · <strong>${issues}</strong> 异常`;
   els.mappingPreview.innerHTML = reviews.map(review => `
     <article class="mapping-user ${review.status}">
@@ -794,7 +821,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
               ${path ? `<img src="${photoUrl(path)}" alt="${state.viewLabels[field]}">` : `<div class="missing-photo">缺失</div>`}
               <figcaption>${state.viewLabels[field]}</figcaption>
               <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
-                ${photoSelectOptions(review.files, path)}
+                ${photoSelectOptions(selectFiles || review.files, path)}
               </select>
             </figure>`;
           }).join("")}
@@ -884,6 +911,10 @@ function bindEvents() {
   });
   els.applyMappingButton.addEventListener("click", applyMappedRows);
   els.downloadMappedCsvButton.addEventListener("click", downloadMappedCsv);
+  els.mappingMode.addEventListener("change", () => {
+    state.photoMappingOverrides = {};
+    renderMappingMode();
+  });
   els.mappingPreview.addEventListener("change", event => {
     if (!event.target.classList.contains("mapping-photo-select")) return;
     const key = `${event.target.dataset.rowIndex}::${event.target.dataset.field}`;
