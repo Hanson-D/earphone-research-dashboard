@@ -30,15 +30,15 @@ chmod +x start-server.sh
 
 默认监听：
 
-0.0.0.0:8000
+0.0.0.0:7362
 
 本机测试：
 
-http://127.0.0.1:8000/server.html
+http://127.0.0.1:7362/server.html
 
 其他设备访问：
 
-http://服务器IP:8000/server.html
+http://服务器IP:7362/server.html
 
 
 三、Windows 服务器或内网电脑启动
@@ -48,7 +48,7 @@ http://服务器IP:8000/server.html
 3. 双击 start-server.bat。
 4. 在其他设备浏览器访问：
 
-http://服务器IP:8000/server.html
+http://服务器IP:7362/server.html
 
 
 四、修改端口

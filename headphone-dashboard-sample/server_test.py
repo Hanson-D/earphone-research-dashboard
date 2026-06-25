@@ -30,6 +30,12 @@ class ServerProjectTests(unittest.TestCase):
         self.assertFalse(server.is_valid_project_id("../secret"))
         self.assertFalse(server.is_valid_project_id("study/01"))
 
+    def test_default_port_candidates_start_at_7362(self):
+        candidates = list(server.port_candidates())
+        self.assertEqual(candidates[0], 7362)
+        self.assertEqual(candidates[-1], 7461)
+        self.assertEqual(len(candidates), 100)
+
     def test_create_list_and_read_server_project(self):
         result = server.save_server_project(
             "study-01",

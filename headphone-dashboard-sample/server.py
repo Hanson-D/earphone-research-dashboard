@@ -3,6 +3,7 @@ import json
 import mimetypes
 import os
 import re
+import socket
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -11,6 +12,8 @@ from urllib.parse import parse_qs, quote, urlparse
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic"}
 ALLOWED_ROOTS = set()
 PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+DEFAULT_PORT = 7362
+PORT_SEARCH_LIMIT = 100
 
 
 def project_root():
@@ -114,6 +117,24 @@ def is_within_allowed_root(path):
 
 def legacy_paths_enabled():
     return os.environ.get("DASHBOARD_LEGACY_PATHS", "1") != "0"
+
+
+def port_candidates(start=DEFAULT_PORT, limit=PORT_SEARCH_LIMIT):
+    return range(start, start + limit)
+
+
+def create_server(host, preferred_port, allow_fallback=True):
+    errors = []
+    ports = port_candidates(preferred_port) if allow_fallback else [preferred_port]
+    for port in ports:
+        try:
+            return ThreadingHTTPServer((host, port), DashboardHandler), port
+        except PermissionError:
+            raise
+        except OSError as error:
+            errors.append((port, error))
+    last_port, last_error = errors[-1]
+    raise OSError(f"No available port from {preferred_port} to {last_port}") from last_error
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -313,10 +334,11 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parent)
-    port = int(os.environ.get("PORT", "8000"))
+    explicit_port = "PORT" in os.environ and os.environ.get("PORT", "").strip() != ""
+    port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
     host = os.environ.get("HOST", "127.0.0.1")
     try:
-        server = ThreadingHTTPServer((host, port), DashboardHandler)
+        server, port = create_server(host, port, allow_fallback=not explicit_port)
     except PermissionError as error:
         print(f"无法启动看板服务：{host}:{port} 被系统拒绝。")
         print("Windows 常见原因是该端口被系统保留、安全软件拦截，或 Python 没有本地网络权限。")
@@ -325,7 +347,10 @@ if __name__ == "__main__":
         raise SystemExit(1)
     except OSError as error:
         print(f"无法启动看板服务：{host}:{port} 不可用。")
-        print("请检查是否已有看板窗口正在运行，或换一个 PORT 环境变量后重试。")
+        if explicit_port:
+            print("你显式指定了 PORT，因此不会自动换端口。请关闭占用程序，或换一个 PORT 环境变量后重试。")
+        else:
+            print(f"已尝试 {DEFAULT_PORT}-{DEFAULT_PORT + PORT_SEARCH_LIMIT - 1}，没有找到可用端口。")
         print(f"原始错误：{error}")
         raise SystemExit(1)
     print(f"Dashboard: http://{host}:{port}")

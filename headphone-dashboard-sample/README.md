@@ -71,7 +71,7 @@ python3 server.py
 然后在 Chrome 中访问：
 
 ```text
-http://localhost:8000
+http://localhost:7362
 ```
 
 必须使用 `server.py`，而不是普通的 `python3 -m http.server`。项目服务器负责：
@@ -87,13 +87,13 @@ http://localhost:8000
 
 ```bash
 cd headphone-dashboard-sample
-HOST=0.0.0.0 PORT=8000 DASHBOARD_LEGACY_PATHS=0 python3 server.py
+HOST=0.0.0.0 DASHBOARD_LEGACY_PATHS=0 python3 server.py
 ```
 
 访问：
 
 ```text
-http://服务器地址:8000/server.html
+http://服务器地址:7362/server.html
 ```
 
 说明：
@@ -105,6 +105,7 @@ http://服务器地址:8000/server.html
 - 多人只查看、筛选、切换图表，不会写入项目文件，因此不会互相冲突。
 - `DASHBOARD_LEGACY_PATHS=0` 会关闭老的任意本地路径读取/保存和任意照片目录扫描接口，适合服务器部署。
 - 单机使用时不要设置 `DASHBOARD_LEGACY_PATHS=0`，否则页面里的本地 JSON 路径、照片根目录扫描和绝对照片路径预览会被禁用。
+- 默认端口是 `7362`；如果被占用，启动器和 `server.py` 会自动尝试 `7362-7461`。如果显式设置 `PORT`，则使用指定端口，不自动改端口。
 
 服务器部署时，建议把 CSV 和照片整理为服务器项目目录中的相对资源路径，避免依赖客户端电脑上的本地绝对路径。权限管理可以交给上层服务器或反向代理，本看板只负责项目隔离和保存冲突检测。
 
