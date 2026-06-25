@@ -1,0 +1,93 @@
+name: Package dashboard
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Prepare local package directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_ROOT="dist/EarphoneDashboardLocal"
+          APP_ROOT="$PACKAGE_ROOT/app"
+          mkdir -p "$APP_ROOT" "$PACKAGE_ROOT/projects"
+
+          cp headphone-dashboard-sample/打开耳机数据看板.bat "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/打开耳机数据看板.command "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/README_使用说明.txt "$PACKAGE_ROOT/"
+
+          cp headphone-dashboard-sample/index.html "$APP_ROOT/"
+          cp headphone-dashboard-sample/app.js "$APP_ROOT/"
+          cp headphone-dashboard-sample/dashboard-core.js "$APP_ROOT/"
+          cp headphone-dashboard-sample/server.py "$APP_ROOT/"
+          cp headphone-dashboard-sample/server.html "$APP_ROOT/"
+          cp headphone-dashboard-sample/server-entry.js "$APP_ROOT/"
+          cp headphone-dashboard-sample/styles.css "$APP_ROOT/"
+          cp headphone-dashboard-sample/headphone_sample.csv "$APP_ROOT/"
+          cp -R headphone-dashboard-sample/photos "$APP_ROOT/photos"
+          cp -R headphone-dashboard-sample/modules "$APP_ROOT/modules"
+
+          chmod +x "$PACKAGE_ROOT/打开耳机数据看板.command"
+
+      - name: Prepare server package directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_ROOT="dist/EarphoneDashboardServer"
+          mkdir -p "$PACKAGE_ROOT/projects"
+
+          cp headphone-dashboard-sample/start-server.bat "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/start-server.sh "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/README_服务器版使用说明.txt "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/README.md "$PACKAGE_ROOT/"
+
+          cp headphone-dashboard-sample/index.html "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/app.js "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/dashboard-core.js "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/server.py "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/server.html "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/server-entry.js "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/styles.css "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/headphone_sample.csv "$PACKAGE_ROOT/"
+          cp -R headphone-dashboard-sample/photos "$PACKAGE_ROOT/photos"
+          cp -R headphone-dashboard-sample/modules "$PACKAGE_ROOT/modules"
+
+          chmod +x "$PACKAGE_ROOT/start-server.sh"
+
+      - name: Create zip archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          zip -r earphone-dashboard-local.zip EarphoneDashboardLocal
+          zip -r earphone-dashboard-server.zip EarphoneDashboardServer
+
+      - name: Upload local package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: earphone-dashboard-local
+          path: dist/earphone-dashboard-local.zip
+
+      - name: Upload server package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: earphone-dashboard-server
+          path: dist/earphone-dashboard-server.zip
+
+      - name: Attach packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/earphone-dashboard-local.zip
+            dist/earphone-dashboard-server.zip
