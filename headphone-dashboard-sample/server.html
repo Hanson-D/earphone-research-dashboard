@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>耳机研究看板服务器入口</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="server-entry-page">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">FIT RESEARCH / SERVER</p>
+      <h1>耳机研究看板入口</h1>
+    </div>
+    <div class="top-actions">
+      <button id="refreshProjectsButton" class="ghost-button" type="button">刷新项目</button>
+    </div>
+  </header>
+
+  <main class="server-entry">
+    <section class="panel server-create-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-kicker">PROJECTS</p>
+          <h2>新建服务器项目</h2>
+        </div>
+      </div>
+      <form id="createProjectForm" class="server-create-form">
+        <label>
+          项目 ID
+          <input id="newProjectId" type="text" placeholder="ear-fit-study-001" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" required>
+          <small>用于 URL 和文件名，只允许字母、数字、下划线、连字符。</small>
+        </label>
+        <label>
+          展示名称
+          <input id="newProjectTitle" type="text" placeholder="耳机佩戴研究 A">
+        </label>
+        <button class="primary-button" type="submit">创建并打开</button>
+      </form>
+      <p id="serverEntryStatus" class="project-status">服务器项目保存在服务端 projects 目录中。</p>
+    </section>
+
+    <section class="panel server-project-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-kicker">OPEN DASHBOARD</p>
+          <h2>已有项目</h2>
+        </div>
+        <span id="projectCount" class="hint"></span>
+      </div>
+      <div id="serverProjectList" class="server-project-list">
+        <div class="empty-state">正在读取项目列表…</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="server-entry.js"></script>
+</body>
+</html>

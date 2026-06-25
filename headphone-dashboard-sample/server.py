@@ -2,6 +2,7 @@
 import json
 import mimetypes
 import os
+import re
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -9,11 +10,110 @@ from urllib.parse import parse_qs, quote, urlparse
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic"}
 ALLOWED_ROOTS = set()
+PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+def project_root():
+    return Path(os.environ.get("DASHBOARD_PROJECTS_ROOT", "projects")).expanduser().resolve()
+
+
+def is_valid_project_id(project_id):
+    return bool(PROJECT_ID_PATTERN.fullmatch(project_id or ""))
+
+
+def server_project_path(project_id):
+    if not is_valid_project_id(project_id):
+        raise ValueError("项目 ID 只能包含字母、数字、下划线和连字符，长度 1-64。")
+    return project_root() / f"{project_id}.json"
+
+
+def project_title(project_id, project):
+    meta = project.get("_server", {}) if isinstance(project.get("_server"), dict) else {}
+    return meta.get("title") or project.get("title") or project_id
+
+
+def with_server_meta(project_id, project, title=None, revision=1):
+    clean = dict(project)
+    previous_meta = clean.get("_server", {}) if isinstance(clean.get("_server"), dict) else {}
+    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    clean["_server"] = {
+        "id": project_id,
+        "title": title or previous_meta.get("title") or clean.get("title") or project_id,
+        "revision": revision,
+        "createdAt": previous_meta.get("createdAt") or now,
+        "updatedAt": now,
+    }
+    return clean
+
+
+def read_server_project(project_id):
+    path = server_project_path(project_id)
+    if not path.is_file():
+        raise FileNotFoundError(project_id)
+    project = json.loads(path.read_text(encoding="utf-8"))
+    meta = project.get("_server", {}) if isinstance(project.get("_server"), dict) else {}
+    revision = int(meta.get("revision") or 1)
+    return path, project, revision
+
+
+def list_server_projects():
+    root = project_root()
+    root.mkdir(parents=True, exist_ok=True)
+    projects = []
+    for path in sorted(root.glob("*.json")):
+        project_id = path.stem
+        if not is_valid_project_id(project_id):
+            continue
+        try:
+            project = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        meta = project.get("_server", {}) if isinstance(project.get("_server"), dict) else {}
+        projects.append({
+            "id": project_id,
+            "title": project_title(project_id, project),
+            "revision": int(meta.get("revision") or 1),
+            "updatedAt": meta.get("updatedAt") or "",
+            "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
+        })
+    return projects
+
+
+def save_server_project(project_id, project, expected_revision=None, title=None, create=False):
+    if not isinstance(project, dict):
+        raise TypeError("项目内容必须是 JSON 对象。")
+    path = server_project_path(project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if create and path.exists():
+        return {"error": "项目 ID 已存在。", "status": 409}
+    current_revision = 0
+    current = {}
+    if path.exists():
+        _, current, current_revision = read_server_project(project_id)
+        if expected_revision is not None and int(expected_revision) != current_revision:
+            return {
+                "error": "项目已被其他人更新，请重新加载后再保存。",
+                "status": 409,
+                "currentRevision": current_revision,
+                "project": current,
+            }
+    elif expected_revision not in (None, 0):
+        return {"error": "项目不存在，无法按指定版本保存。", "status": 404}
+    next_revision = current_revision + 1
+    if isinstance(current.get("_server"), dict) and "_server" not in project:
+        project = {**project, "_server": current["_server"]}
+    clean = with_server_meta(project_id, project, title=title, revision=next_revision)
+    path.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"project": clean, "revision": next_revision, "path": str(path)}
 
 
 def is_within_allowed_root(path):
     resolved = path.resolve()
     return any(resolved == root or root in resolved.parents for root in ALLOWED_ROOTS)
+
+
+def legacy_paths_enabled():
+    return os.environ.get("DASHBOARD_LEGACY_PATHS", "1") != "0"
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
@@ -27,11 +127,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/server/projects":
+            self.create_server_project()
+            return
+        if parsed.path.startswith("/api/server/projects/"):
+            self.save_server_project_endpoint(parsed.path.rsplit("/", 1)[-1])
+            return
         if parsed.path == "/api/save-project":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地路径保存接口。"}, 403)
+                return
             self.save_project()
             return
         if parsed.path != "/api/scan-photos":
             self.send_error(404)
+            return
+        if not legacy_paths_enabled():
+            self.send_json({"error": "服务器部署已关闭任意照片目录扫描接口。"}, 403)
             return
 
         try:
@@ -83,9 +195,81 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         project_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
         self.send_json({"path": str(project_path)})
 
+    def read_json_body(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        return json.loads(self.rfile.read(length) or b"{}")
+
+    def create_server_project(self):
+        try:
+            payload = self.read_json_body()
+            project_id = payload.get("id", "")
+            title = payload.get("title") or project_id
+            project = payload.get("project") or {"version": 1, "rows": [], "mappingRows": [], "dashboardConfig": {}}
+            result = save_server_project(project_id, project, title=title, create=True)
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+        if "error" in result:
+            self.send_json(result, result.get("status", 400))
+            return
+        self.send_json({
+            "id": project_id,
+            "title": project_title(project_id, result["project"]),
+            "revision": result["revision"],
+            "project": result["project"],
+        }, 201)
+
+    def save_server_project_endpoint(self, project_id):
+        try:
+            payload = self.read_json_body()
+            result = save_server_project(
+                project_id,
+                payload.get("project"),
+                expected_revision=payload.get("revision"),
+                title=payload.get("title"),
+            )
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+        if "error" in result:
+            self.send_json(result, result.get("status", 400))
+            return
+        self.send_json({
+            "id": project_id,
+            "title": project_title(project_id, result["project"]),
+            "revision": result["revision"],
+            "project": result["project"],
+        })
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/server/projects":
+            self.send_json({"projects": list_server_projects()})
+            return
+        if parsed.path.startswith("/api/server/projects/"):
+            project_id = parsed.path.rsplit("/", 1)[-1]
+            try:
+                _, project, revision = read_server_project(project_id)
+            except ValueError as error:
+                self.send_json({"error": str(error)}, 400)
+                return
+            except FileNotFoundError:
+                self.send_json({"error": f"项目不存在：{project_id}"}, 404)
+                return
+            except json.JSONDecodeError:
+                self.send_json({"error": "项目文件不是有效 JSON。"}, 400)
+                return
+            self.send_json({
+                "id": project_id,
+                "title": project_title(project_id, project),
+                "revision": revision,
+                "project": project,
+            })
+            return
         if parsed.path == "/api/load-project":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地路径加载接口。"}, 403)
+                return
             values = parse_qs(parsed.query).get("path", [])
             if not values:
                 self.send_error(400, "Missing path")
@@ -103,6 +287,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path != "/api/photo":
             super().do_GET()
+            return
+        if not legacy_paths_enabled():
+            self.send_error(403, "Legacy local photo endpoint is disabled")
             return
 
         values = parse_qs(parsed.query).get("path", [])
@@ -127,19 +314,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parent)
     port = int(os.environ.get("PORT", "8000"))
+    host = os.environ.get("HOST", "127.0.0.1")
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
+        server = ThreadingHTTPServer((host, port), DashboardHandler)
     except PermissionError as error:
-        print(f"无法启动本地看板服务：127.0.0.1:{port} 被系统拒绝。")
+        print(f"无法启动看板服务：{host}:{port} 被系统拒绝。")
         print("Windows 常见原因是该端口被系统保留、安全软件拦截，或 Python 没有本地网络权限。")
         print("请优先使用“打开耳机数据看板.bat”，它会自动换一个可用端口。")
         print(f"原始错误：{error}")
         raise SystemExit(1)
     except OSError as error:
-        print(f"无法启动本地看板服务：127.0.0.1:{port} 不可用。")
+        print(f"无法启动看板服务：{host}:{port} 不可用。")
         print("请检查是否已有看板窗口正在运行，或换一个 PORT 环境变量后重试。")
         print(f"原始错误：{error}")
         raise SystemExit(1)
-    print(f"Dashboard: http://127.0.0.1:{port}")
+    print(f"Dashboard: http://{host}:{port}")
+    print(f"Server entry: http://{host}:{port}/server.html")
     print("Press Ctrl+C to stop.")
     server.serve_forever()

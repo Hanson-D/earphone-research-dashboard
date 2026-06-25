@@ -178,6 +178,86 @@ select[multiple] { min-height: 84px; }
 .mapping-input, .mapping-fields label { display: block; margin-bottom: 16px; color: var(--ink); font-size: 11px; font-weight: 800; }
 .mapping-input span { display: block; margin-bottom: 6px; }
 .mapping-input input { width: 100%; padding: 9px 10px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
+
+.server-entry {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.server-entry-page input[type="text"] {
+  width: 100%;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.server-create-panel,
+.server-project-panel {
+  padding: 22px;
+}
+
+.server-create-panel {
+  align-self: start;
+  border-top: 4px solid var(--accent);
+}
+
+.server-create-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.server-create-form label {
+  display: block;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.server-create-form small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.server-project-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.server-project-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  background: var(--accent-pale);
+  border: 1px solid #ead6d6;
+}
+
+.server-project-card strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent-dark);
+}
+
+.server-project-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.server-project-card .outline-button {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
 .mapping-input small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 500; line-height: 1.5; }
 .mapping-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .mapping-fields select { margin-top: 6px; }

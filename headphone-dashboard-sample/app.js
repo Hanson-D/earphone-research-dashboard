@@ -1,5 +1,15 @@
 const DEFAULT_CSV = "headphone_sample.csv";
 const Core = globalThis.DashboardCore;
+const initialParams = new URL(window.location.href).searchParams;
+const initialServerProjectId = initialParams.get("projectId") || "";
+
+function storageScope() {
+  return initialServerProjectId ? `server:${initialServerProjectId}` : "local";
+}
+
+function storageKey(name) {
+  return `${name}:${storageScope()}`;
+}
 
 const fieldLabels = {
   record_id: "记录编号",
@@ -40,7 +50,8 @@ function defaultLayout() {
 
 function loadLayout() {
   try {
-    const saved = JSON.parse(localStorage.getItem("headphoneDashboardLayout"));
+    const saved = JSON.parse(localStorage.getItem(storageKey("headphoneDashboardLayout")) ||
+      (!initialServerProjectId ? localStorage.getItem("headphoneDashboardLayout") : "null"));
     if (!saved?.columns?.length) return defaultLayout();
     return {
       fontSize: Number(saved.fontSize) || 12,
@@ -56,7 +67,8 @@ function loadLayout() {
 
 function loadFieldRoleOverrides() {
   try {
-    return JSON.parse(localStorage.getItem("headphoneDashboardFieldRoles")) || {};
+    return JSON.parse(localStorage.getItem(storageKey("headphoneDashboardFieldRoles")) ||
+      (!initialServerProjectId ? localStorage.getItem("headphoneDashboardFieldRoles") : "null")) || {};
   } catch {
     return {};
   }
@@ -89,6 +101,9 @@ const state = {
   photoFields: [],
   layout: loadLayout(),
   projectPath: "",
+  serverProjectId: initialServerProjectId,
+  projectRevision: null,
+  projectTitle: "",
   projectDirty: false
 };
 
@@ -107,11 +122,11 @@ const els = Object.fromEntries([
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
-  localStorage.setItem("headphoneDashboardLayout", JSON.stringify(state.layout));
+  localStorage.setItem(storageKey("headphoneDashboardLayout"), JSON.stringify(state.layout));
 }
 
 function saveFieldRoleOverrides() {
-  localStorage.setItem("headphoneDashboardFieldRoles", JSON.stringify(state.fieldRoleOverrides));
+  localStorage.setItem(storageKey("headphoneDashboardFieldRoles"), JSON.stringify(state.fieldRoleOverrides));
 }
 
 function exportDashboardConfig() {
@@ -172,6 +187,7 @@ function mappingConfigSnapshot() {
 function setProjectPath(path) {
   state.projectPath = path || "";
   els.projectPathInput.value = state.projectPath;
+  if (state.serverProjectId) return;
   if (!state.projectPath) return;
   const url = new URL(window.location.href);
   url.searchParams.set("project", state.projectPath);
@@ -188,7 +204,9 @@ function setProjectStatus(message, dirty = state.projectDirty) {
 
 function markProjectDirty() {
   state.projectDirty = true;
-  setProjectStatus(state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件");
+  const label = state.serverProjectId ? `服务器项目：${state.projectTitle || state.serverProjectId} · rev ${state.projectRevision || "?"}` :
+    state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件";
+  setProjectStatus(label);
 }
 
 function markProjectSaved(message) {
@@ -197,6 +215,10 @@ function markProjectSaved(message) {
 }
 
 async function saveProject() {
+  if (state.serverProjectId) {
+    await writeServerProject(projectDocumentSnapshot(), "已保存完整项目");
+    return;
+  }
   const path = els.projectPathInput.value.trim();
   if (!path) throw new Error("请先填写项目 JSON 路径。");
   await writeProject(path, projectDocumentSnapshot(), "已保存完整项目");
@@ -214,7 +236,35 @@ async function writeProject(path, project, successPrefix) {
   markProjectSaved(`${successPrefix}：${result.path}`);
 }
 
+async function writeServerProject(project, successPrefix) {
+  const response = await fetch(`/api/server/projects/${encodeURIComponent(state.serverProjectId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: state.projectRevision, title: state.projectTitle, project })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    if (response.status === 409) {
+      throw new Error(`${result.error || "项目版本冲突"} 当前服务器版本：rev ${result.currentRevision || "?"}`);
+    }
+    throw new Error(result.error || "服务器项目保存失败。");
+  }
+  state.projectRevision = result.revision;
+  state.projectTitle = result.title || state.projectTitle;
+  markProjectSaved(`${successPrefix}：${state.projectTitle || state.serverProjectId} · rev ${state.projectRevision}`);
+}
+
 async function saveCurrentProjectConfig() {
+  if (state.serverProjectId) {
+    await writeServerProject({
+      ...projectDocumentSnapshot(),
+      rows: state.rows,
+      mappingRows: state.mappingRows,
+      savedAt: new Date().toISOString(),
+      dashboardConfig: dashboardConfigSnapshot()
+    }, "已保存当前配置");
+    return;
+  }
   const path = els.projectPathInput.value.trim();
   if (!path) throw new Error("请先填写项目 JSON 路径。");
   let project = null;
@@ -239,6 +289,10 @@ async function saveCurrentProjectConfig() {
 }
 
 async function loadProject(path) {
+  if (state.serverProjectId) {
+    await loadServerProject();
+    return;
+  }
   const projectPath = path || els.projectPathInput.value.trim();
   if (!projectPath) throw new Error("请先填写项目 JSON 路径。");
   const response = await fetch(`/api/load-project?path=${encodeURIComponent(projectPath)}`);
@@ -270,6 +324,37 @@ async function loadProject(path) {
   setProjectPath(result.path);
   markProjectSaved(`已加载：${result.path}`);
   els.dataSourceLabel.textContent = "项目数据";
+  switchPage("dashboard");
+}
+
+async function loadServerProject() {
+  if (!state.serverProjectId) throw new Error("缺少服务器项目 ID。");
+  const response = await fetch(`/api/server/projects/${encodeURIComponent(state.serverProjectId)}`);
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "服务器项目加载失败。");
+  const project = Core.sanitizeProjectDocument(result.project);
+  state.projectRevision = result.revision;
+  state.projectTitle = result.title || state.serverProjectId;
+  state.rows = project.rows.map(row => ({ ...row }));
+  state.mappingRows = project.mappingRows.map(row => ({ ...row }));
+  state.mappedRows = [];
+  state.mappingViews = project.mappingViews;
+  state.photoMappingOverrides = project.photoMappingOverrides;
+  els.photoRootInput.value = project.photoRoot;
+  els.mappingMode.value = project.mappingMode;
+  renderMappingMode();
+  if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
+  buildSchema();
+  applyDashboardConfig(project.dashboardConfig);
+  initializeMappingFields();
+  if (project.mappingFields.userField && [...els.mappingUserField.options].some(option => option.value === project.mappingFields.userField)) els.mappingUserField.value = project.mappingFields.userField;
+  if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
+  if (project.mappingFields.deviceField && [...els.mappingDeviceField.options].some(option => option.value === project.mappingFields.deviceField)) els.mappingDeviceField.value = project.mappingFields.deviceField;
+  setProjectPath(state.serverProjectId);
+  els.projectPathInput.readOnly = true;
+  els.projectPathInput.value = state.serverProjectId;
+  markProjectSaved(`已加载服务器项目：${state.projectTitle} · rev ${state.projectRevision}`);
+  els.dataSourceLabel.textContent = "服务器项目";
   switchPage("dashboard");
 }
 
@@ -1133,6 +1218,17 @@ async function start() {
   renderColumnConfig();
   bindEvents();
   render();
+  if (state.serverProjectId) {
+    els.projectPathInput.value = state.serverProjectId;
+    els.projectPathInput.readOnly = true;
+    setProjectStatus(`正在加载服务器项目：${state.serverProjectId}`);
+    try {
+      await loadServerProject();
+    } catch (error) {
+      setProjectStatus(`服务器项目自动加载失败：${error.message}`);
+    }
+    return;
+  }
   setProjectPath(defaultProjectPath());
   setProjectStatus(`默认项目路径：${state.projectPath}`);
   const projectFromUrl = new URL(window.location.href).searchParams.get("project");
