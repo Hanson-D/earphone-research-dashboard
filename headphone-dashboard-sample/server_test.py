@@ -36,6 +36,13 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(candidates[-1], 7461)
         self.assertEqual(len(candidates), 100)
 
+    def test_photo_upload_relative_paths_are_constrained(self):
+        self.assertEqual(server.safe_relative_photo_path("U001/front.jpg").as_posix(), "U001/front.jpg")
+        with self.assertRaises(ValueError):
+            server.safe_relative_photo_path("../secret.jpg")
+        with self.assertRaises(ValueError):
+            server.safe_relative_photo_path("U001/readme.txt")
+
     def test_create_list_and_read_server_project(self):
         result = server.save_server_project(
             "study-01",

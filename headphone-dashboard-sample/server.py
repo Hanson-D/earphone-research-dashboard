@@ -30,6 +30,22 @@ def server_project_path(project_id):
     return project_root() / f"{project_id}.json"
 
 
+def server_project_photo_root(project_id):
+    if not is_valid_project_id(project_id):
+        raise ValueError("项目 ID 只能包含字母、数字、下划线和连字符，长度 1-64。")
+    return project_root() / f"{project_id}_assets" / "photos"
+
+
+def safe_relative_photo_path(value):
+    parts = [part for part in Path(str(value or "")).parts if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        raise ValueError("照片路径无效。")
+    path = Path(*parts)
+    if path.suffix.lower() not in IMAGE_EXTENSIONS:
+        raise ValueError("只支持图片文件。")
+    return path
+
+
 def project_title(project_id, project):
     meta = project.get("_server", {}) if isinstance(project.get("_server"), dict) else {}
     return meta.get("title") or project.get("title") or project_id
@@ -151,6 +167,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/server/projects":
             self.create_server_project()
             return
+        if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
+            self.upload_server_project_photo(parsed)
+            return
         if parsed.path.startswith("/api/server/projects/"):
             self.save_server_project_endpoint(parsed.path.rsplit("/", 1)[-1])
             return
@@ -262,10 +281,41 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             "project": result["project"],
         })
 
+    def upload_server_project_photo(self, parsed):
+        try:
+            parts = parsed.path.strip("/").split("/")
+            project_id = parts[3]
+            relative_path = safe_relative_photo_path(parse_qs(parsed.query).get("path", [""])[0])
+            root = server_project_photo_root(project_id)
+            target = (root / relative_path).resolve()
+            if root.resolve() not in target.parents:
+                raise ValueError("照片路径无效。")
+            length = int(self.headers.get("Content-Length", "0"))
+            data = self.rfile.read(length)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        except (ValueError, IndexError) as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+
+        relative = relative_path.as_posix()
+        self.send_json({
+            "photo": {
+                "name": relative_path.name,
+                "relative_path": relative,
+                "absolute_path": f"/api/server/projects/{project_id}/photos?path={quote(relative)}",
+                "url": f"/api/server/projects/{project_id}/photos?path={quote(relative)}",
+                "user_folder": relative_path.parts[0] if len(relative_path.parts) > 1 else "",
+            }
+        })
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/server/projects":
             self.send_json({"projects": list_server_projects()})
+            return
+        if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
+            self.serve_server_project_photo(parsed)
             return
         if parsed.path.startswith("/api/server/projects/"):
             project_id = parsed.path.rsplit("/", 1)[-1]
@@ -321,6 +371,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         path = Path(values[0]).expanduser()
         if not path.is_file() or not is_within_allowed_root(path):
             self.send_error(403, "Photo path is not inside a scanned root")
+            return
+
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve_server_project_photo(self, parsed):
+        try:
+            parts = parsed.path.strip("/").split("/")
+            project_id = parts[3]
+            relative_path = safe_relative_photo_path(parse_qs(parsed.query).get("path", [""])[0])
+            root = server_project_photo_root(project_id).resolve()
+            path = (root / relative_path).resolve()
+            if root not in path.parents or not path.is_file():
+                self.send_error(404, "Photo not found")
+                return
+        except (ValueError, IndexError) as error:
+            self.send_json({"error": str(error)}, 400)
             return
 
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"

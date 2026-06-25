@@ -114,7 +114,7 @@ const els = Object.fromEntries([
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
-  "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput",
+  "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "runMappingButton",
   "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
@@ -890,7 +890,14 @@ function renderMappingMode() {
   els.mappingEarFieldWrap.hidden = !folderMode;
 }
 
+function renderPhotoSourceMode() {
+  const serverMode = Boolean(state.serverProjectId);
+  els.photoRootInputWrap.hidden = serverMode;
+  els.photoFolderInputWrap.hidden = !serverMode;
+}
+
 async function scanPhotoRoot() {
+  if (state.serverProjectId) return uploadServerPhotoFiles();
   const root = els.photoRootInput.value.trim();
   if (!root) throw new Error("请填写照片根文件夹路径。");
   const response = await fetch("/api/scan-photos", {
@@ -902,6 +909,41 @@ async function scanPhotoRoot() {
   if (!response.ok) throw new Error(result.error || "照片目录扫描失败。");
   state.mappingFiles = result.photos;
   return result;
+}
+
+async function uploadServerPhotoFiles() {
+  const files = [...(els.photoFolderInput.files || [])]
+    .filter(file => Core.isImagePath(file.name));
+  if (!files.length) throw new Error("服务器版请先选择包含照片的文件夹。");
+  if (!state.serverProjectId) throw new Error("缺少服务器项目 ID。");
+
+  const rawPaths = files.map(file => file.webkitRelativePath || file.name);
+  const firstParts = rawPaths.map(path => path.split(/[\\/]/).filter(Boolean)[0]);
+  const stripSelectedRoot = firstParts.length > 0 && firstParts.every(part => part === firstParts[0]) &&
+    rawPaths.some(path => path.split(/[\\/]/).filter(Boolean).length > 1);
+  const photos = [];
+  for (const [index, file] of files.entries()) {
+    const rawPath = file.webkitRelativePath || file.name;
+    const parts = rawPath.split(/[\\/]/).filter(Boolean);
+    const relativePath = stripSelectedRoot ? parts.slice(1).join("/") : parts.join("/");
+    const url = `/api/server/projects/${encodeURIComponent(state.serverProjectId)}/photos?path=${encodeURIComponent(relativePath)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `照片上传失败：${relativePath}`);
+    photos.push(result.photo);
+    if ((index + 1) % 10 === 0 || index === files.length - 1) {
+      els.mappingSummary.textContent = `正在上传照片 ${index + 1} / ${files.length}`;
+    }
+  }
+  photos.sort((a, b) => (a.user_folder || "").localeCompare(b.user_folder || "", "zh-CN") ||
+    Core.naturalCompare(a.relative_path || a.name, b.relative_path || b.name));
+  state.mappingFiles = photos;
+  els.photoRootInput.value = `server:${state.serverProjectId}`;
+  return { root: els.photoRootInput.value, photos };
 }
 
 function buildPhotoMapping() {
@@ -1049,6 +1091,10 @@ function bindEvents() {
       markProjectDirty();
     };
     reader.readAsText(file, "UTF-8");
+  });
+  els.photoFolderInput.addEventListener("change", () => {
+    const count = [...(els.photoFolderInput.files || [])].filter(file => Core.isImagePath(file.name)).length;
+    els.mappingSummary.textContent = count ? `已选择 ${count} 张照片，点击“生成照片映射”上传并映射。` : "未选择可用图片。";
   });
   els.runMappingButton.addEventListener("click", async () => {
     els.runMappingButton.disabled = true;
@@ -1217,6 +1263,7 @@ async function start() {
   renderFieldRoleConfig();
   renderColumnConfig();
   bindEvents();
+  renderPhotoSourceMode();
   render();
   if (state.serverProjectId) {
     els.projectPathInput.value = state.serverProjectId;

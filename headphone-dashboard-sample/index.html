@@ -49,10 +49,15 @@
           <span>1. 选择原始 CSV</span>
           <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
         </label>
-        <label class="mapping-input">
+        <label id="photoRootInputWrap" class="mapping-input">
           <span>2. 输入照片根文件夹路径</span>
           <input id="photoRootInput" type="text" placeholder="/Users/name/research/photos">
           <small>由本项目的本地服务器扫描。可选择按拍摄顺序映射，或按姓名/左右耳/样机/方向子文件夹匹配。</small>
+        </label>
+        <label id="photoFolderInputWrap" class="mapping-input" hidden>
+          <span>2. 选择照片文件夹并上传到服务器项目</span>
+          <input id="photoFolderInput" type="file" webkitdirectory directory multiple accept="image/*">
+          <small>服务器版不能读取你电脑上的本地路径；请选择照片根文件夹，浏览器会把照片上传到当前服务器项目中。</small>
         </label>
         <label class="mapping-input">
           <span>照片匹配方式</span>
@@ -246,7 +251,7 @@
     <div class="empty-state">当前筛选条件下没有数据。</div>
   </template>
 
-  <script src="dashboard-core.js?v=20260625-server"></script>
-  <script src="app.js?v=20260625-server"></script>
+  <script src="dashboard-core.js?v=20260625-server-photos"></script>
+  <script src="app.js?v=20260625-server-photos"></script>
 </body>
 </html>
