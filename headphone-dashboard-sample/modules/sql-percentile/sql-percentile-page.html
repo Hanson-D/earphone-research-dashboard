@@ -1,0 +1,42 @@
+<main id="databasePage" class="app-page">
+  <section class="sql-percentile-layout">
+    <aside class="sql-percentile-panel">
+      <p class="panel-kicker">SQL DATABASE / 03</p>
+      <h2>人耳数据库百分位分析</h2>
+      <label>
+        SQLite 数据库路径
+        <input id="sqlDatabasePath" type="text" placeholder="D:\research\ear_database.sqlite">
+      </label>
+      <button id="loadSqlSchemaButton" type="button" class="primary-button">读取数据库结构</button>
+      <label>
+        数据表
+        <select id="sqlTableSelect"></select>
+      </label>
+      <div class="sql-cohort-box">
+        <p class="panel-kicker">REFERENCE COHORT</p>
+        <label>
+          参照人群
+          <select id="sqlCohortMode">
+            <option value="all">全库可用样本</option>
+            <option value="matched">按 04 队列配置筛选</option>
+          </select>
+        </label>
+        <div id="sqlCohortSummary" class="sql-cohort-summary">未设置队列筛选。</div>
+      </div>
+      <button id="runSqlPercentileButton" type="button" class="primary-button">计算百分位</button>
+      <div id="sqlPercentileStatus" class="project-status">等待从 02 页面选择用户。</div>
+    </aside>
+
+    <section class="panel sql-percentile-results">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-kicker">MATCHED FEATURES</p>
+          <h2>字段匹配与百分位</h2>
+        </div>
+      </div>
+      <div id="sqlSubjectSummary" class="profile-tags"></div>
+      <div id="sqlFieldMappings"></div>
+      <div id="sqlPercentileResults"></div>
+    </section>
+  </section>
+</main>

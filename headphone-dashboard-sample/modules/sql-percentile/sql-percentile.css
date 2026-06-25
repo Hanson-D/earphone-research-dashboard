@@ -1,0 +1,86 @@
+.sql-percentile-layout {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.sql-percentile-panel {
+  align-self: start;
+  padding: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+}
+
+.sql-percentile-panel label {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sql-percentile-panel input,
+.sql-percentile-panel select {
+  margin-top: 6px;
+}
+
+.sql-percentile-results {
+  min-height: 420px;
+}
+
+.sql-cohort-box {
+  margin: 12px 0 16px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--accent-pale) 60%, white);
+  border: 1px solid var(--line);
+}
+
+.sql-cohort-summary {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sql-mapping-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.percentile-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 16px;
+}
+
+.percentile-card {
+  padding: 12px;
+  background: var(--accent-pale);
+  border-left: 3px solid var(--accent);
+}
+
+.percentile-card strong {
+  display: block;
+  color: var(--accent-dark);
+  font-family: Georgia, serif;
+  font-size: 24px;
+}
+
+.percentile-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.percentile-card dt {
+  color: var(--muted);
+}
+
+.percentile-card dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

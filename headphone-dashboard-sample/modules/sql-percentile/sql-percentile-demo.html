@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>03 SQL 百分位模块演示</title>
+  <link rel="stylesheet" href="sql-percentile.css">
+  <style>
+    :root {
+      --accent: #8c0000;
+      --accent-dark: #5f0000;
+      --accent-pale: #f7e8e8;
+      --surface: #fff;
+      --line: #ded6d0;
+      --muted: #706864;
+      --shadow: 0 16px 36px rgba(40, 22, 22, 0.08);
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f7f3ef;
+      color: #211a18;
+    }
+
+    .panel,
+    .sql-percentile-results {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-kicker {
+      margin: 0 0 6px;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    button,
+    input,
+    select {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      background: #fff;
+    }
+
+    .primary-button {
+      background: var(--accent);
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .profile-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 16px;
+    }
+
+    .profile-tags span {
+      padding: 4px 8px;
+      background: var(--accent-pale);
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .demo-table {
+      width: calc(100% - 32px);
+      margin: 0 16px 16px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .demo-table th,
+    .demo-table td {
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <main class="sql-percentile-layout">
+    <aside class="sql-percentile-panel">
+      <p class="panel-kicker">SQL DATABASE / 03</p>
+      <h2>人耳数据库百分位分析</h2>
+      <label>
+        SQLite 数据库路径
+        <input type="text" value="D:\research\ear_database.sqlite">
+      </label>
+      <label>
+        数据表
+        <select>
+          <option>ear_data</option>
+        </select>
+      </label>
+      <div class="sql-cohort-box">
+        <p class="panel-kicker">REFERENCE COHORT</p>
+        <label>
+          参照人群
+          <select>
+            <option>按 04 队列配置筛选</option>
+          </select>
+        </label>
+        <div class="sql-cohort-summary">ear_side: left; age: 20-40; n = 532</div>
+      </div>
+      <button class="primary-button" type="button">计算百分位</button>
+    </aside>
+
+    <section class="panel sql-percentile-results">
+      <div style="padding: 18px 18px 0;">
+        <p class="panel-kicker">MATCHED FEATURES</p>
+        <h2>字段匹配与百分位</h2>
+      </div>
+      <div id="subjectSummary" class="profile-tags"></div>
+      <table id="mappingTable" class="demo-table"></table>
+      <div id="resultCards" class="percentile-card-grid"></div>
+    </section>
+  </main>
+
+  <script src="sql-percentile.js"></script>
+  <script>
+    const subject = {
+      name: "U001",
+      ear_side: "left",
+      age: "32",
+      conchaWidthMm: "24.5",
+      earCanalDepth: "11.2"
+    };
+    const columns = [
+      { name: "concha_width", numeric: true },
+      { name: "ear_canal_depth_mm", numeric: true },
+      { name: "age", numeric: true },
+      { name: "ear_side", numeric: false }
+    ];
+    const results = [
+      { dashboardField: "conchaWidthMm", dbColumn: "concha_width", value: 24.5, percentile: 82.25, sampleSize: 532, mean: 22.1, sd: 2.4, min: 14.8, max: 32.2, rank: 438 },
+      { dashboardField: "earCanalDepth", dbColumn: "ear_canal_depth_mm", value: 11.2, percentile: 41.8, sampleSize: 529, mean: 11.6, sd: 1.1, min: 8.4, max: 15.2, rank: 221 }
+    ];
+    const api = window.SqlPercentileModule;
+    document.getElementById("subjectSummary").innerHTML = Object.entries(subject)
+      .map(([key, value]) => `<span>${key}: ${value}</span>`)
+      .join("");
+    document.getElementById("mappingTable").innerHTML = `
+      <thead><tr><th>看板字段</th><th>SQL 字段</th><th>置信度</th><th>原因</th></tr></thead>
+      <tbody>${api.suggestMappings(subject, columns).map(item => `
+        <tr>
+          <td>${item.dashboardField}</td>
+          <td>${item.dbColumn || "未匹配"}</td>
+          <td>${api.formatNumber(item.confidence, 2)}</td>
+          <td>${item.matchReason}</td>
+        </tr>
+      `).join("")}</tbody>
+    `;
+    document.getElementById("resultCards").innerHTML = api.buildResultCards(results).map(card => `
+      <article class="percentile-card ${card.band}">
+        <strong>${card.percentileLabel}</strong>
+        <div>${card.title}</div>
+        <small>${card.subtitle}</small>
+        <dl>${card.metrics.map(metric => `<dt>${metric.label}</dt><dd>${metric.value}</dd>`).join("")}</dl>
+      </article>
+    `).join("");
+  </script>
+</body>
+</html>
