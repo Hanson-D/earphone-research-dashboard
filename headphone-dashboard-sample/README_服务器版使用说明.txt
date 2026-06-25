@@ -15,7 +15,15 @@ http://服务器地址:端口/server.html
 
 1. 解压 earphone-dashboard-server.zip。
 2. 进入 EarphoneDashboardServer 文件夹。
-3. 执行：
+3. macOS 用户可以双击：
+
+start-server.command
+
+如果系统提示没有权限打开该文件，可在终端中执行一次：
+
+chmod +x start-server.command
+
+也可以在 Linux/macOS 终端执行：
 
 chmod +x start-server.sh
 ./start-server.sh

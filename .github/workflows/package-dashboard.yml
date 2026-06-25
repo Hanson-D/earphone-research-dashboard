@@ -47,6 +47,7 @@ jobs:
           mkdir -p "$PACKAGE_ROOT/projects"
 
           cp headphone-dashboard-sample/start-server.bat "$PACKAGE_ROOT/"
+          cp headphone-dashboard-sample/start-server.command "$PACKAGE_ROOT/"
           cp headphone-dashboard-sample/start-server.sh "$PACKAGE_ROOT/"
           cp headphone-dashboard-sample/README_服务器版使用说明.txt "$PACKAGE_ROOT/"
           cp headphone-dashboard-sample/README.md "$PACKAGE_ROOT/"
@@ -62,6 +63,7 @@ jobs:
           cp -R headphone-dashboard-sample/photos "$PACKAGE_ROOT/photos"
           cp -R headphone-dashboard-sample/modules "$PACKAGE_ROOT/modules"
 
+          chmod +x "$PACKAGE_ROOT/start-server.command"
           chmod +x "$PACKAGE_ROOT/start-server.sh"
 
       - name: Create zip archives
