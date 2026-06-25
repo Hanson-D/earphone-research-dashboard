@@ -1,0 +1,6 @@
+{
+  "version": "0.1.2",
+  "path": "\\\\server\\earphone-dashboard-release\\versions\\0.1.2",
+  "entry": "app",
+  "notes": "修复服务器版照片上传映射"
+}

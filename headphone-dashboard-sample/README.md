@@ -110,6 +110,28 @@ http://服务器地址:7362/server.html
 
 服务器部署时，建议把 CSV 和照片整理为服务器项目目录中的相对资源路径，避免依赖客户端电脑上的本地绝对路径。权限管理可以交给上层服务器或反向代理，本看板只负责项目隔离和保存冲突检测。
 
+## 自动更新本地启动器
+
+如果不希望普通用户反复下载新版 zip，可以使用 `earphone-dashboard-launcher.zip`。
+
+管理员维护一个共享发布目录，例如：
+
+```text
+\\server\earphone-dashboard-release
+```
+
+GitHub Actions 会生成 `earphone-dashboard-release.zip`，里面包含：
+
+```text
+EarphoneDashboardRelease/
+  latest.json
+  versions/
+    v0.1.3/
+      app/
+```
+
+将 `latest.json` 和 `versions` 复制到共享发布目录后，用户端启动器每次启动会读取 `latest.json`，把最新版复制到本机 `%LOCALAPPDATA%\EarphoneDashboard\versions`，再启动本机看板服务。共享目录不可用时，会回退到本机已缓存版本。
+
 ## 照片自动映射
 
 页面默认打开“照片映射”。当前支持两种照片匹配方式。
