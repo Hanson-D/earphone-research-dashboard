@@ -507,7 +507,8 @@ function buildSchema() {
   state.photoFields.forEach((field, index) => {
     if (!state.viewLabels[field]) state.viewLabels[field] = fieldLabels[field] || field.replace(/^photo_/, "");
   });
-  if (!state.photoFields.includes(state.globalView)) state.globalView = state.photoFields[0] || "";
+  const viewOptions = photoViewOptions();
+  if (!viewOptions.some(option => option.value === state.globalView)) state.globalView = viewOptions[0]?.value || "";
   state.metricFields = state.headers.filter(field => fieldRole(field) === "metric" && isNumericField(field));
   state.dimensionFields = state.headers.filter(field => {
     const count = unique(field).length;
@@ -609,9 +610,50 @@ function initializeControls() {
 function renderViewControls() {
   els.globalViewControl.hidden = state.photoFields.length === 0;
   els.resetViewsButton.hidden = state.photoFields.length === 0;
-  els.globalViewSelect.innerHTML = state.photoFields.map(field =>
-    `<option value="${field}" ${field === state.globalView ? "selected" : ""}>${state.viewLabels[field] || field}</option>`
+  const options = photoViewOptions();
+  els.globalViewSelect.innerHTML = options.map(option =>
+    `<option value="${option.value}" ${option.value === state.globalView ? "selected" : ""}>${option.label}</option>`
   ).join("");
+}
+
+function earSideField() {
+  return state.headers.find(field => /^(ear_side|左右耳|耳侧|left_right|side)$/i.test(field)) ||
+    state.headers.find(field => /ear_side|左右耳|耳侧/i.test(field));
+}
+
+function makePhotoViewValue(field, ear = "") {
+  return ear ? `ear:${encodeURIComponent(ear)}::${field}` : field;
+}
+
+function parsePhotoViewValue(value) {
+  const match = String(value || "").match(/^ear:([^:]+)::(.+)$/);
+  if (!match) return { ear: "", field: value || state.photoFields[0] || "" };
+  return { ear: decodeURIComponent(match[1]), field: match[2] };
+}
+
+function photoViewOptions(rows = state.rows) {
+  if (!state.photoFields.length) return [];
+  const earField = earSideField();
+  const ears = earField ? [...new Set(rows.map(row => row[earField]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN")) : [];
+  if (!ears.length) {
+    return state.photoFields.map(field => ({
+      value: field,
+      field,
+      ear: "",
+      label: state.viewLabels[field] || field
+    }));
+  }
+  return ears.flatMap(ear => state.photoFields.map(field => ({
+    value: makePhotoViewValue(field, ear),
+    field,
+    ear,
+    label: `${ear} · ${state.viewLabels[field] || field}`
+  })));
+}
+
+function rowMatchesPhotoView(row, view) {
+  const earField = earSideField();
+  return (!view.ear || !earField || String(row[earField] || "") === view.ear) && row[view.field];
 }
 
 function filteredRows() {
@@ -777,15 +819,20 @@ function photoGalleryCell(column, userRows) {
   const user = userRows[0][state.userIdField];
   const deviceField = state.headers.includes("device_name") ? "device_name" :
     state.headers.find(field => /device|condition|设备|条件/i.test(field));
-  const selectedView = state.userViews[user] || state.globalView || state.photoFields[0];
-  const items = userRows.filter(row => row[selectedView]).map(row => `
+  const earField = earSideField();
+  const userOptions = photoViewOptions(userRows);
+  const selectedValue = state.userViews[user] || state.globalView || userOptions[0]?.value || state.photoFields[0];
+  const selectedView = parsePhotoViewValue(selectedValue);
+  const items = userRows.filter(row => rowMatchesPhotoView(row, selectedView)).map(row => {
+    const caption = [earField ? row[earField] : "", row[deviceField] || column.label].filter(Boolean).join(" · ");
+    return `
     <figure class="photo-thumb">
-      <img class="ear-photo" src="${photoUrl(row[selectedView])}" alt="${row[state.userIdField]} ${row[deviceField] || column.label}" loading="lazy">
-      <figcaption>${row[deviceField] || column.label}</figcaption>
-    </figure>
-  `).join("");
-  const options = state.photoFields.map(field =>
-    `<option value="${field}" ${state.userViews[user] === field ? "selected" : ""}>${state.viewLabels[field] || field}</option>`
+      <img class="ear-photo" src="${photoUrl(row[selectedView.field])}" alt="${row[state.userIdField]} ${caption}" loading="lazy">
+      <figcaption>${caption}</figcaption>
+    </figure>`;
+  }).join("");
+  const options = userOptions.map(option =>
+    `<option value="${option.value}" ${state.userViews[user] === option.value ? "selected" : ""}>${option.label}</option>`
   ).join("");
   return `<td class="photo-cell" rowspan="${userRows.length}">
     <select class="user-view-select" data-user="${user}" aria-label="${user}照片视角">
@@ -826,7 +873,10 @@ function renderDetails(rows, groups) {
   const visibleColumns = state.layout.columns.filter(column => column.visible);
   const maxPhotos = Math.max(1, ...groupByUser(visibleRows).map(userRows =>
     Math.max(...visibleColumns.filter(column => column.photo).map(column =>
-      column.id === "__photo_view" ? userRows.filter(row => row[state.globalView] || state.photoFields.some(field => row[field])).length : userRows.filter(row => row[column.id]).length
+      column.id === "__photo_view" ? userRows.filter(row => {
+        const selectedValue = state.userViews[userRows[0][state.userIdField]] || state.globalView || photoViewOptions(userRows)[0]?.value;
+        return rowMatchesPhotoView(row, parsePhotoViewValue(selectedValue)) || state.photoFields.some(field => row[field]);
+      }).length : userRows.filter(row => row[column.id]).length
     ), 0)
   ));
   visibleColumns.forEach(column => {
@@ -1175,7 +1225,7 @@ function bindEvents() {
     markProjectDirty();
   });
   els.resetViewsButton.addEventListener("click", () => {
-    state.globalView = state.photoFields[0] || "";
+    state.globalView = photoViewOptions()[0]?.value || "";
     state.userViews = {};
     renderViewControls();
     renderDetails(filteredRows(), groupedRows(filteredRows()));
