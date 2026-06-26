@@ -92,6 +92,48 @@
     return [...new Set(rows.map(row => row[field]).filter(Boolean))].sort((a, b) => naturalCompare(a, b));
   }
 
+  function inferEarLabel(value) {
+    const text = String(value || "").trim();
+    const token = normalizeToken(text);
+    if (!token) return "";
+    if (/左耳|左侧|左/.test(text) || token === "l" || token === "left" || token.includes("leftear")) return "左耳";
+    if (/右耳|右侧|右/.test(text) || token === "r" || token === "right" || token.includes("rightear")) return "右耳";
+    return "";
+  }
+
+  function earSortKey(value) {
+    const label = inferEarLabel(value) || String(value || "");
+    if (label === "左耳") return 0;
+    if (label === "右耳") return 1;
+    return 2;
+  }
+
+  function viewSortKey(value) {
+    const token = normalizeToken(value);
+    if (/正面|front/.test(token)) return 0;
+    if (/侧面|side|profile/.test(token)) return 1;
+    if (/背面|后面|back|rear/.test(token)) return 2;
+    return 10;
+  }
+
+  function folderEarValues(rows = [], earField, files = []) {
+    const ears = [];
+    const seen = new Set();
+    const add = value => {
+      const label = inferEarLabel(value) || String(value || "").trim();
+      const key = normalizeToken(label);
+      if (!label || !key || seen.has(key)) return;
+      seen.add(key);
+      ears.push(label);
+    };
+    if (earField) rows.forEach(row => add(row[earField]));
+    files.forEach(file => pathParts(file).forEach(part => {
+      const inferred = inferEarLabel(part);
+      if (inferred) add(inferred);
+    }));
+    return ears.sort((a, b) => earSortKey(a) - earSortKey(b) || naturalCompare(a, b));
+  }
+
   function stripEarFromView(view, ear) {
     return String(view || "")
       .replace(new RegExp(String(ear).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "")
@@ -100,8 +142,8 @@
   }
 
   function viewDescriptors(rows = [], options = {}) {
-    const { mode = "sequence", earField, views = [] } = options;
-    const ears = earField ? uniqueValues(rows, earField) : [];
+    const { mode = "sequence", earField, views = [], files = [] } = options;
+    const ears = earField ? folderEarValues(rows, earField, files) : [];
     const hasEarInViews = ears.length && views.some(view => ears.some(ear => folderPartMatches(view, ear)));
     const items = mode === "folders" && ears.length && !hasEarInViews ?
       ears.flatMap(ear => views.map(view => ({ ear, view, label: `${ear}_${view}` }))) :
@@ -142,6 +184,10 @@
     return parts.some(part => folderPartMatches(part, value));
   }
 
+  function matchedPart(parts, value) {
+    return parts.find(part => folderPartMatches(part, value)) || "";
+  }
+
   function cleanFolderViewName(part) {
     return String(part || "")
       .trim()
@@ -151,17 +197,17 @@
 
   function inferFolderViews(rows = [], files = [], options = {}) {
     const { userField, earField, deviceField } = options;
+    const ears = earField ? folderEarValues(rows, earField, files) : [];
     const views = [];
     const seen = new Set();
     files.forEach(file => {
       const parts = pathParts(file);
       rows.forEach(row => {
         if (!partsInclude(parts, row[userField])) return;
-        if (earField && row[earField] && !partsInclude(parts, row[earField])) return;
         if (deviceField && row[deviceField] && !partsInclude(parts, row[deviceField])) return;
         parts.forEach(part => {
           if (folderPartMatches(part, row[userField]) ||
-            (earField && folderPartMatches(part, row[earField])) ||
+            (earField && ears.some(ear => folderPartMatches(part, ear))) ||
             (deviceField && folderPartMatches(part, row[deviceField]))) return;
           const view = cleanFolderViewName(part);
           const key = normalizeToken(view);
@@ -172,7 +218,7 @@
         });
       });
     });
-    return views.sort((a, b) => naturalCompare(a, b));
+    return views.sort((a, b) => viewSortKey(a) - viewSortKey(b) || naturalCompare(a, b));
   }
 
   function emptyPhotoRows(rows, photoFields) {
@@ -185,17 +231,95 @@
     });
   }
 
+  function inferFolderPhotoCombos(rows = [], files = [], options = {}) {
+    const { userField, earField, deviceField, views = [] } = options;
+    const ears = earField ? folderEarValues(rows, earField, files) : [];
+    const devices = uniqueValues(rows, deviceField);
+    const users = uniqueValues(rows, userField);
+    const combos = [];
+    const seen = new Set();
+
+    files.forEach(file => {
+      const parts = pathParts(file);
+      const user = users.find(value => partsInclude(parts, value)) || matchedPart(parts, file.user_folder);
+      const ear = ears.find(value => partsInclude(parts, value)) || "";
+      const view = views.find(value => partsInclude(parts, value)) || "";
+      const knownDevice = devices.find(value => partsInclude(parts, value));
+      const residual = parts
+        .map(part => cleanFolderViewName(part))
+        .filter(part => part &&
+          (!user || !folderPartMatches(part, user)) &&
+          (!ear || !folderPartMatches(part, ear)) &&
+          (!view || !folderPartMatches(part, view)));
+      const device = knownDevice || residual[residual.length - 1] || "";
+      if (!user || !device || (earField && !ear)) return;
+      const key = [user, ear, device].join("|||");
+      if (seen.has(key)) return;
+      seen.add(key);
+      combos.push({ user, ear, device });
+    });
+
+    return combos.sort((a, b) =>
+      naturalCompare(a.user, b.user) ||
+      earSortKey(a.ear) - earSortKey(b.ear) ||
+      naturalCompare(a.device, b.device)
+    );
+  }
+
+  function expandRowsForPhotoCombos(rows = [], files = [], options = {}) {
+    const { mode = "sequence", userField, earField, deviceField, views = [] } = options;
+    if (mode !== "folders") return rows.map(row => ({ ...row }));
+    const combos = inferFolderPhotoCombos(rows, files, options);
+    if (!combos.length) return rows.map(row => ({ ...row }));
+
+    const templatesByUser = new Map();
+    rows.forEach(row => {
+      const user = row[userField];
+      if (user && !templatesByUser.has(user)) templatesByUser.set(user, row);
+    });
+
+    const existingByCombo = new Map();
+    rows.forEach(row => {
+      const key = [row[userField] || "", earField ? row[earField] || "" : "", row[deviceField] || ""].join("|||");
+      if (!existingByCombo.has(key)) existingByCombo.set(key, row);
+    });
+
+    const expanded = combos.map(combo => {
+      const key = [combo.user, earField ? combo.ear : "", combo.device].join("|||");
+      const source = existingByCombo.get(key) || templatesByUser.get(combo.user) || {};
+      return {
+        ...source,
+        [userField]: combo.user,
+        ...(earField ? { [earField]: combo.ear } : {}),
+        [deviceField]: combo.device
+      };
+    });
+
+    rows.forEach(row => {
+      const key = [row[userField] || "", earField ? row[earField] || "" : "", row[deviceField] || ""].join("|||");
+      const hasPhotoCombo = combos.some(combo =>
+        combo.user === row[userField] &&
+        (!earField || combo.ear === row[earField]) &&
+        combo.device === row[deviceField]
+      );
+      if (!hasPhotoCombo && !existingByCombo.has(key)) expanded.push({ ...row });
+    });
+
+    return expanded;
+  }
+
   function mapPhotosToRows(rows = [], files = [], options = {}) {
     const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {} } = options;
-    const descriptors = viewDescriptors(rows, options);
+    const expandedRows = expandRowsForPhotoCombos(rows, files, options);
+    const descriptors = viewDescriptors(expandedRows, { ...options, files });
     const photoFields = descriptors.map(item => item.field);
     const applicableDescriptors = row => descriptors.filter(item =>
       !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
     );
     if (mode === "folders") {
-      const mapped = emptyPhotoRows(rows, photoFields);
+      const mapped = emptyPhotoRows(expandedRows, photoFields);
       const reviews = [];
-      rows.forEach((row, rowIndex) => {
+      expandedRows.forEach((row, rowIndex) => {
         const matchedFiles = [];
         const applicable = applicableDescriptors(row);
         applicable.forEach(item => {
@@ -398,6 +522,9 @@
     resolveFieldRoles,
     naturalCompare,
     photoFieldNames,
+    folderEarValues,
+    inferFolderPhotoCombos,
+    expandRowsForPhotoCombos,
     viewDescriptors,
     inferFolderViews,
     mapPhotosToRows,

@@ -179,6 +179,37 @@ test("folder mode infers view names from direction folders", () => {
   assert.equal(inferred.length, 2);
 });
 
+test("folder mode derives ear sides from photo folders even when csv has one ear side", () => {
+  const rows = [
+    { name: "张三", ear_side: "右耳", prototype: "样机A" }
+  ];
+  const files = [
+    { relative_path: "张三/左耳/样机A/正面/001.jpg", absolute_path: "/photos/left.jpg", name: "001.jpg" },
+    { relative_path: "张三/右耳/样机A/正面/002.jpg", absolute_path: "/photos/right.jpg", name: "002.jpg" }
+  ];
+  const views = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "ear_side",
+    deviceField: "prototype"
+  });
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "ear_side",
+    deviceField: "prototype",
+    views
+  });
+  assert.deepEqual(views, ["正面"]);
+  assert.deepEqual(core.folderEarValues(rows, "ear_side", files), ["左耳", "右耳"]);
+  assert.equal(result.photoFields.includes("photo_左耳_正面"), true);
+  assert.equal(result.photoFields.includes("photo_右耳_正面"), true);
+  assert.equal(result.mapped.length, 2);
+  assert.equal(result.mapped[0].ear_side, "左耳");
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/left.jpg");
+  assert.equal(result.mapped[1].ear_side, "右耳");
+  assert.equal(result.mapped[1].photo_右耳_正面, "/photos/right.jpg");
+});
+
 test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {
   const rows = [
     { name: "张三", ear_side: "左耳", prototype: "样机A" }

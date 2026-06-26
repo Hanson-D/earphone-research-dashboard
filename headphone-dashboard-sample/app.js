@@ -1039,7 +1039,8 @@ function buildPhotoMapping() {
   const photoViews = Core.viewDescriptors(state.mappingRows, {
     mode,
     earField,
-    views
+    views,
+    files: state.mappingFiles
   });
   photoFields.forEach((field, index) => {
     const label = photoViews[index]?.label || views[index] || field;
