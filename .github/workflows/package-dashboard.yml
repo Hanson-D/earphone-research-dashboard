@@ -150,24 +150,32 @@ jobs:
         with:
           name: earphone-dashboard-local
           path: dist/earphone-dashboard-local.zip
+          if-no-files-found: error
+          overwrite: true
 
       - name: Upload server package artifact
         uses: actions/upload-artifact@v4
         with:
           name: earphone-dashboard-server
           path: dist/earphone-dashboard-server.zip
+          if-no-files-found: error
+          overwrite: true
 
       - name: Upload launcher package artifact
         uses: actions/upload-artifact@v4
         with:
           name: earphone-dashboard-launcher
           path: dist/earphone-dashboard-launcher.zip
+          if-no-files-found: error
+          overwrite: true
 
       - name: Upload shared release package artifact
         uses: actions/upload-artifact@v4
         with:
           name: earphone-dashboard-release
           path: dist/earphone-dashboard-release.zip
+          if-no-files-found: error
+          overwrite: true
 
       - name: Attach packages to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
