@@ -89,6 +89,33 @@ test("photo mapping follows user folders and supports per-cell overrides", () =>
   assert.equal(result.reviews[0].status, "missing");
 });
 
+test("sequence photo mapping can use ear side in the capture order", () => {
+  const rows = [
+    { user_id: "U001", ear_side: "左耳", device_name: "A" },
+    { user_id: "U001", ear_side: "右耳", device_name: "A" }
+  ];
+  const files = [
+    { user_folder: "U001", name: "1.jpg", absolute_path: "/photos/U001/1.jpg" },
+    { user_folder: "U001", name: "2.jpg", absolute_path: "/photos/U001/2.jpg" },
+    { user_folder: "U001", name: "3.jpg", absolute_path: "/photos/U001/3.jpg" },
+    { user_folder: "U001", name: "4.jpg", absolute_path: "/photos/U001/4.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    userField: "user_id",
+    earField: "ear_side",
+    views: ["左耳正面", "左耳侧面", "右耳正面", "右耳侧面"]
+  });
+  assert.equal(result.photoFields[0], "photo_左耳正面");
+  assert.equal(result.photoViews[0].label, "左耳 · 正面");
+  assert.equal(result.mapped[0].photo_左耳正面, "/photos/U001/1.jpg");
+  assert.equal(result.mapped[0].photo_左耳侧面, "/photos/U001/2.jpg");
+  assert.equal(result.mapped[0].photo_右耳正面, "");
+  assert.equal(result.mapped[1].photo_右耳正面, "/photos/U001/3.jpg");
+  assert.equal(result.mapped[1].photo_右耳侧面, "/photos/U001/4.jpg");
+  assert.equal(result.mapped[1].photo_左耳正面, "");
+  assert.equal(result.reviews[0].status, "ok");
+});
+
 test("photo mapping can match folder levels by name, ear side, prototype, and direction in any order", () => {
   const rows = [
     { name: "张三", ear_side: "左耳", prototype: "样机A" },
@@ -116,13 +143,40 @@ test("photo mapping can match folder levels by name, ear side, prototype, and di
     userField: "name",
     earField: "ear_side",
     deviceField: "prototype",
-    views: ["正面", "侧面"]
+    views: core.inferFolderViews(rows, files, {
+      userField: "name",
+      earField: "ear_side",
+      deviceField: "prototype"
+    })
   });
-  assert.equal(result.mapped[0].photo_正面, "/photos/左耳/正面/张三/样机A/001.jpg");
-  assert.equal(result.mapped[0].photo_侧面, "/photos/样机A/张三/侧面/左耳/002.jpg");
-  assert.equal(result.mapped[1].photo_正面, "/photos/张三/右耳/样机A/正面/003.jpg");
-  assert.equal(result.mapped[1].photo_侧面, "");
+  assert.equal(result.photoFields[0], "photo_左耳_正面");
+  assert.equal(result.photoViews[0].label, "左耳 · 正面");
+  assert.equal(result.photoViews[2].label, "右耳 · 正面");
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/左耳/正面/张三/样机A/001.jpg");
+  assert.equal(result.mapped[0].photo_左耳_侧面, "/photos/样机A/张三/侧面/左耳/002.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "");
+  assert.equal(result.mapped[1].photo_右耳_正面, "/photos/张三/右耳/样机A/正面/003.jpg");
+  assert.equal(result.mapped[1].photo_右耳_侧面, "");
   assert.equal(result.reviews[1].status, "missing");
+});
+
+test("folder mode infers view names from direction folders", () => {
+  const rows = [
+    { name: "张三", ear_side: "左耳", prototype: "样机A" },
+    { name: "张三", ear_side: "右耳", prototype: "样机A" }
+  ];
+  const files = [
+    { relative_path: "张三/左耳/样机A/view_正面/001.jpg", absolute_path: "/photos/1.jpg", name: "001.jpg" },
+    { relative_path: "张三/右耳/样机A/方向-侧面/002.jpg", absolute_path: "/photos/2.jpg", name: "002.jpg" }
+  ];
+  const inferred = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "ear_side",
+    deviceField: "prototype"
+  });
+  assert.equal(inferred.includes("正面"), true);
+  assert.equal(inferred.includes("侧面"), true);
+  assert.equal(inferred.length, 2);
 });
 
 test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {
@@ -143,7 +197,7 @@ test("folder matching adapts to decorated folder names instead of requiring exac
     deviceField: "prototype",
     views: ["正面"]
   });
-  assert.equal(result.mapped[0].photo_正面, "/photos/姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg");
   assert.equal(result.reviews[0].status, "ok");
 });
 

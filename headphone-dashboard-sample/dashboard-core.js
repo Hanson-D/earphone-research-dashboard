@@ -88,6 +88,36 @@
     });
   }
 
+  function uniqueValues(rows = [], field) {
+    return [...new Set(rows.map(row => row[field]).filter(Boolean))].sort((a, b) => naturalCompare(a, b));
+  }
+
+  function stripEarFromView(view, ear) {
+    return String(view || "")
+      .replace(new RegExp(String(ear).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "")
+      .replace(/^[\s_\-—–/\\()[\]{}【】（）:：,，.。]+|[\s_\-—–/\\()[\]{}【】（）:：,，.。]+$/g, "") ||
+      String(view || "");
+  }
+
+  function viewDescriptors(rows = [], options = {}) {
+    const { mode = "sequence", earField, views = [] } = options;
+    const ears = earField ? uniqueValues(rows, earField) : [];
+    const hasEarInViews = ears.length && views.some(view => ears.some(ear => folderPartMatches(view, ear)));
+    const items = mode === "folders" && ears.length && !hasEarInViews ?
+      ears.flatMap(ear => views.map(view => ({ ear, view, label: `${ear}_${view}` }))) :
+      views.map(view => {
+        const ear = ears.find(item => folderPartMatches(view, item)) || "";
+        const cleanView = ear ? stripEarFromView(view, ear) : view;
+        return { ear, view: cleanView, label: view };
+      });
+    const fields = photoFieldNames(items.map(item => item.label));
+    return items.map((item, index) => ({
+      ...item,
+      field: fields[index],
+      label: item.ear ? `${item.ear} · ${item.view}` : item.view
+    }));
+  }
+
   function pathParts(file) {
     return String(file.relative_path || file.path || file.absolute_path || "")
       .split(/[\\/]/)
@@ -112,6 +142,39 @@
     return parts.some(part => folderPartMatches(part, value));
   }
 
+  function cleanFolderViewName(part) {
+    return String(part || "")
+      .trim()
+      .replace(/^(view|angle|direction|方向|视角)[\s_\-—–:：]+/i, "")
+      .trim();
+  }
+
+  function inferFolderViews(rows = [], files = [], options = {}) {
+    const { userField, earField, deviceField } = options;
+    const views = [];
+    const seen = new Set();
+    files.forEach(file => {
+      const parts = pathParts(file);
+      rows.forEach(row => {
+        if (!partsInclude(parts, row[userField])) return;
+        if (earField && row[earField] && !partsInclude(parts, row[earField])) return;
+        if (deviceField && row[deviceField] && !partsInclude(parts, row[deviceField])) return;
+        parts.forEach(part => {
+          if (folderPartMatches(part, row[userField]) ||
+            (earField && folderPartMatches(part, row[earField])) ||
+            (deviceField && folderPartMatches(part, row[deviceField]))) return;
+          const view = cleanFolderViewName(part);
+          const key = normalizeToken(view);
+          if (view && key && !seen.has(key)) {
+            seen.add(key);
+            views.push(view);
+          }
+        });
+      });
+    });
+    return views.sort((a, b) => naturalCompare(a, b));
+  }
+
   function emptyPhotoRows(rows, photoFields) {
     const existingPhotoFields = Object.keys(rows[0] || {}).filter(field => /photo|image|picture|照片|图片/i.test(field));
     return rows.map(row => {
@@ -124,29 +187,34 @@
 
   function mapPhotosToRows(rows = [], files = [], options = {}) {
     const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {} } = options;
-    const photoFields = photoFieldNames(views);
+    const descriptors = viewDescriptors(rows, options);
+    const photoFields = descriptors.map(item => item.field);
+    const applicableDescriptors = row => descriptors.filter(item =>
+      !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
+    );
     if (mode === "folders") {
       const mapped = emptyPhotoRows(rows, photoFields);
       const reviews = [];
       rows.forEach((row, rowIndex) => {
         const matchedFiles = [];
-        views.forEach((view, viewIndex) => {
-          const field = photoFields[viewIndex];
-          const overrideKey = `${rowIndex}::${field}`;
+        const applicable = applicableDescriptors(row);
+        applicable.forEach(item => {
+          const overrideKey = `${rowIndex}::${item.field}`;
           const file = files
             .slice()
             .sort((a, b) => naturalCompare(a.relative_path || a.name, b.relative_path || b.name))
             .find(candidate => {
               const parts = pathParts(candidate);
               return partsInclude(parts, row[userField]) &&
-                (!earField || partsInclude(parts, row[earField])) &&
+                (!item.ear || partsInclude(parts, item.ear)) &&
+                (!earField || !row[earField] || partsInclude(parts, row[earField])) &&
                 (!deviceField || partsInclude(parts, row[deviceField])) &&
-                partsInclude(parts, view);
+                partsInclude(parts, item.view);
             });
           if (file) matchedFiles.push(file);
-          mapped[rowIndex][field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+          mapped[rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
         });
-        const expected = views.length;
+        const expected = applicable.length;
         reviews.push({
           user: row[userField] || `第 ${rowIndex + 1} 行`,
           entries: [{ row, rowIndex }],
@@ -155,7 +223,7 @@
           status: matchedFiles.length === expected ? "ok" : matchedFiles.length < expected ? "missing" : "extra"
         });
       });
-      return { mapped, reviews, photoFields };
+      return { mapped, reviews, photoFields, photoViews: descriptors };
     }
 
     const filesByUser = new Map();
@@ -177,15 +245,16 @@
 
     rowsByUser.forEach((entries, user) => {
       const userFiles = filesByUser.get(user) || [];
-      const expected = entries.length * views.length;
-      entries.forEach((entry, deviceIndex) => {
-        views.forEach((view, viewIndex) => {
-          const field = photoFields[viewIndex];
-          const overrideKey = `${entry.rowIndex}::${field}`;
-          const file = userFiles[deviceIndex * views.length + viewIndex];
-          mapped[entry.rowIndex][field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+      let cursor = 0;
+      entries.forEach(entry => {
+        applicableDescriptors(entry.row).forEach(item => {
+          const overrideKey = `${entry.rowIndex}::${item.field}`;
+          const file = userFiles[cursor];
+          mapped[entry.rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+          cursor += 1;
         });
       });
+      const expected = entries.reduce((sum, entry) => sum + applicableDescriptors(entry.row).length, 0);
       reviews.push({
         user,
         entries,
@@ -195,7 +264,7 @@
       });
     });
 
-    return { mapped, reviews, photoFields };
+    return { mapped, reviews, photoFields, photoViews: descriptors };
   }
 
   function validateRows(rows = [], options = {}) {
@@ -329,6 +398,8 @@
     resolveFieldRoles,
     naturalCompare,
     photoFieldNames,
+    viewDescriptors,
+    inferFolderViews,
     mapPhotosToRows,
     validateRows,
     sanitizeDashboardConfig,

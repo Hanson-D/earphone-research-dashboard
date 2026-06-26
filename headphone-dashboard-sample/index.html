@@ -72,10 +72,10 @@
           <label id="mappingEarFieldWrap">左右耳字段<select id="mappingEarField"></select></label>
           <label>样机/设备字段<select id="mappingDeviceField"></select></label>
         </div>
-        <label class="mapping-input">
+        <label id="viewNamesInputWrap" class="mapping-input">
           <span>3. 按拍摄顺序填写视角名称</span>
-          <input id="viewNamesInput" type="text" value="正面,侧面,后侧" placeholder="例如：正面,侧面,后侧">
-          <small>使用逗号分隔。每个设备必须拍摄相同数量、相同顺序的视角。</small>
+          <input id="viewNamesInput" type="text" value="正面,侧面,后侧" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面">
+          <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
         </label>
         <button id="runMappingButton" class="primary-button">生成照片映射</button>
 
@@ -251,7 +251,7 @@
     <div class="empty-state">当前筛选条件下没有数据。</div>
   </template>
 
-  <script src="dashboard-core.js?v=20260626-ear-side-views"></script>
-  <script src="app.js?v=20260626-ear-side-views"></script>
+  <script src="dashboard-core.js?v=20260626-ear-side-mapping"></script>
+  <script src="app.js?v=20260626-ear-side-mapping"></script>
 </body>
 </html>

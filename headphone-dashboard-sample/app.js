@@ -115,7 +115,7 @@ const els = Object.fromEntries([
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderInput", "photoFolderInputWrap",
-  "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "runMappingButton",
+  "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap", "runMappingButton",
   "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus"
@@ -635,6 +635,18 @@ function photoViewOptions(rows = state.rows) {
   if (!state.photoFields.length) return [];
   const earField = earSideField();
   const ears = earField ? [...new Set(rows.map(row => row[earField]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN")) : [];
+  const fieldHasEar = field => {
+    const label = state.viewLabels[field] || field;
+    return ears.some(ear => label.includes(ear) || field.includes(ear));
+  };
+  if (ears.length && state.photoFields.some(fieldHasEar)) {
+    return state.photoFields.map(field => ({
+      value: field,
+      field,
+      ear: "",
+      label: state.viewLabels[field] || field
+    }));
+  }
   if (!ears.length) {
     return state.photoFields.map(field => ({
       value: field,
@@ -937,7 +949,9 @@ function initializeMappingFields() {
 
 function renderMappingMode() {
   const folderMode = els.mappingMode.value === "folders";
-  els.mappingEarFieldWrap.hidden = !folderMode;
+  els.mappingEarFieldWrap.hidden = false;
+  els.viewNamesInputWrap.hidden = folderMode;
+  els.viewNamesInput.placeholder = folderMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
 }
 
 function renderPhotoSourceMode() {
@@ -997,29 +1011,40 @@ async function uploadServerPhotoFiles() {
 }
 
 function buildPhotoMapping() {
-  const views = mappingViews();
   const mode = els.mappingMode.value;
   const userField = els.mappingUserField.value;
   const earField = els.mappingEarField.value;
   const deviceField = els.mappingDeviceField.value;
+  const views = mode === "folders" ? Core.inferFolderViews(state.mappingRows, state.mappingFiles, {
+    userField,
+    earField,
+    deviceField
+  }) : mappingViews();
   if (!state.mappingRows.length) throw new Error("请先选择 CSV。");
-  if (!views.length) throw new Error("请至少填写一个视角名称。");
+  if (!views.length) throw new Error(mode === "folders" ? "没有从照片目录中识别到方向/视角文件夹。" : "请至少填写一个视角名称。");
   if (!userField || !deviceField) throw new Error("请选择用户字段和设备字段。");
   if (mode === "folders" && !earField) throw new Error("子文件夹逻辑需要选择左右耳字段。");
+  if (mode === "folders") els.viewNamesInput.value = views.join(",");
 
   const { mapped, reviews, photoFields } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
     mode,
     userField,
-    earField: mode === "folders" ? earField : "",
+    earField,
     deviceField,
     views,
     overrides: state.photoMappingOverrides
   });
   state.mappedRows = mapped;
   state.mappingViews = views;
+  const photoViews = Core.viewDescriptors(state.mappingRows, {
+    mode,
+    earField,
+    views
+  });
   photoFields.forEach((field, index) => {
-    state.viewLabels[field] = views[index];
-    fieldLabels[field] = views[index];
+    const label = photoViews[index]?.label || views[index] || field;
+    state.viewLabels[field] = label;
+    fieldLabels[field] = label;
   });
   renderMappingPreview(reviews, userField, deviceField, photoFields);
   els.applyMappingButton.disabled = false;
