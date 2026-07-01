@@ -21,6 +21,7 @@ test("full axis only forces 0-10 for score-like metrics", () => {
 
 test("pressure fields support English suffix and Chinese column names", () => {
   assert.equal(core.isPressureField("tragus_pressure_score"), true);
+  assert.equal(core.isPressureField("tragus_pressure_relief_score"), true);
   assert.equal(core.isPressureField("耳屏挤压"), true);
   assert.equal(core.isPressureField("comfort_score"), false);
 });

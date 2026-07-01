@@ -53,7 +53,7 @@
   }
 
   function isPressureField(field) {
-    return /pressure_score$|挤压/i.test(field);
+    return /pressure_(?:score|relief_score)$|挤压/i.test(field);
   }
 
   function inferFieldRole(field, rows = []) {
