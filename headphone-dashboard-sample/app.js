@@ -30,9 +30,9 @@ const fieldLabels = {
   satisfaction_score: "满意度",
   comfort_score: "舒适性",
   stability_score: "稳定性",
-  tragus_pressure_score: "耳屏挤压",
-  antitragus_pressure_score: "对耳屏挤压",
-  helix_pressure_score: "耳轮挤压",
+  tragus_pressure_relief_score: "耳屏",
+  antitragus_pressure_relief_score: "对耳屏",
+  helix_pressure_relief_score: "耳轮",
   original_sound_score: "原声评分",
   comments: "备注",
   photo_path: "照片"
@@ -412,7 +412,7 @@ function renderFieldRoleConfig() {
     user: "组间变量",
     dimension: "透视维度",
     metric: "评分/数值指标",
-    pressure: "挤压分数",
+    pressure: "挤压程度",
     photo: "照片视角",
     ignore: "忽略"
   };
@@ -531,8 +531,8 @@ function buildSchema() {
   }));
   dynamicColumns.splice(Math.max(0, dynamicColumns.findIndex(column => /fit_result|original_sound/i.test(column.id))), 0, {
     id: "__pressure_summary",
-    label: "挤压",
-    width: 190,
+    label: "挤压程度",
+    width: 210,
     visible: true,
     userLevel: false,
     photo: false,
@@ -786,7 +786,27 @@ function scoreClass(value) {
 }
 
 function pressureClass(value) {
-  return Number(value) >= 5 ? "hot" : "";
+  const score = Number(value);
+  if (!Number.isFinite(score)) return "";
+  if (score >= 8 && score <= 9) return "clear";
+  if (score >= 6 && score <= 7) return "warn";
+  if (score >= 0 && score <= 5) return `red-${Math.round(score)}`;
+  return "";
+}
+
+function pressureTitle(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score)) return "挤压程度：未填写";
+  if (score === 10) return "挤压程度：10=无挤压";
+  if (score >= 8) return "挤压程度：8-9=轻微或基本无挤压";
+  if (score >= 6) return "挤压程度：6-7=轻中度挤压";
+  return "挤压程度：0-5=明显挤压，0 最严重";
+}
+
+function pressureTag(label, value) {
+  const score = Number(value);
+  if (!Number.isFinite(score) || score === 10) return "";
+  return `<span class="pressure-tag ${pressureClass(score)}" title="${pressureTitle(score)}">${label}：${score}分</span>`;
 }
 
 function groupByUser(rows) {
@@ -807,7 +827,7 @@ function detailCell(column, row) {
     const pressureFields = state.headers.filter(field => fieldRole(field) === "pressure");
     return `<td><div class="pressure-tags">${pressureFields.map(item => {
       const score = row[item];
-      return score === "" ? "" : `<span class="pressure-tag ${pressureClass(score)}">${fieldLabels[item] || item}：${score}</span>`;
+      return pressureTag(fieldLabels[item] || item, score);
     }).join("") || "—"}</div></td>`;
   }
   if (field === "__user_profile") {
@@ -819,7 +839,7 @@ function detailCell(column, row) {
     ).join("") || "—"}</div></td>`;
   }
   if (fieldRole(field) === "pressure") {
-    return `<td class="${classes}"><span class="pressure ${pressureClass(value)}">${value || "—"}</span></td>`;
+    return `<td class="${classes}"><span class="pressure ${pressureClass(value)}" title="${pressureTitle(value)}">${value === "" ? "—" : `${value}分`}</span></td>`;
   }
   if (/score$|rating$|satisfaction|comfort|stability/i.test(field) && isNumericField(field)) {
     return `<td class="${classes}"><span class="score ${scoreClass(value)}">${value || "—"}</span></td>`;

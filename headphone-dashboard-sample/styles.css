@@ -377,11 +377,25 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .score { font-family: Georgia, serif; font-size: 18px; font-weight: 700; }
 .score.high { color: var(--accent); }
 .score.low { color: var(--accent-dark); }
-.pressure { display: inline-block; min-width: 28px; padding: 4px; color: #fff; background: #b97a7d; text-align: center; }
-.pressure.hot { background: var(--accent-dark); }
+.pressure { display: inline-block; min-width: 28px; padding: 4px; color: var(--accent-dark); background: var(--accent-soft); text-align: center; }
+.pressure.clear { color: #2f5d46; background: #e7efe7; }
+.pressure.warn { color: #6a4b00; background: #fff1b8; }
+.pressure.red-5 { color: #7f3d3f; background: #f7d4d5; }
+.pressure.red-4 { color: #7b3336; background: #efbbbd; }
+.pressure.red-3 { color: #fff; background: #de8f92; }
+.pressure.red-2 { color: #fff; background: #c86a6e; }
+.pressure.red-1 { color: #fff; background: #aa474c; }
+.pressure.red-0 { color: #fff; background: var(--accent-dark); }
 .pressure-tags { display: flex; flex-wrap: wrap; gap: 3px; }
 .pressure-tag { display: inline-block; padding: 3px 5px; color: var(--accent-dark); background: var(--accent-soft); border: 1px solid #dfbabb; border-radius: 2px; font-size: 8px; font-weight: 800; white-space: nowrap; }
-.pressure-tag.hot { color: #fff; background: var(--accent-dark); border-color: var(--accent-dark); }
+.pressure-tag.clear { color: #2f5d46; background: #e7efe7; border-color: #b9d2bf; }
+.pressure-tag.warn { color: #6a4b00; background: #fff1b8; border-color: #e2c96f; }
+.pressure-tag.red-5 { color: #7f3d3f; background: #f7d4d5; border-color: #e9aeb0; }
+.pressure-tag.red-4 { color: #7b3336; background: #efbbbd; border-color: #df9094; }
+.pressure-tag.red-3 { color: #fff; background: #de8f92; border-color: #de8f92; }
+.pressure-tag.red-2 { color: #fff; background: #c86a6e; border-color: #c86a6e; }
+.pressure-tag.red-1 { color: #fff; background: #aa474c; border-color: #aa474c; }
+.pressure-tag.red-0 { color: #fff; background: var(--accent-dark); border-color: var(--accent-dark); }
 .profile-tags { display: flex; flex-wrap: wrap; gap: 3px 7px; }
 .profile-tag { display: inline-flex; gap: 3px; color: var(--ink); font-size: 9px; white-space: nowrap; }
 .profile-tag b { color: var(--muted); font-size: 8px; font-weight: 700; }
