@@ -155,10 +155,10 @@ test("photo mapping can match folder levels by name, ear side, prototype, and di
   assert.equal(result.photoViews[2].label, "右耳 · 正面");
   assert.equal(result.mapped[0].photo_左耳_正面, "/photos/左耳/正面/张三/样机A/001.jpg");
   assert.equal(result.mapped[0].photo_左耳_侧面, "/photos/样机A/张三/侧面/左耳/002.jpg");
-  assert.equal(result.mapped[0].photo_右耳_正面, "");
-  assert.equal(result.mapped[1].photo_右耳_正面, "/photos/张三/右耳/样机A/正面/003.jpg");
-  assert.equal(result.mapped[1].photo_右耳_侧面, "");
-  assert.equal(result.reviews[1].status, "missing");
+  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/张三/右耳/样机A/正面/003.jpg");
+  assert.equal(result.mapped[0].photo_右耳_侧面, "");
+  assert.equal(result.mapped.length, 1);
+  assert.equal(result.reviews[0].status, "missing");
 });
 
 test("folder mode infers view names from direction folders", () => {
@@ -204,11 +204,9 @@ test("folder mode derives ear sides from photo folders even when csv has one ear
   assert.deepEqual(core.folderEarValues(rows, "ear_side", files), ["左耳", "右耳"]);
   assert.equal(result.photoFields.includes("photo_左耳_正面"), true);
   assert.equal(result.photoFields.includes("photo_右耳_正面"), true);
-  assert.equal(result.mapped.length, 2);
-  assert.equal(result.mapped[0].ear_side, "左耳");
+  assert.equal(result.mapped.length, 1);
   assert.equal(result.mapped[0].photo_左耳_正面, "/photos/left.jpg");
-  assert.equal(result.mapped[1].ear_side, "右耳");
-  assert.equal(result.mapped[1].photo_右耳_正面, "/photos/right.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/right.jpg");
 });
 
 test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {

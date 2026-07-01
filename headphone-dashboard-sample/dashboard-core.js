@@ -252,16 +252,15 @@
           (!ear || !folderPartMatches(part, ear)) &&
           (!view || !folderPartMatches(part, view)));
       const device = knownDevice || residual[residual.length - 1] || "";
-      if (!user || !device || (earField && !ear)) return;
-      const key = [user, ear, device].join("|||");
+      if (!user || !device) return;
+      const key = [user, device].join("|||");
       if (seen.has(key)) return;
       seen.add(key);
-      combos.push({ user, ear, device });
+      combos.push({ user, device });
     });
 
     return combos.sort((a, b) =>
       naturalCompare(a.user, b.user) ||
-      earSortKey(a.ear) - earSortKey(b.ear) ||
       naturalCompare(a.device, b.device)
     );
   }
@@ -280,26 +279,24 @@
 
     const existingByCombo = new Map();
     rows.forEach(row => {
-      const key = [row[userField] || "", earField ? row[earField] || "" : "", row[deviceField] || ""].join("|||");
+      const key = [row[userField] || "", row[deviceField] || ""].join("|||");
       if (!existingByCombo.has(key)) existingByCombo.set(key, row);
     });
 
     const expanded = combos.map(combo => {
-      const key = [combo.user, earField ? combo.ear : "", combo.device].join("|||");
+      const key = [combo.user, combo.device].join("|||");
       const source = existingByCombo.get(key) || templatesByUser.get(combo.user) || {};
       return {
         ...source,
         [userField]: combo.user,
-        ...(earField ? { [earField]: combo.ear } : {}),
         [deviceField]: combo.device
       };
     });
 
     rows.forEach(row => {
-      const key = [row[userField] || "", earField ? row[earField] || "" : "", row[deviceField] || ""].join("|||");
+      const key = [row[userField] || "", row[deviceField] || ""].join("|||");
       const hasPhotoCombo = combos.some(combo =>
         combo.user === row[userField] &&
-        (!earField || combo.ear === row[earField]) &&
         combo.device === row[deviceField]
       );
       if (!hasPhotoCombo && !existingByCombo.has(key)) expanded.push({ ...row });
@@ -314,7 +311,7 @@
     const descriptors = viewDescriptors(expandedRows, { ...options, files });
     const photoFields = descriptors.map(item => item.field);
     const applicableDescriptors = row => descriptors.filter(item =>
-      !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
+      mode === "folders" || !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
     );
     if (mode === "folders") {
       const mapped = emptyPhotoRows(expandedRows, photoFields);
@@ -331,7 +328,7 @@
               const parts = pathParts(candidate);
               return partsInclude(parts, row[userField]) &&
                 (!item.ear || partsInclude(parts, item.ear)) &&
-                (!earField || !row[earField] || partsInclude(parts, row[earField])) &&
+                (mode === "folders" || !earField || !row[earField] || partsInclude(parts, row[earField])) &&
                 (!deviceField || partsInclude(parts, row[deviceField])) &&
                 partsInclude(parts, item.view);
             });
