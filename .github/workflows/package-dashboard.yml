@@ -149,7 +149,18 @@ jobs:
           zip -r earphone-dashboard-launcher.zip EarphoneDashboardLauncher
           zip -r earphone-dashboard-release.zip EarphoneDashboardRelease
 
+      - name: Attach packages to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/earphone-dashboard-local.zip
+            dist/earphone-dashboard-server.zip
+            dist/earphone-dashboard-launcher.zip
+            dist/earphone-dashboard-release.zip
+
       - name: Upload package artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
           name: earphone-dashboard-packages
@@ -160,13 +171,4 @@ jobs:
             dist/earphone-dashboard-release.zip
           if-no-files-found: error
           overwrite: true
-
-      - name: Attach packages to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/earphone-dashboard-local.zip
-            dist/earphone-dashboard-server.zip
-            dist/earphone-dashboard-launcher.zip
-            dist/earphone-dashboard-release.zip
+          retention-days: 1
