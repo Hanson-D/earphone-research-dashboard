@@ -107,6 +107,8 @@ const state = {
   projectDirty: false
 };
 
+let draggedColumnId = "";
+
 const els = Object.fromEntries([
   "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
   "metricSelect", "yAxisMode", "showErrorBars", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
@@ -390,15 +392,26 @@ function applyLayoutVariables() {
 }
 
 function renderColumnConfig() {
-  els.columnConfigList.innerHTML = state.layout.columns.map((column, index) => `
-    <div class="column-config-row" data-column-id="${column.id}">
+  els.columnConfigList.innerHTML = state.layout.columns.map(column => `
+    <div class="column-config-row" data-column-id="${column.id}" draggable="true">
+      <span class="column-drag-handle" aria-label="拖拽移动${column.label}" title="拖拽排序">⋮⋮</span>
       <input class="column-visible" type="checkbox" aria-label="显示${column.label}" ${column.visible ? "checked" : ""}>
       <label>${column.label}${column.userLevel ? " · 用户级" : ""}</label>
       <input class="column-width" type="number" min="60" max="500" step="10" value="${column.width}" aria-label="${column.label}列宽">
-      <button class="column-up" type="button" aria-label="${column.label}上移" ${index === 0 ? "disabled" : ""}>↑</button>
-      <button class="column-down" type="button" aria-label="${column.label}下移" ${index === state.layout.columns.length - 1 ? "disabled" : ""}>↓</button>
     </div>
   `).join("");
+}
+
+function moveColumn(draggedId, targetId, placeAfter = false) {
+  if (!draggedId || !targetId || draggedId === targetId) return false;
+  const fromIndex = state.layout.columns.findIndex(column => column.id === draggedId);
+  const toIndex = state.layout.columns.findIndex(column => column.id === targetId);
+  if (fromIndex < 0 || toIndex < 0) return false;
+  const [column] = state.layout.columns.splice(fromIndex, 1);
+  const targetIndex = state.layout.columns.findIndex(item => item.id === targetId);
+  const adjustedIndex = placeAfter ? targetIndex + 1 : targetIndex;
+  state.layout.columns.splice(adjustedIndex, 0, column);
+  return true;
 }
 
 function fieldRole(field) {
@@ -1323,14 +1336,43 @@ function bindEvents() {
     column.width = Math.max(60, Math.min(500, Number(event.target.value) || column.width));
     saveLayout(); render(); markProjectDirty();
   });
-  els.columnConfigList.addEventListener("click", event => {
+  els.columnConfigList.addEventListener("dragstart", event => {
     const row = event.target.closest(".column-config-row");
-    if (!row || !event.target.matches("button")) return;
-    const index = state.layout.columns.findIndex(item => item.id === row.dataset.columnId);
-    const targetIndex = event.target.classList.contains("column-up") ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= state.layout.columns.length) return;
-    [state.layout.columns[index], state.layout.columns[targetIndex]] = [state.layout.columns[targetIndex], state.layout.columns[index]];
-    saveLayout(); renderColumnConfig(); render(); markProjectDirty();
+    if (!row) return;
+    draggedColumnId = row.dataset.columnId;
+    row.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedColumnId);
+  });
+  els.columnConfigList.addEventListener("dragover", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || !draggedColumnId || row.dataset.columnId === draggedColumnId) return;
+    event.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const placeAfter = event.clientY > rect.top + rect.height / 2;
+    row.classList.toggle("drop-before", !placeAfter);
+    row.classList.toggle("drop-after", placeAfter);
+  });
+  els.columnConfigList.addEventListener("dragleave", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || row.contains(event.relatedTarget)) return;
+    row.classList.remove("drop-before", "drop-after");
+  });
+  els.columnConfigList.addEventListener("drop", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || !draggedColumnId) return;
+    event.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const placeAfter = event.clientY > rect.top + rect.height / 2;
+    if (moveColumn(draggedColumnId, row.dataset.columnId, placeAfter)) {
+      saveLayout(); renderColumnConfig(); render(); markProjectDirty();
+    }
+  });
+  els.columnConfigList.addEventListener("dragend", () => {
+    draggedColumnId = "";
+    els.columnConfigList.querySelectorAll(".column-config-row").forEach(row =>
+      row.classList.remove("dragging", "drop-before", "drop-after")
+    );
   });
   els.resetLayoutButton.addEventListener("click", () => {
     state.layout = defaultLayout();
