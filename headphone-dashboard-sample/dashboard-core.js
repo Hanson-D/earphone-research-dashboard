@@ -143,7 +143,7 @@
 
   function viewDescriptors(rows = [], options = {}) {
     const { mode = "sequence", earField, views = [], files = [] } = options;
-    const ears = earField ? folderEarValues(rows, earField, files) : [];
+    const ears = mode === "folders" ? folderEarValues(rows, earField, files) : (earField ? folderEarValues(rows, earField, files) : []);
     const hasEarInViews = ears.length && views.some(view => ears.some(ear => folderPartMatches(view, ear)));
     const items = mode === "folders" && ears.length && !hasEarInViews ?
       ears.flatMap(ear => views.map(view => ({ ear, view, label: `${ear}_${view}` }))) :
@@ -188,6 +188,12 @@
     return parts.find(part => folderPartMatches(part, value)) || "";
   }
 
+  function residualFolderParts(parts, excluded = []) {
+    return parts
+      .map(part => cleanFolderViewName(part))
+      .filter(part => part && !excluded.some(value => value && folderPartMatches(part, value)));
+  }
+
   function cleanFolderViewName(part) {
     return String(part || "")
       .trim()
@@ -197,7 +203,7 @@
 
   function inferFolderViews(rows = [], files = [], options = {}) {
     const { userField, earField, deviceField } = options;
-    const ears = earField ? folderEarValues(rows, earField, files) : [];
+    const ears = folderEarValues(rows, earField, files);
     const views = [];
     const seen = new Set();
     files.forEach(file => {
@@ -205,11 +211,9 @@
       rows.forEach(row => {
         if (!partsInclude(parts, row[userField])) return;
         if (deviceField && row[deviceField] && !partsInclude(parts, row[deviceField])) return;
-        parts.forEach(part => {
-          if (folderPartMatches(part, row[userField]) ||
-            (earField && ears.some(ear => folderPartMatches(part, ear))) ||
-            (deviceField && folderPartMatches(part, row[deviceField]))) return;
-          const view = cleanFolderViewName(part);
+        const residual = residualFolderParts(parts, [row[userField], ...ears, deviceField ? row[deviceField] : ""]);
+        const candidates = deviceField ? residual : residual.slice(-1);
+        candidates.forEach(view => {
           const key = normalizeToken(view);
           if (view && key && !seen.has(key)) {
             seen.add(key);
@@ -233,7 +237,7 @@
 
   function inferFolderPhotoCombos(rows = [], files = [], options = {}) {
     const { userField, earField, deviceField, views = [] } = options;
-    const ears = earField ? folderEarValues(rows, earField, files) : [];
+    const ears = folderEarValues(rows, earField, files);
     const devices = uniqueValues(rows, deviceField);
     const users = uniqueValues(rows, userField);
     const combos = [];
@@ -244,13 +248,14 @@
       const user = users.find(value => partsInclude(parts, value)) || matchedPart(parts, file.user_folder);
       const ear = ears.find(value => partsInclude(parts, value)) || "";
       const view = views.find(value => partsInclude(parts, value)) || "";
+      if (!deviceField) {
+        if (!user || seen.has(user)) return;
+        seen.add(user);
+        combos.push({ user, device: "" });
+        return;
+      }
       const knownDevice = devices.find(value => partsInclude(parts, value));
-      const residual = parts
-        .map(part => cleanFolderViewName(part))
-        .filter(part => part &&
-          (!user || !folderPartMatches(part, user)) &&
-          (!ear || !folderPartMatches(part, ear)) &&
-          (!view || !folderPartMatches(part, view)));
+      const residual = residualFolderParts(parts, [user, ear, view]);
       const device = knownDevice || residual[residual.length - 1] || "";
       if (!user || !device) return;
       const key = [user, device].join("|||");
@@ -279,25 +284,26 @@
 
     const existingByCombo = new Map();
     rows.forEach(row => {
-      const key = [row[userField] || "", row[deviceField] || ""].join("|||");
+      const key = deviceField ? [row[userField] || "", row[deviceField] || ""].join("|||") : String(row[userField] || "");
       if (!existingByCombo.has(key)) existingByCombo.set(key, row);
     });
 
     const expanded = combos.map(combo => {
-      const key = [combo.user, combo.device].join("|||");
+      const key = deviceField ? [combo.user, combo.device].join("|||") : combo.user;
       const source = existingByCombo.get(key) || templatesByUser.get(combo.user) || {};
-      return {
+      const row = {
         ...source,
-        [userField]: combo.user,
-        [deviceField]: combo.device
+        [userField]: combo.user
       };
+      if (deviceField) row[deviceField] = combo.device;
+      return row;
     });
 
     rows.forEach(row => {
-      const key = [row[userField] || "", row[deviceField] || ""].join("|||");
+      const key = deviceField ? [row[userField] || "", row[deviceField] || ""].join("|||") : String(row[userField] || "");
       const hasPhotoCombo = combos.some(combo =>
         combo.user === row[userField] &&
-        combo.device === row[deviceField]
+        (!deviceField || combo.device === row[deviceField])
       );
       if (!hasPhotoCombo && !existingByCombo.has(key)) expanded.push({ ...row });
     });
@@ -305,11 +311,39 @@
     return expanded;
   }
 
+  function inferSingleDeviceSelections(rows = [], files = [], options = {}) {
+    const { userField, earField, deviceField, views = [] } = options;
+    if (deviceField) return new Map();
+    const users = uniqueValues(rows, userField);
+    const ears = folderEarValues(rows, earField, files);
+    const selections = new Map();
+    users.forEach(user => {
+      const seen = new Set();
+      const candidates = [];
+      files.forEach(file => {
+        const parts = pathParts(file);
+        if (!partsInclude(parts, user)) return;
+        const view = views.find(value => partsInclude(parts, value)) || "";
+        const residual = residualFolderParts(parts, [user, ...ears, view]);
+        const device = residual[0] || "";
+        const key = normalizeToken(device);
+        if (!device || !key || seen.has(key)) return;
+        seen.add(key);
+        candidates.push(device);
+      });
+      candidates.sort((a, b) => naturalCompare(a, b));
+      if (candidates.length) selections.set(user, { selected: candidates[0], candidates });
+    });
+    return selections;
+  }
+
   function mapPhotosToRows(rows = [], files = [], options = {}) {
     const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {} } = options;
     const expandedRows = expandRowsForPhotoCombos(rows, files, options);
     const descriptors = viewDescriptors(expandedRows, { ...options, files });
     const photoFields = descriptors.map(item => item.field);
+    const singleDeviceSelections = mode === "folders" ? inferSingleDeviceSelections(expandedRows, files, { ...options, views }) : new Map();
+    const folderEars = mode === "folders" ? folderEarValues(expandedRows, earField, files) : [];
     const applicableDescriptors = row => descriptors.filter(item =>
       mode === "folders" || !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
     );
@@ -326,10 +360,13 @@
             .sort((a, b) => naturalCompare(a.relative_path || a.name, b.relative_path || b.name))
             .find(candidate => {
               const parts = pathParts(candidate);
+              const singleDevice = singleDeviceSelections.get(row[userField]);
+              const inferredDevice = singleDevice ? residualFolderParts(parts, [row[userField], ...folderEars, item.view])[0] || "" : "";
               return partsInclude(parts, row[userField]) &&
                 (!item.ear || partsInclude(parts, item.ear)) &&
                 (mode === "folders" || !earField || !row[earField] || partsInclude(parts, row[earField])) &&
                 (!deviceField || partsInclude(parts, row[deviceField])) &&
+                (!singleDevice || !inferredDevice || folderPartMatches(inferredDevice, singleDevice.selected)) &&
                 partsInclude(parts, item.view);
             });
           if (file) matchedFiles.push(file);
@@ -341,6 +378,8 @@
           entries: [{ row, rowIndex }],
           files: matchedFiles,
           expected,
+          notes: singleDeviceSelections.get(row[userField])?.candidates.length > 1 ?
+            [`未配置设备字段，已按自然排序使用第一套设备：${singleDeviceSelections.get(row[userField]).selected}`] : [],
           status: matchedFiles.length === expected ? "ok" : matchedFiles.length < expected ? "missing" : "extra"
         });
       });

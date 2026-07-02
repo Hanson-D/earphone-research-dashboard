@@ -277,6 +277,8 @@ select[multiple] { min-height: 84px; }
 .missing-photo { display: grid; place-items: center; color: var(--muted); background: #f2eeee; font-size: 9px; }
 .mapping-device-row figcaption { margin-top: 2px; color: var(--muted); font-size: 8px; }
 .mapping-photo-select { width: 68px; margin-top: 3px; padding: 2px; font-size: 8px; }
+.mapping-notes { margin-top: 8px; padding: 7px 9px; color: var(--accent-dark); background: #fff8ed; border-left: 3px solid #c9953b; font-size: 10px; line-height: 1.5; }
+.mapping-notes p { margin: 0; }
 
 .analysis-area { min-width: 0; }
 .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }

@@ -209,6 +209,60 @@ test("folder mode derives ear sides from photo folders even when csv has one ear
   assert.equal(result.mapped[0].photo_右耳_正面, "/photos/right.jpg");
 });
 
+test("folder mode keeps left and right photo columns when csv has no ear side field", () => {
+  const rows = [
+    { name: "张三", prototype: "样机A" }
+  ];
+  const files = [
+    { relative_path: "张三/左耳/样机A/正面/001.jpg", absolute_path: "/photos/left-front.jpg", name: "001.jpg" },
+    { relative_path: "张三/右耳/样机A/正面/002.jpg", absolute_path: "/photos/right-front.jpg", name: "002.jpg" }
+  ];
+  const views = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "",
+    deviceField: "prototype"
+  });
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype",
+    views
+  });
+  assert.deepEqual(views, ["正面"]);
+  assert.equal(result.mapped.length, 1);
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/left-front.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/right-front.jpg");
+});
+
+test("folder mode treats missing device field as single device and uses first device folder", () => {
+  const rows = [
+    { name: "张三", comfort_score: "8" }
+  ];
+  const files = [
+    { relative_path: "张三/样机B/左耳/正面/002.jpg", absolute_path: "/photos/device-b.jpg", name: "002.jpg" },
+    { relative_path: "张三/样机A/左耳/正面/001.jpg", absolute_path: "/photos/device-a.jpg", name: "001.jpg" },
+    { relative_path: "张三/样机A/右耳/正面/003.jpg", absolute_path: "/photos/device-a-right.jpg", name: "003.jpg" }
+  ];
+  const views = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "",
+    deviceField: ""
+  });
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "",
+    views
+  });
+  assert.deepEqual(views, ["正面"]);
+  assert.equal(result.mapped.length, 1);
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/device-a.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/device-a-right.jpg");
+  assert.equal(result.reviews[0].notes[0].includes("样机A"), true);
+});
+
 test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {
   const rows = [
     { name: "张三", ear_side: "左耳", prototype: "样机A" }

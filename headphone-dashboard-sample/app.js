@@ -970,13 +970,15 @@ function mappingViews() {
 function initializeMappingFields() {
   const headers = Object.keys(state.mappingRows[0] || {});
   fillSelect(els.mappingUserField, headers, false, fieldLabels);
-  fillSelect(els.mappingEarField, headers, false, fieldLabels);
-  fillSelect(els.mappingDeviceField, headers, false, fieldLabels);
+  fillSelect(els.mappingEarField, headers, true, fieldLabels);
+  fillSelect(els.mappingDeviceField, headers, true, fieldLabels);
+  if (els.mappingEarField.options[0]) els.mappingEarField.options[0].textContent = "不配置（照片仍识别左右耳）";
+  if (els.mappingDeviceField.options[0]) els.mappingDeviceField.options[0].textContent = "不配置（按单设备）";
   els.mappingUserField.value = headers.find(field => /^(name|姓名|user_name|用户姓名)$/i.test(field)) ||
     headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
-  els.mappingEarField.value = headers.find(field => /ear_side|左右耳|耳侧|left_right|side/i.test(field)) || headers[0] || "";
+  els.mappingEarField.value = headers.find(field => /ear_side|左右耳|耳侧|left_right|side/i.test(field)) || "";
   els.mappingDeviceField.value = headers.find(field => /^device_name$/i.test(field)) ||
-    headers.find(field => /prototype|sample|样机|device_name|device_id|condition|设备|条件/i.test(field)) || headers[1] || "";
+    headers.find(field => /prototype|sample|样机|device_name|device_id|condition|设备|条件/i.test(field)) || "";
   renderMappingMode();
 }
 
@@ -1055,8 +1057,7 @@ function buildPhotoMapping() {
   }) : mappingViews();
   if (!state.mappingRows.length) throw new Error("请先选择 CSV。");
   if (!views.length) throw new Error(mode === "folders" ? "没有从照片目录中识别到方向/视角文件夹。" : "请至少填写一个视角名称。");
-  if (!userField || !deviceField) throw new Error("请选择用户字段和设备字段。");
-  if (mode === "folders" && !earField) throw new Error("子文件夹逻辑需要选择左右耳字段。");
+  if (!userField) throw new Error("请选择用户字段。");
   if (mode === "folders") els.viewNamesInput.value = views.join(",");
 
   const { mapped, reviews, photoFields } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
@@ -1106,7 +1107,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
       </div>
       <div class="mapping-device-list">${review.entries.map(entry => `
         <div class="mapping-device-row">
-          <strong>${entry.row[deviceField]}</strong>
+          <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
           ${photoFields.map(field => {
             const path = state.mappedRows[entry.rowIndex][field];
             return `<figure>
@@ -1119,6 +1120,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
           }).join("")}
         </div>
       `).join("")}</div>
+      ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
     </article>
   `).join("");
 }

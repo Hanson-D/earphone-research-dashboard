@@ -65,12 +65,12 @@
             <option value="sequence">照片顺序逻辑</option>
             <option value="folders">子文件夹逻辑：姓名 / 左右耳 / 样机 / 方向</option>
           </select>
-          <small>子文件夹逻辑不要求层级顺序固定，但路径中必须包含这四类目录名。</small>
+          <small>子文件夹逻辑不要求层级顺序固定；用户和方向必须能识别，左右耳与设备可从目录识别或不配置。</small>
         </label>
         <div class="mapping-fields">
           <label>姓名/用户字段<select id="mappingUserField"></select></label>
-          <label id="mappingEarFieldWrap">左右耳字段<select id="mappingEarField"></select></label>
-          <label>样机/设备字段<select id="mappingDeviceField"></select></label>
+          <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
+          <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
         </div>
         <label id="viewNamesInputWrap" class="mapping-input">
           <span>3. 按拍摄顺序填写视角名称</span>
