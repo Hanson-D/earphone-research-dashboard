@@ -342,7 +342,7 @@
     );
     if (mode === "folders") {
       const mapped = emptyPhotoRows(expandedRows, photoFields);
-      const reviews = [];
+      const reviewMap = new Map();
       expandedRows.forEach((row, rowIndex) => {
         const matchedFiles = [];
         const applicable = applicableDescriptors(row);
@@ -366,16 +366,25 @@
           mapped[rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
         });
         const expected = applicable.length;
-        reviews.push({
-          user: row[userField] || `第 ${rowIndex + 1} 行`,
-          entries: [{ row, rowIndex }],
-          files: matchedFiles,
-          expected,
-          notes: singleDeviceSelections.get(row[userField])?.candidates.length > 1 ?
-            [`未配置设备字段，已按自然排序使用第一套设备：${singleDeviceSelections.get(row[userField]).selected}`] : [],
-          status: matchedFiles.length === expected ? "ok" : matchedFiles.length < expected ? "missing" : "extra"
-        });
+        const user = row[userField] || `第 ${rowIndex + 1} 行`;
+        const review = reviewMap.get(user) || {
+          user,
+          entries: [],
+          files: [],
+          expected: 0,
+          notes: [],
+          status: "ok"
+        };
+        review.entries.push({ row, rowIndex });
+        review.files.push(...matchedFiles);
+        review.expected += expected;
+        const note = singleDeviceSelections.get(row[userField])?.candidates.length > 1 ?
+          `未配置设备字段，已按自然排序使用第一套设备：${singleDeviceSelections.get(row[userField]).selected}` : "";
+        if (note && !review.notes.includes(note)) review.notes.push(note);
+        review.status = review.files.length === review.expected ? "ok" : review.files.length < review.expected ? "missing" : "extra";
+        reviewMap.set(user, review);
       });
+      const reviews = [...reviewMap.values()];
       return { mapped, reviews, photoFields, photoViews: descriptors };
     }
 
