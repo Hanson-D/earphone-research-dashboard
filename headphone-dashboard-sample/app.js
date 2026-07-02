@@ -107,6 +107,8 @@ const state = {
   projectDirty: false
 };
 
+let draggedColumnId = "";
+
 const els = Object.fromEntries([
   "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
   "metricSelect", "yAxisMode", "showErrorBars", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
@@ -390,15 +392,26 @@ function applyLayoutVariables() {
 }
 
 function renderColumnConfig() {
-  els.columnConfigList.innerHTML = state.layout.columns.map((column, index) => `
-    <div class="column-config-row" data-column-id="${column.id}">
+  els.columnConfigList.innerHTML = state.layout.columns.map(column => `
+    <div class="column-config-row" data-column-id="${column.id}" draggable="true">
+      <span class="column-drag-handle" aria-label="拖拽移动${column.label}" title="拖拽排序">⋮⋮</span>
       <input class="column-visible" type="checkbox" aria-label="显示${column.label}" ${column.visible ? "checked" : ""}>
       <label>${column.label}${column.userLevel ? " · 用户级" : ""}</label>
       <input class="column-width" type="number" min="60" max="500" step="10" value="${column.width}" aria-label="${column.label}列宽">
-      <button class="column-up" type="button" aria-label="${column.label}上移" ${index === 0 ? "disabled" : ""}>↑</button>
-      <button class="column-down" type="button" aria-label="${column.label}下移" ${index === state.layout.columns.length - 1 ? "disabled" : ""}>↓</button>
     </div>
   `).join("");
+}
+
+function moveColumn(draggedId, targetId, placeAfter = false) {
+  if (!draggedId || !targetId || draggedId === targetId) return false;
+  const fromIndex = state.layout.columns.findIndex(column => column.id === draggedId);
+  const toIndex = state.layout.columns.findIndex(column => column.id === targetId);
+  if (fromIndex < 0 || toIndex < 0) return false;
+  const [column] = state.layout.columns.splice(fromIndex, 1);
+  const targetIndex = state.layout.columns.findIndex(item => item.id === targetId);
+  const adjustedIndex = placeAfter ? targetIndex + 1 : targetIndex;
+  state.layout.columns.splice(adjustedIndex, 0, column);
+  return true;
 }
 
 function fieldRole(field) {
@@ -957,13 +970,15 @@ function mappingViews() {
 function initializeMappingFields() {
   const headers = Object.keys(state.mappingRows[0] || {});
   fillSelect(els.mappingUserField, headers, false, fieldLabels);
-  fillSelect(els.mappingEarField, headers, false, fieldLabels);
-  fillSelect(els.mappingDeviceField, headers, false, fieldLabels);
+  fillSelect(els.mappingEarField, headers, true, fieldLabels);
+  fillSelect(els.mappingDeviceField, headers, true, fieldLabels);
+  if (els.mappingEarField.options[0]) els.mappingEarField.options[0].textContent = "不配置（照片仍识别左右耳）";
+  if (els.mappingDeviceField.options[0]) els.mappingDeviceField.options[0].textContent = "不配置（按单设备）";
   els.mappingUserField.value = headers.find(field => /^(name|姓名|user_name|用户姓名)$/i.test(field)) ||
     headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
-  els.mappingEarField.value = headers.find(field => /ear_side|左右耳|耳侧|left_right|side/i.test(field)) || headers[0] || "";
+  els.mappingEarField.value = headers.find(field => /ear_side|左右耳|耳侧|left_right|side/i.test(field)) || "";
   els.mappingDeviceField.value = headers.find(field => /^device_name$/i.test(field)) ||
-    headers.find(field => /prototype|sample|样机|device_name|device_id|condition|设备|条件/i.test(field)) || headers[1] || "";
+    headers.find(field => /prototype|sample|样机|device_name|device_id|condition|设备|条件/i.test(field)) || "";
   renderMappingMode();
 }
 
@@ -1042,8 +1057,7 @@ function buildPhotoMapping() {
   }) : mappingViews();
   if (!state.mappingRows.length) throw new Error("请先选择 CSV。");
   if (!views.length) throw new Error(mode === "folders" ? "没有从照片目录中识别到方向/视角文件夹。" : "请至少填写一个视角名称。");
-  if (!userField || !deviceField) throw new Error("请选择用户字段和设备字段。");
-  if (mode === "folders" && !earField) throw new Error("子文件夹逻辑需要选择左右耳字段。");
+  if (!userField) throw new Error("请选择用户字段。");
   if (mode === "folders") els.viewNamesInput.value = views.join(",");
 
   const { mapped, reviews, photoFields } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
@@ -1093,7 +1107,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
       </div>
       <div class="mapping-device-list">${review.entries.map(entry => `
         <div class="mapping-device-row">
-          <strong>${entry.row[deviceField]}</strong>
+          <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
           ${photoFields.map(field => {
             const path = state.mappedRows[entry.rowIndex][field];
             return `<figure>
@@ -1106,6 +1120,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
           }).join("")}
         </div>
       `).join("")}</div>
+      ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
     </article>
   `).join("");
 }
@@ -1323,14 +1338,43 @@ function bindEvents() {
     column.width = Math.max(60, Math.min(500, Number(event.target.value) || column.width));
     saveLayout(); render(); markProjectDirty();
   });
-  els.columnConfigList.addEventListener("click", event => {
+  els.columnConfigList.addEventListener("dragstart", event => {
     const row = event.target.closest(".column-config-row");
-    if (!row || !event.target.matches("button")) return;
-    const index = state.layout.columns.findIndex(item => item.id === row.dataset.columnId);
-    const targetIndex = event.target.classList.contains("column-up") ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= state.layout.columns.length) return;
-    [state.layout.columns[index], state.layout.columns[targetIndex]] = [state.layout.columns[targetIndex], state.layout.columns[index]];
-    saveLayout(); renderColumnConfig(); render(); markProjectDirty();
+    if (!row) return;
+    draggedColumnId = row.dataset.columnId;
+    row.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedColumnId);
+  });
+  els.columnConfigList.addEventListener("dragover", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || !draggedColumnId || row.dataset.columnId === draggedColumnId) return;
+    event.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const placeAfter = event.clientY > rect.top + rect.height / 2;
+    row.classList.toggle("drop-before", !placeAfter);
+    row.classList.toggle("drop-after", placeAfter);
+  });
+  els.columnConfigList.addEventListener("dragleave", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || row.contains(event.relatedTarget)) return;
+    row.classList.remove("drop-before", "drop-after");
+  });
+  els.columnConfigList.addEventListener("drop", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || !draggedColumnId) return;
+    event.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const placeAfter = event.clientY > rect.top + rect.height / 2;
+    if (moveColumn(draggedColumnId, row.dataset.columnId, placeAfter)) {
+      saveLayout(); renderColumnConfig(); render(); markProjectDirty();
+    }
+  });
+  els.columnConfigList.addEventListener("dragend", () => {
+    draggedColumnId = "";
+    els.columnConfigList.querySelectorAll(".column-config-row").forEach(row =>
+      row.classList.remove("dragging", "drop-before", "drop-after")
+    );
   });
   els.resetLayoutButton.addEventListener("click", () => {
     state.layout = defaultLayout();
