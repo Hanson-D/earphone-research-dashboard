@@ -263,6 +263,69 @@ test("folder mode treats missing device field as single device and uses first de
   assert.equal(result.reviews[0].notes[0].includes("样机A"), true);
 });
 
+test("folder mode does not treat device folders as users and keeps csv rows without photos", () => {
+  const rows = [
+    { name: "用户1", prototype: "样机A", comfort_score: "8" },
+    { name: "用户1", prototype: "样机B", comfort_score: "7" },
+    { name: "用户2", prototype: "样机A", comfort_score: "6" },
+    { name: "用户2", prototype: "样机B", comfort_score: "5" },
+    { name: "用户3", prototype: "样机A", comfort_score: "9" },
+    { name: "用户3", prototype: "样机B", comfort_score: "8" },
+    { name: "用户4", prototype: "样机A", comfort_score: "7" },
+    { name: "用户4", prototype: "样机B", comfort_score: "6" }
+  ];
+  const files = [
+    { user_folder: "样机A", relative_path: "样机A/用户1/左耳/正面/001.jpg", absolute_path: "/photos/a-u1-left-front.jpg", name: "001.jpg" },
+    { user_folder: "样机A", relative_path: "样机A/用户1/右耳/正面/002.jpg", absolute_path: "/photos/a-u1-right-front.jpg", name: "002.jpg" },
+    { user_folder: "样机B", relative_path: "样机B/用户1/左耳/正面/003.jpg", absolute_path: "/photos/b-u1-left-front.jpg", name: "003.jpg" },
+    { user_folder: "样机B", relative_path: "样机B/用户1/右耳/正面/004.jpg", absolute_path: "/photos/b-u1-right-front.jpg", name: "004.jpg" },
+    { user_folder: "样机A", relative_path: "样机A/用户2/左耳/正面/005.jpg", absolute_path: "/photos/a-u2-left-front.jpg", name: "005.jpg" },
+    { user_folder: "样机A", relative_path: "样机A/用户2/右耳/正面/006.jpg", absolute_path: "/photos/a-u2-right-front.jpg", name: "006.jpg" },
+    { user_folder: "样机B", relative_path: "样机B/用户2/左耳/正面/007.jpg", absolute_path: "/photos/b-u2-left-front.jpg", name: "007.jpg" },
+    { user_folder: "样机B", relative_path: "样机B/用户2/右耳/正面/008.jpg", absolute_path: "/photos/b-u2-right-front.jpg", name: "008.jpg" }
+  ];
+  const views = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "",
+    deviceField: "prototype"
+  });
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype",
+    views
+  });
+
+  assert.deepEqual(views, ["正面"]);
+  assert.equal(result.mapped.length, 8);
+  assert.deepEqual([...new Set(result.mapped.map(row => row.name))], ["用户1", "用户2", "用户3", "用户4"]);
+  assert.equal(result.mapped.filter(row => row.name === "用户1").length, 2);
+  assert.equal(result.mapped.find(row => row.name === "用户1" && row.prototype === "样机A").photo_左耳_正面, "/photos/a-u1-left-front.jpg");
+  assert.equal(result.mapped.find(row => row.name === "用户2" && row.prototype === "样机B").photo_右耳_正面, "/photos/b-u2-right-front.jpg");
+  assert.equal(result.mapped.find(row => row.name === "用户3" && row.prototype === "样机A").photo_左耳_正面, "");
+  assert.equal(result.mapped.find(row => row.name === "用户4" && row.prototype === "样机B").photo_右耳_正面, "");
+});
+
+test("sequence mode keeps csv users even when no photos are present", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A" },
+    { user_id: "U002", device_name: "A" }
+  ];
+  const result = core.mapPhotosToRows(rows, [], {
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面", "侧面"]
+  });
+
+  assert.equal(result.mapped.length, 2);
+  assert.equal(result.mapped[0].user_id, "U001");
+  assert.equal(result.mapped[1].user_id, "U002");
+  assert.equal(result.mapped[0].photo_正面, "");
+  assert.equal(result.reviews.length, 2);
+  assert.equal(result.reviews[1].status, "missing");
+});
+
 test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {
   const rows = [
     { name: "张三", ear_side: "左耳", prototype: "样机A" }
