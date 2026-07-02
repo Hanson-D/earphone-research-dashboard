@@ -924,11 +924,11 @@ function renderDetails(rows, groups) {
       }).length : userRows.filter(row => row[column.id]).length
     ), 0)
   ));
-  visibleColumns.forEach(column => {
-    if (column.photo) column.width = Math.max(column.width, maxPhotos * 78);
-  });
-  const totalWeight = visibleColumns.reduce((sum, column) => sum + column.width, 0);
-  els.detailColgroup.innerHTML = visibleColumns.map(column => `<col style="width:${column.width / totalWeight * 100}%">`).join("");
+  const columnWidths = visibleColumns.map(column =>
+    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10)) : column.width
+  );
+  const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
+  els.detailColgroup.innerHTML = visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
   els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => {
     if (column.derived || column.photo) return `<th>${column.label}</th>`;
     const values = [...new Set(rows.map(row => row[column.id]).filter(value => value !== ""))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));

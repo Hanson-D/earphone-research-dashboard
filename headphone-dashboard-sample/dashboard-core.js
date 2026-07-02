@@ -245,7 +245,7 @@
 
     files.forEach(file => {
       const parts = pathParts(file);
-      const user = users.find(value => partsInclude(parts, value)) || matchedPart(parts, file.user_folder);
+      const user = users.find(value => partsInclude(parts, value)) || "";
       const ear = ears.find(value => partsInclude(parts, value)) || "";
       const view = views.find(value => partsInclude(parts, value)) || "";
       if (!deviceField) {
@@ -288,24 +288,17 @@
       if (!existingByCombo.has(key)) existingByCombo.set(key, row);
     });
 
-    const expanded = combos.map(combo => {
+    const expanded = [...existingByCombo.values()].map(row => ({ ...row }));
+    combos.forEach(combo => {
       const key = deviceField ? [combo.user, combo.device].join("|||") : combo.user;
-      const source = existingByCombo.get(key) || templatesByUser.get(combo.user) || {};
+      if (existingByCombo.has(key)) return;
+      const source = templatesByUser.get(combo.user) || {};
       const row = {
         ...source,
         [userField]: combo.user
       };
       if (deviceField) row[deviceField] = combo.device;
-      return row;
-    });
-
-    rows.forEach(row => {
-      const key = deviceField ? [row[userField] || "", row[deviceField] || ""].join("|||") : String(row[userField] || "");
-      const hasPhotoCombo = combos.some(combo =>
-        combo.user === row[userField] &&
-        (!deviceField || combo.device === row[deviceField])
-      );
-      if (!hasPhotoCombo && !existingByCombo.has(key)) expanded.push({ ...row });
+      expanded.push(row);
     });
 
     return expanded;
