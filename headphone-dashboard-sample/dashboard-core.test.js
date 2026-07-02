@@ -299,6 +299,8 @@ test("folder mode does not treat device folders as users and keeps csv rows with
 
   assert.deepEqual(views, ["正面"]);
   assert.equal(result.mapped.length, 8);
+  assert.equal(result.reviews.length, 4);
+  assert.equal(result.reviews.find(review => review.user === "用户1").entries.length, 2);
   assert.deepEqual([...new Set(result.mapped.map(row => row.name))], ["用户1", "用户2", "用户3", "用户4"]);
   assert.equal(result.mapped.filter(row => row.name === "用户1").length, 2);
   assert.equal(result.mapped.find(row => row.name === "用户1" && row.prototype === "样机A").photo_左耳_正面, "/photos/a-u1-left-front.jpg");
