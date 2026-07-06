@@ -134,6 +134,19 @@
     return ears.sort((a, b) => earSortKey(a) - earSortKey(b) || naturalCompare(a, b));
   }
 
+  function combinedEarValues(rows = [], earField, files = [], expectedEars = []) {
+    const ears = folderEarValues(rows, earField, files);
+    const seen = new Set(ears.map(ear => normalizeToken(ear)));
+    expectedEars.forEach(value => {
+      const label = inferEarLabel(value) || String(value || "").trim();
+      const key = normalizeToken(label);
+      if (!label || !key || seen.has(key)) return;
+      seen.add(key);
+      ears.push(label);
+    });
+    return ears.sort((a, b) => earSortKey(a) - earSortKey(b) || naturalCompare(a, b));
+  }
+
   function stripEarFromView(view, ear) {
     return String(view || "")
       .replace(new RegExp(String(ear).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "")
@@ -142,8 +155,8 @@
   }
 
   function viewDescriptors(rows = [], options = {}) {
-    const { mode = "sequence", earField, views = [], files = [] } = options;
-    const ears = mode === "folders" ? folderEarValues(rows, earField, files) : (earField ? folderEarValues(rows, earField, files) : []);
+    const { mode = "sequence", earField, views = [], files = [], expectedEars = [] } = options;
+    const ears = mode === "folders" ? combinedEarValues(rows, earField, files, expectedEars) : (earField ? combinedEarValues(rows, earField, files, expectedEars) : []);
     const hasEarInViews = ears.length && views.some(view => ears.some(ear => folderPartMatches(view, ear)));
     const items = mode === "folders" && ears.length && !hasEarInViews ?
       ears.flatMap(ear => views.map(view => ({ ear, view, label: `${ear}_${view}` }))) :
@@ -331,12 +344,12 @@
   }
 
   function mapPhotosToRows(rows = [], files = [], options = {}) {
-    const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {} } = options;
+    const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {}, expectedEars = [] } = options;
     const expandedRows = expandRowsForPhotoCombos(rows, files, options);
     const descriptors = viewDescriptors(expandedRows, { ...options, files });
     const photoFields = descriptors.map(item => item.field);
     const singleDeviceSelections = mode === "folders" ? inferSingleDeviceSelections(expandedRows, files, { ...options, views }) : new Map();
-    const folderEars = mode === "folders" ? folderEarValues(expandedRows, earField, files) : [];
+    const folderEars = mode === "folders" ? combinedEarValues(expandedRows, earField, files, expectedEars) : [];
     const applicableDescriptors = row => descriptors.filter(item =>
       mode === "folders" || !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
     );
@@ -427,6 +440,51 @@
     });
 
     return { mapped, reviews, photoFields, photoViews: descriptors };
+  }
+
+  function buildPhotoAuditRows(reviews = [], photoFields = [], mappedRows = [], options = {}) {
+    const { deviceField = "", viewLabels = {} } = options;
+    const auditRows = [];
+    reviews.forEach(review => {
+      review.entries.forEach(entry => {
+        photoFields.forEach(field => {
+          const row = mappedRows[entry.rowIndex] || {};
+          if (row[field]) return;
+          auditRows.push({
+            status: "missing",
+            user: review.user,
+            device: deviceField ? entry.row[deviceField] || "" : "",
+            rowIndex: entry.rowIndex + 1,
+            field,
+            view: viewLabels[field] || field,
+            message: "缺失照片"
+          });
+        });
+      });
+      if (review.files.length > review.expected) {
+        auditRows.push({
+          status: "extra",
+          user: review.user,
+          device: "",
+          rowIndex: "",
+          field: "",
+          view: "",
+          message: `照片过多：实际 ${review.files.length} 张，预期 ${review.expected} 张`
+        });
+      }
+      (review.notes || []).forEach(note => {
+        auditRows.push({
+          status: "note",
+          user: review.user,
+          device: "",
+          rowIndex: "",
+          field: "",
+          view: "",
+          message: note
+        });
+      });
+    });
+    return auditRows;
   }
 
   function validateRows(rows = [], options = {}) {
@@ -526,6 +584,7 @@
       mappingFields: state.mappingFields || {},
       mappingViews: Array.isArray(state.mappingViews) ? state.mappingViews : [],
       photoMappingOverrides: state.photoMappingOverrides || {},
+      protocolTemplate: state.protocolTemplate && typeof state.protocolTemplate === "object" ? state.protocolTemplate : null,
       dashboardConfig: state.dashboardConfig || {}
     };
   }
@@ -543,6 +602,7 @@
       mappingFields: project.mappingFields && typeof project.mappingFields === "object" ? project.mappingFields : {},
       mappingViews: Array.isArray(project.mappingViews) ? project.mappingViews.map(String).filter(Boolean) : [],
       photoMappingOverrides: project.photoMappingOverrides && typeof project.photoMappingOverrides === "object" ? project.photoMappingOverrides : {},
+      protocolTemplate: project.protocolTemplate && typeof project.protocolTemplate === "object" ? project.protocolTemplate : null,
       dashboardConfig: sanitizeDashboardConfig(project.dashboardConfig || {}, headers)
     };
   }
@@ -561,11 +621,13 @@
     naturalCompare,
     photoFieldNames,
     folderEarValues,
+    combinedEarValues,
     inferFolderPhotoCombos,
     expandRowsForPhotoCombos,
     viewDescriptors,
     inferFolderViews,
     mapPhotosToRows,
+    buildPhotoAuditRows,
     validateRows,
     sanitizeDashboardConfig,
     buildProjectDocument,

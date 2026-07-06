@@ -80,6 +80,8 @@ const state = {
   mappedRows: [],
   mappingFiles: [],
   mappingViews: [],
+  mappingReviews: [],
+  mappingPhotoFields: [],
   photoMappingOverrides: {},
   viewLabels: {},
   globalView: "",
@@ -104,7 +106,9 @@ const state = {
   serverProjectId: initialServerProjectId,
   projectRevision: null,
   projectTitle: "",
-  projectDirty: false
+  projectDirty: false,
+  protocolTemplate: null,
+  protocolValidation: null
 };
 
 let draggedColumnId = "";
@@ -118,9 +122,10 @@ const els = Object.fromEntries([
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap", "runMappingButton",
-  "applyMappingButton", "downloadMappedCsvButton", "mappingSummary", "mappingPreview",
+  "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
-  "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus"
+  "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
+  "protocolTemplateInput", "clearProtocolButton", "protocolStatus"
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
@@ -129,6 +134,83 @@ function saveLayout() {
 
 function saveFieldRoleOverrides() {
   localStorage.setItem(storageKey("headphoneDashboardFieldRoles"), JSON.stringify(state.fieldRoleOverrides));
+}
+
+function protocolModule() {
+  return window.ProtocolTemplateModule || null;
+}
+
+function protocolNumericRanges(template = {}) {
+  return template.numericRanges || template.scoreRanges || {};
+}
+
+function protocolPhotoSchema(template = state.protocolTemplate || {}) {
+  return template.photoSchema && typeof template.photoSchema === "object" ? template.photoSchema : {};
+}
+
+function protocolPhotoViews(template = state.protocolTemplate || {}) {
+  const schema = protocolPhotoSchema(template);
+  const views = Array.isArray(schema.views) ? schema.views : template.photoViews;
+  return Array.isArray(views) ? views.map(String).map(value => value.trim()).filter(Boolean) : [];
+}
+
+function protocolExpectedEars(template = state.protocolTemplate || {}) {
+  const schema = protocolPhotoSchema(template);
+  return Array.isArray(schema.ears) ? schema.ears.map(String).map(value => value.trim()).filter(Boolean) : [];
+}
+
+function applyProtocolFieldRoles(template = state.protocolTemplate) {
+  if (!template?.fieldRoles || typeof template.fieldRoles !== "object") return;
+  state.fieldRoleOverrides = { ...state.fieldRoleOverrides, ...template.fieldRoles };
+  saveFieldRoleOverrides();
+}
+
+function validateProtocolRows(rows = state.mappingRows) {
+  const moduleApi = protocolModule();
+  if (!state.protocolTemplate || !moduleApi || !rows.length) {
+    state.protocolValidation = null;
+    return null;
+  }
+  state.protocolValidation = moduleApi.validateProtocol(rows, {
+    ...state.protocolTemplate,
+    numericRanges: protocolNumericRanges(state.protocolTemplate)
+  });
+  return state.protocolValidation;
+}
+
+function renderProtocolStatus() {
+  if (!state.protocolTemplate) {
+    els.protocolStatus.textContent = "未加载模板，现有 CSV 和照片映射流程不受影响。";
+    return;
+  }
+  const validation = state.protocolValidation;
+  const views = protocolPhotoViews();
+  const ears = protocolExpectedEars();
+  const parts = [
+    `<strong>${state.protocolTemplate.name || "未命名模板"}</strong>`,
+    validation ? `CSV：${validation.valid ? "通过" : "有警告"}，${validation.rowCount} 行` : "CSV：等待导入",
+    views.length ? `照片视角：${views.join("、")}` : "照片视角：未限定",
+    ears.length ? `耳侧：${ears.join("、")}` : "耳侧：按数据/文件夹识别"
+  ];
+  const issues = [];
+  if (validation?.missingRequiredFields?.length) issues.push(`缺少必填字段：${validation.missingRequiredFields.join("、")}`);
+  if (validation?.missingRecommendedFields?.length) issues.push(`缺少建议字段：${validation.missingRecommendedFields.join("、")}`);
+  if (validation?.rangeIssues?.length) issues.push(`数值范围问题：${validation.rangeIssues.length} 处`);
+  els.protocolStatus.innerHTML = `${parts.join(" · ")}${issues.length ? `<ul>${issues.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}`;
+}
+
+function setProtocolTemplate(template) {
+  state.protocolTemplate = template && typeof template === "object" ? template : null;
+  applyProtocolFieldRoles();
+  validateProtocolRows();
+  renderProtocolStatus();
+  if (state.headers.length) {
+    buildSchema();
+    initializeControls();
+    renderFieldRoleConfig();
+    renderColumnConfig();
+    render();
+  }
 }
 
 function exportDashboardConfig() {
@@ -169,6 +251,7 @@ function projectDocumentSnapshot() {
     },
     mappingViews: mappingViews(),
     photoMappingOverrides: state.photoMappingOverrides,
+    protocolTemplate: state.protocolTemplate,
     dashboardConfig: dashboardConfigSnapshot()
   });
 }
@@ -286,6 +369,7 @@ async function saveCurrentProjectConfig() {
     mappingMode: mappingConfig.mappingMode,
     mappingFields: mappingConfig.mappingFields,
     mappingViews: mappingConfig.mappingViews,
+    protocolTemplate: state.protocolTemplate,
     dashboardConfig: dashboardConfigSnapshot()
   }, "已保存当前配置");
 }
@@ -306,12 +390,21 @@ async function loadProject(path) {
   state.mappedRows = [];
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
+  state.protocolTemplate = project.protocolTemplate;
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
   applyDashboardConfig(project.dashboardConfig);
+  applyProtocolFieldRoles();
+  buildSchema();
+  initializeControls();
+  renderFieldRoleConfig();
+  renderColumnConfig();
+  render();
+  validateProtocolRows();
+  renderProtocolStatus();
   initializeMappingFields();
   if (project.mappingFields.userField && [...els.mappingUserField.options].some(option => option.value === project.mappingFields.userField)) els.mappingUserField.value = project.mappingFields.userField;
   if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
@@ -342,12 +435,21 @@ async function loadServerProject() {
   state.mappedRows = [];
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
+  state.protocolTemplate = project.protocolTemplate;
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
   applyDashboardConfig(project.dashboardConfig);
+  applyProtocolFieldRoles();
+  buildSchema();
+  initializeControls();
+  renderFieldRoleConfig();
+  renderColumnConfig();
+  render();
+  validateProtocolRows();
+  renderProtocolStatus();
   initializeMappingFields();
   if (project.mappingFields.userField && [...els.mappingUserField.options].some(option => option.value === project.mappingFields.userField)) els.mappingUserField.value = project.mappingFields.userField;
   if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
@@ -987,6 +1089,9 @@ function renderMappingMode() {
   els.mappingEarFieldWrap.hidden = false;
   els.viewNamesInputWrap.hidden = folderMode;
   els.viewNamesInput.placeholder = folderMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
+  els.mappingModeNote.innerHTML = folderMode ?
+    `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向，并生成左右耳 × 方向照片列；左右耳字段和设备字段可不配置。</span>` :
+    `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。每个用户文件夹内照片按名称自然排序，依次分配给 CSV 中该用户的设备记录和视角。</span>`;
 }
 
 function renderPhotoSourceMode() {
@@ -1050,11 +1155,14 @@ function buildPhotoMapping() {
   const userField = els.mappingUserField.value;
   const earField = els.mappingEarField.value;
   const deviceField = els.mappingDeviceField.value;
-  const views = mode === "folders" ? Core.inferFolderViews(state.mappingRows, state.mappingFiles, {
+  const templateViews = protocolPhotoViews();
+  const expectedEars = protocolExpectedEars();
+  const inferredFolderViews = mode === "folders" ? Core.inferFolderViews(state.mappingRows, state.mappingFiles, {
     userField,
     earField,
     deviceField
-  }) : mappingViews();
+  }) : [];
+  const views = mode === "folders" ? (templateViews.length ? templateViews : inferredFolderViews) : mappingViews();
   if (!state.mappingRows.length) throw new Error("请先选择 CSV。");
   if (!views.length) throw new Error(mode === "folders" ? "没有从照片目录中识别到方向/视角文件夹。" : "请至少填写一个视角名称。");
   if (!userField) throw new Error("请选择用户字段。");
@@ -1066,14 +1174,18 @@ function buildPhotoMapping() {
     earField,
     deviceField,
     views,
+    expectedEars,
     overrides: state.photoMappingOverrides
   });
   state.mappedRows = mapped;
+  state.mappingReviews = reviews;
+  state.mappingPhotoFields = photoFields;
   state.mappingViews = views;
   const photoViews = Core.viewDescriptors(state.mappingRows, {
     mode,
     earField,
     views,
+    expectedEars,
     files: state.mappingFiles
   });
   photoFields.forEach((field, index) => {
@@ -1084,6 +1196,7 @@ function buildPhotoMapping() {
   renderMappingPreview(reviews, userField, deviceField, photoFields);
   els.applyMappingButton.disabled = false;
   els.downloadMappedCsvButton.disabled = false;
+  els.downloadPhotoAuditButton.disabled = false;
 }
 
 function photoSelectOptions(files, selectedPath) {
@@ -1140,6 +1253,40 @@ function downloadMappedCsv() {
   URL.revokeObjectURL(link.href);
 }
 
+function downloadPhotoAuditCsv() {
+  const deviceField = els.mappingDeviceField.value;
+  const auditRows = Core.buildPhotoAuditRows(state.mappingReviews, state.mappingPhotoFields, state.mappedRows, {
+    deviceField,
+    viewLabels: state.viewLabels
+  });
+  const headers = ["status", "user", "device", "rowIndex", "field", "view", "message"];
+  const csvRows = auditRows.length ? auditRows : [{
+    status: "ok",
+    user: "",
+    device: "",
+    rowIndex: "",
+    field: "",
+    view: "",
+    message: "未发现缺失照片或映射异常"
+  }];
+  const csv = [headers.join(","), ...csvRows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
+  link.download = "photo_mapping_audit.csv";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function resetMappingOutputs() {
+  state.mappedRows = [];
+  state.mappingReviews = [];
+  state.mappingPhotoFields = [];
+  state.photoMappingOverrides = {};
+  els.applyMappingButton.disabled = true;
+  els.downloadMappedCsvButton.disabled = true;
+  els.downloadPhotoAuditButton.disabled = true;
+}
+
 function applyMappedRows() {
   state.rows = state.mappedRows.map(row => ({ ...row }));
   state.selectedGroup = null;
@@ -1190,23 +1337,50 @@ function bindEvents() {
       els.saveProjectConfigButton.disabled = false;
     }
   });
+  els.protocolTemplateInput.addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const template = JSON.parse(reader.result);
+        setProtocolTemplate(template);
+        renderProtocolStatus();
+        markProjectDirty();
+      } catch (error) {
+        els.protocolStatus.textContent = `模板加载失败：${error.message}`;
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  });
+  els.clearProtocolButton.addEventListener("click", () => {
+    state.protocolTemplate = null;
+    state.protocolValidation = null;
+    els.protocolTemplateInput.value = "";
+    renderProtocolStatus();
+    markProjectDirty();
+  });
   els.mappingCsvInput.addEventListener("change", event => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       state.mappingRows = parseCSV(reader.result);
-      state.photoMappingOverrides = {};
+      resetMappingOutputs();
       initializeMappingFields();
+      validateProtocolRows();
+      renderProtocolStatus();
       els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录`;
       markProjectDirty();
     };
     reader.readAsText(file, "UTF-8");
   });
   els.photoFolderInput.addEventListener("change", () => {
+    resetMappingOutputs();
     const count = [...(els.photoFolderInput.files || [])].filter(file => Core.isImagePath(file.name)).length;
     els.mappingSummary.textContent = count ? `已选择 ${count} 张照片，点击“生成照片映射”上传并映射。` : "未选择可用图片。";
   });
+  els.photoRootInput.addEventListener("input", resetMappingOutputs);
   els.runMappingButton.addEventListener("click", async () => {
     els.runMappingButton.disabled = true;
     els.mappingSummary.textContent = "正在扫描并映射照片…";
@@ -1223,8 +1397,9 @@ function bindEvents() {
   });
   els.applyMappingButton.addEventListener("click", applyMappedRows);
   els.downloadMappedCsvButton.addEventListener("click", downloadMappedCsv);
+  els.downloadPhotoAuditButton.addEventListener("click", downloadPhotoAuditCsv);
   els.mappingMode.addEventListener("change", () => {
-    state.photoMappingOverrides = {};
+    resetMappingOutputs();
     renderMappingMode();
     markProjectDirty();
   });
@@ -1404,6 +1579,7 @@ async function start() {
   renderColumnConfig();
   bindEvents();
   renderPhotoSourceMode();
+  renderProtocolStatus();
   render();
   if (state.serverProjectId) {
     els.projectPathInput.value = state.serverProjectId;
