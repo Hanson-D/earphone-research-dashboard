@@ -56,6 +56,32 @@
     return /pressure_(?:score|relief_score)$|挤压/i.test(field);
   }
 
+  function pressureSiteLabel(field, label = "") {
+    const source = String(label || field || "").trim();
+    const known = {
+      tragus: "耳屏",
+      antitragus: "对耳屏",
+      helix: "耳轮",
+      concha: "耳甲腔",
+      canal: "耳道"
+    };
+    const token = source
+      .toLowerCase()
+      .replace(/(?:^|[_\-\s])(?:pressure|relief|score|rating|degree|level|value)(?=$|[_\-\s])/g, " ")
+      .replace(/(?:分数|评分|得分|程度|挤压|压力)+$/g, "")
+      .replace(/[_\-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (known[token]) return known[token];
+    const cleaned = source
+      .replace(/(?:挤压程度|挤压分数|挤压评分|挤压得分|挤压|压力程度|压力分数|压力评分|压力得分|压力)$/g, "")
+      .replace(/(?:^|[_\-\s])(?:pressure|relief|score|rating|degree|level|value)(?=$|[_\-\s])/gi, " ")
+      .replace(/[_\-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return known[cleaned.toLowerCase()] || cleaned || source;
+  }
+
   function inferFieldRole(field, rows = []) {
     if (/^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) return "user_id";
     if (/^device_name$|device_id|condition|设备|条件/i.test(field)) return "device";
@@ -616,6 +642,7 @@
     computeAxisRange,
     numericSummary,
     isPressureField,
+    pressureSiteLabel,
     inferFieldRole,
     resolveFieldRoles,
     naturalCompare,

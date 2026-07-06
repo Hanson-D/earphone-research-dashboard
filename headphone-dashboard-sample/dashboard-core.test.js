@@ -24,6 +24,10 @@ test("pressure fields support English suffix and Chinese column names", () => {
   assert.equal(core.isPressureField("tragus_pressure_relief_score"), true);
   assert.equal(core.isPressureField("耳屏挤压"), true);
   assert.equal(core.isPressureField("comfort_score"), false);
+  assert.equal(core.pressureSiteLabel("耳屏挤压程度"), "耳屏");
+  assert.equal(core.pressureSiteLabel("对耳屏挤压分数"), "对耳屏");
+  assert.equal(core.pressureSiteLabel("helix_pressure_score"), "耳轮");
+  assert.equal(core.pressureSiteLabel("custom_part_pressure_score"), "custom part");
 });
 
 test("data quality report catches missing IDs, duplicate conditions, score ranges, and user-level conflicts", () => {
