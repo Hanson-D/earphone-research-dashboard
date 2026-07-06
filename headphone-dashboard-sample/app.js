@@ -940,6 +940,7 @@ function scoreClass(value) {
 }
 
 function pressureClass(value) {
+  if (value === "" || value == null) return "";
   const score = Number(value);
   if (!Number.isFinite(score)) return "";
   if (score >= 8 && score <= 9) return "clear";
@@ -958,9 +959,10 @@ function pressureTitle(value) {
 }
 
 function pressureTag(label, value) {
+  if (value === "" || value == null) return "";
   const score = Number(value);
   if (!Number.isFinite(score) || score === 10) return "";
-  return `<span class="pressure-tag ${pressureClass(score)}" title="${pressureTitle(score)}">${label}：${score}分</span>`;
+  return `<span class="pressure-tag ${pressureClass(value)}" title="${pressureTitle(value)}">${label}：${score}</span>`;
 }
 
 function groupByUser(rows) {
@@ -981,7 +983,7 @@ function detailCell(column, row) {
     const pressureFields = state.headers.filter(field => fieldRole(field) === "pressure");
     return `<td><div class="pressure-tags">${pressureFields.map(item => {
       const score = row[item];
-      return pressureTag(fieldLabels[item] || item, score);
+      return pressureTag(Core.pressureSiteLabel(item, fieldLabels[item]), score);
     }).join("") || "—"}</div></td>`;
   }
   if (field === "__user_profile") {
