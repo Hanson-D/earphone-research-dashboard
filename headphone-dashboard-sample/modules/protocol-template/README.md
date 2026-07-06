@@ -16,7 +16,16 @@ loading, before photo mapping, or before SQL percentile analysis.
     "comfort": [0, 10],
     "stability": [0, 10]
   },
-  "photoViews": ["front", "side", "rear"]
+  "fieldRoles": {
+    "name": "user_id",
+    "device": "device",
+    "comfort": "metric"
+  },
+  "photoViews": ["front", "side", "rear"],
+  "photoSchema": {
+    "ears": ["左耳", "右耳"],
+    "views": ["正面", "侧面", "后侧"]
+  }
 }
 ```
 

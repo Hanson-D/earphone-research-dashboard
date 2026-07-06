@@ -39,11 +39,22 @@
             <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
           </div>
           <div id="projectStatus" class="project-status">未加载项目文件</div>
+          <div class="protocol-panel">
+            <div class="protocol-heading">
+              <strong>项目模板（可选）</strong>
+              <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
+            </div>
+            <label class="protocol-import">
+              加载模板 JSON
+              <input id="protocolTemplateInput" type="file" accept=".json,application/json">
+            </label>
+            <div id="protocolStatus" class="protocol-status">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
+          </div>
         </section>
 
         <p class="panel-kicker">PHOTO INDEX BUILDER</p>
         <h2>照片自动映射</h2>
-        <p class="mapping-intro">按用户文件夹内的文件名顺序，将照片依次映射到设备与视角。</p>
+        <p class="mapping-intro">从 CSV 与照片目录生成可直接用于看板的照片字段；可按拍摄顺序映射，也可按子文件夹自动识别。</p>
 
         <label class="mapping-input">
           <span>1. 选择原始 CSV</span>
@@ -67,6 +78,7 @@
           </select>
           <small>子文件夹逻辑不要求层级顺序固定；用户和方向必须能识别，左右耳与设备可从目录识别或不配置。</small>
         </label>
+        <div id="mappingModeNote" class="mapping-mode-note"></div>
         <div class="mapping-fields">
           <label>姓名/用户字段<select id="mappingUserField"></select></label>
           <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
@@ -82,6 +94,7 @@
         <div class="mapping-actions">
           <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
           <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
+          <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
         </div>
       </aside>
 
@@ -251,6 +264,7 @@
     <div class="empty-state">当前筛选条件下没有数据。</div>
   </template>
 
+  <script src="modules/protocol-template/protocol-template.js?v=20260706-protocol"></script>
   <script src="dashboard-core.js?v=20260630-pressure-scale"></script>
   <script src="app.js?v=20260630-pressure-scale"></script>
 </body>

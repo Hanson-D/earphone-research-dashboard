@@ -328,6 +328,60 @@ test("sequence mode keeps csv users even when no photos are present", () => {
   assert.equal(result.reviews[1].status, "missing");
 });
 
+test("photo audit rows list missing photos and mapping notes", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A" },
+    { user_id: "U002", device_name: "B" }
+  ];
+  const result = core.mapPhotosToRows(rows, [], {
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面"]
+  });
+  result.reviews[0].notes = ["测试备注"];
+  const auditRows = core.buildPhotoAuditRows(result.reviews, result.photoFields, result.mapped, {
+    deviceField: "device_name",
+    viewLabels: { photo_正面: "正面" }
+  });
+
+  assert.equal(auditRows.filter(row => row.status === "missing").length, 2);
+  assert.deepEqual(auditRows[0], {
+    status: "missing",
+    user: "U001",
+    device: "A",
+    rowIndex: 1,
+    field: "photo_正面",
+    view: "正面",
+    message: "缺失照片"
+  });
+  assert.equal(auditRows.some(row => row.status === "note" && row.message === "测试备注"), true);
+});
+
+test("folder photo audit uses protocol expected ears and views", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A" }
+  ];
+  const files = [
+    { relative_path: "U001/A/左耳/正面/001.jpg", absolute_path: "/photos/u1-left-front.jpg", name: "001.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面"],
+    expectedEars: ["左耳", "右耳"]
+  });
+  const auditRows = core.buildPhotoAuditRows(result.reviews, result.photoFields, result.mapped, {
+    deviceField: "device_name",
+    viewLabels: Object.fromEntries(result.photoViews.map(view => [view.field, view.label]))
+  });
+
+  assert.equal(result.photoFields.includes("photo_右耳_正面"), true);
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/u1-left-front.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "");
+  assert.equal(auditRows.some(row => row.view === "右耳 · 正面" && row.message === "缺失照片"), true);
+});
+
 test("folder matching adapts to decorated folder names instead of requiring exact folder names", () => {
   const rows = [
     { name: "张三", ear_side: "左耳", prototype: "样机A" }
@@ -381,6 +435,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
     mappingFields: { userField: "user_id", earField: "ear_side", deviceField: "device_name" },
     mappingViews: ["正面"],
     photoMappingOverrides: { "0::photo_正面": "/photos/U001/1.jpg" },
+    protocolTemplate: { name: "耳机模板", requiredFields: ["user_id"], photoSchema: { views: ["正面"] } },
     dashboardConfig: {
       fieldRoleOverrides: { comfort_score: "metric" },
       metric: "comfort_score",
@@ -391,6 +446,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
   assert.equal(project.photoRoot, "/photos");
   assert.equal(project.mappingMode, "folders");
   assert.equal(project.mappingFields.earField, "ear_side");
+  assert.equal(project.protocolTemplate.name, "耳机模板");
   assert.equal(project.rows.length, 1);
   assert.equal(project.dashboardConfig.showErrorBars, false);
 

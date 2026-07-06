@@ -174,6 +174,14 @@ select[multiple] { min-height: 84px; }
 .project-panel h2 { margin-bottom: 12px; }
 .project-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.protocol-panel { margin-top: 14px; padding: 12px; background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); }
+.protocol-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--accent-dark); font-size: 11px; }
+.text-button { padding: 0; color: var(--accent); background: transparent; border: 0; font-size: 10px; font-weight: 800; cursor: pointer; }
+.protocol-import { display: block; margin-top: 9px; color: var(--ink); font-size: 10px; font-weight: 800; }
+.protocol-import input { display: block; width: 100%; margin-top: 5px; font-size: 10px; }
+.protocol-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.protocol-status strong { color: var(--accent-dark); }
+.protocol-status ul { margin: 6px 0 0; padding-left: 16px; }
 .mapping-intro { margin: 8px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .mapping-input, .mapping-fields label { display: block; margin-bottom: 16px; color: var(--ink); font-size: 11px; font-weight: 800; }
 .mapping-input span { display: block; margin-bottom: 6px; }
@@ -259,6 +267,9 @@ select[multiple] { min-height: 84px; }
   text-decoration: none;
 }
 .mapping-input small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 500; line-height: 1.5; }
+.mapping-mode-note { margin: -4px 0 14px; padding: 10px 11px; color: var(--sage-dark); background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); font-size: 10px; line-height: 1.55; }
+.mapping-mode-note strong { display: block; margin-bottom: 3px; color: var(--accent-dark); font-size: 11px; }
+.mapping-mode-note span { display: block; }
 .mapping-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .mapping-fields select { margin-top: 6px; }
 .mapping-actions { display: grid; gap: 8px; margin-top: 10px; }
