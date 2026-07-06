@@ -1096,6 +1096,10 @@ function renderMappingMode() {
 
 function renderPhotoSourceMode() {
   const serverMode = Boolean(state.serverProjectId);
+  document.body.dataset.runtimeMode = serverMode ? "server" : "local";
+  document.querySelectorAll("[data-server-only]").forEach(element => {
+    element.hidden = !serverMode;
+  });
   els.photoRootInputWrap.hidden = serverMode;
   els.photoFolderInputWrap.hidden = !serverMode;
 }
@@ -1603,11 +1607,11 @@ async function start() {
       setProjectStatus(`自动加载失败：${error.message}`);
     }
   } else if (window.location.protocol === "file:") {
-    setProjectStatus("当前是 file:// 打开；保存/加载项目需要通过 python3 server.py 访问。");
+    setProjectStatus("当前是 file:// 打开；保存项目和扫描照片需要通过启动器打开看板。");
   }
 }
 
 start().catch(error => {
   console.error(error);
-  document.body.innerHTML = `<div class="empty-state">无法读取示例 CSV。请从本目录启动本地服务器后访问页面。</div>`;
+  document.body.innerHTML = `<div class="empty-state">无法读取示例 CSV。请使用项目启动器打开页面。</div>`;
 });
