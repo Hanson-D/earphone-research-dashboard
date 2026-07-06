@@ -112,6 +112,8 @@ const state = {
 };
 
 let draggedColumnId = "";
+let columnDragScrollFrame = 0;
+const columnDragScroll = { list: 0, page: 0 };
 
 const els = Object.fromEntries([
   "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
@@ -125,7 +127,8 @@ const els = Object.fromEntries([
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
-  "protocolTemplateInput", "clearProtocolButton", "protocolStatus"
+  "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
+  "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
 
 function saveLayout() {
@@ -514,6 +517,42 @@ function moveColumn(draggedId, targetId, placeAfter = false) {
   const adjustedIndex = placeAfter ? targetIndex + 1 : targetIndex;
   state.layout.columns.splice(adjustedIndex, 0, column);
   return true;
+}
+
+function runColumnDragAutoScroll() {
+  if (!draggedColumnId || (!columnDragScroll.list && !columnDragScroll.page)) {
+    columnDragScrollFrame = 0;
+    return;
+  }
+  if (columnDragScroll.list) els.columnConfigList.scrollTop += columnDragScroll.list;
+  if (columnDragScroll.page) window.scrollBy(0, columnDragScroll.page);
+  columnDragScrollFrame = requestAnimationFrame(runColumnDragAutoScroll);
+}
+
+function updateColumnDragAutoScroll(clientY) {
+  const edge = 48;
+  const listRect = els.columnConfigList.getBoundingClientRect();
+  let listDelta = 0;
+  if (clientY < listRect.top + edge) listDelta = -Math.ceil((edge - (clientY - listRect.top)) / 3);
+  else if (clientY > listRect.bottom - edge) listDelta = Math.ceil((edge - (listRect.bottom - clientY)) / 3);
+
+  const viewportEdge = 72;
+  let pageDelta = 0;
+  if (clientY < viewportEdge) pageDelta = -Math.ceil((viewportEdge - clientY) / 4);
+  else if (clientY > window.innerHeight - viewportEdge) pageDelta = Math.ceil((viewportEdge - (window.innerHeight - clientY)) / 4);
+
+  columnDragScroll.list = listDelta;
+  columnDragScroll.page = pageDelta;
+  if (!columnDragScrollFrame && (listDelta || pageDelta)) {
+    columnDragScrollFrame = requestAnimationFrame(runColumnDragAutoScroll);
+  }
+}
+
+function stopColumnDragAutoScroll() {
+  columnDragScroll.list = 0;
+  columnDragScroll.page = 0;
+  if (columnDragScrollFrame) cancelAnimationFrame(columnDragScrollFrame);
+  columnDragScrollFrame = 0;
 }
 
 function fieldRole(field) {
@@ -972,9 +1011,10 @@ function photoGalleryCell(column, userRows) {
   const selectedView = parsePhotoViewValue(selectedValue);
   const items = userRows.filter(row => rowMatchesPhotoView(row, selectedView)).map(row => {
     const caption = [earField ? row[earField] : "", row[deviceField] || column.label].filter(Boolean).join(" · ");
+    const src = photoUrl(row[selectedView.field]);
     return `
     <figure class="photo-thumb">
-      <img class="ear-photo" src="${photoUrl(row[selectedView.field])}" alt="${row[state.userIdField]} ${caption}" loading="lazy">
+      <img class="ear-photo photo-preview-trigger" src="${src}" alt="${row[state.userIdField]} ${caption}" loading="lazy" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
       <figcaption>${caption}</figcaption>
     </figure>`;
   }).join("");
@@ -1227,8 +1267,10 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
           <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
           ${photoFields.map(field => {
             const path = state.mappedRows[entry.rowIndex][field];
+            const src = path ? photoUrl(path) : "";
+            const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
             return `<figure>
-              ${path ? `<img src="${photoUrl(path)}" alt="${state.viewLabels[field]}">` : `<div class="missing-photo">缺失</div>`}
+              ${path ? `<img class="photo-preview-trigger" src="${src}" alt="${state.viewLabels[field]}" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
               <figcaption>${state.viewLabels[field]}</figcaption>
               <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
                 ${photoSelectOptions(selectFiles || review.files, path)}
@@ -1245,6 +1287,14 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
 function csvEscape(value) {
   const text = String(value ?? "");
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function attrEscape(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 function downloadMappedCsv() {
@@ -1279,6 +1329,23 @@ function downloadPhotoAuditCsv() {
   link.download = "photo_mapping_audit.csv";
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function openPhotoLightbox(src, caption = "") {
+  if (!src) return;
+  els.photoLightboxImage.src = src;
+  els.photoLightboxImage.alt = caption || "照片大图";
+  els.photoLightboxCaption.textContent = caption;
+  els.photoLightbox.hidden = false;
+  document.body.classList.add("lightbox-open");
+}
+
+function closePhotoLightbox() {
+  els.photoLightbox.hidden = true;
+  els.photoLightboxImage.src = "";
+  els.photoLightboxImage.alt = "";
+  els.photoLightboxCaption.textContent = "";
+  document.body.classList.remove("lightbox-open");
 }
 
 function resetMappingOutputs() {
@@ -1415,6 +1482,22 @@ function bindEvents() {
     buildPhotoMapping();
     markProjectDirty();
   });
+  document.addEventListener("click", event => {
+    const trigger = event.target.closest(".photo-preview-trigger");
+    if (trigger) {
+      openPhotoLightbox(trigger.dataset.previewSrc || trigger.currentSrc || trigger.src, trigger.dataset.previewCaption || trigger.alt || "");
+      return;
+    }
+    if (event.target === els.photoLightbox) closePhotoLightbox();
+  });
+  document.addEventListener("keydown", event => {
+    if ((event.key === "Enter" || event.key === " ") && event.target.classList?.contains("photo-preview-trigger")) {
+      event.preventDefault();
+      openPhotoLightbox(event.target.dataset.previewSrc || event.target.currentSrc || event.target.src, event.target.dataset.previewCaption || event.target.alt || "");
+    }
+    if (event.key === "Escape" && !els.photoLightbox.hidden) closePhotoLightbox();
+  });
+  els.photoLightboxClose.addEventListener("click", closePhotoLightbox);
   els.fieldRoleList.addEventListener("change", event => {
     if (!event.target.matches("select[data-field]")) return;
     const field = event.target.dataset.field;
@@ -1526,9 +1609,11 @@ function bindEvents() {
     event.dataTransfer.setData("text/plain", draggedColumnId);
   });
   els.columnConfigList.addEventListener("dragover", event => {
-    const row = event.target.closest(".column-config-row");
-    if (!row || !draggedColumnId || row.dataset.columnId === draggedColumnId) return;
+    if (!draggedColumnId) return;
     event.preventDefault();
+    updateColumnDragAutoScroll(event.clientY);
+    const row = event.target.closest(".column-config-row");
+    if (!row || row.dataset.columnId === draggedColumnId) return;
     const rect = row.getBoundingClientRect();
     const placeAfter = event.clientY > rect.top + rect.height / 2;
     row.classList.toggle("drop-before", !placeAfter);
@@ -1543,6 +1628,7 @@ function bindEvents() {
     const row = event.target.closest(".column-config-row");
     if (!row || !draggedColumnId) return;
     event.preventDefault();
+    stopColumnDragAutoScroll();
     const rect = row.getBoundingClientRect();
     const placeAfter = event.clientY > rect.top + rect.height / 2;
     if (moveColumn(draggedColumnId, row.dataset.columnId, placeAfter)) {
@@ -1551,6 +1637,7 @@ function bindEvents() {
   });
   els.columnConfigList.addEventListener("dragend", () => {
     draggedColumnId = "";
+    stopColumnDragAutoScroll();
     els.columnConfigList.querySelectorAll(".column-config-row").forEach(row =>
       row.classList.remove("dragging", "drop-before", "drop-after")
     );
