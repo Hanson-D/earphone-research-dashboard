@@ -384,13 +384,14 @@
       const reviewMap = new Map();
       expandedRows.forEach((row, rowIndex) => {
         const matchedFiles = [];
+        const extras = [];
         const applicable = applicableDescriptors(row);
         applicable.forEach(item => {
           const overrideKey = `${rowIndex}::${item.field}`;
-          const file = files
+          const candidates = files
             .slice()
             .sort((a, b) => naturalCompare(a.relative_path || a.name, b.relative_path || b.name))
-            .find(candidate => {
+            .filter(candidate => {
               const parts = pathParts(candidate);
               const singleDevice = singleDeviceSelections.get(row[userField]);
               const inferredDevice = singleDevice ? residualFolderParts(parts, [row[userField], ...folderEars, item.view])[0] || "" : "";
@@ -401,7 +402,18 @@
                 (!singleDevice || !inferredDevice || folderPartMatches(inferredDevice, singleDevice.selected)) &&
                 partsInclude(parts, item.view);
             });
+          const file = candidates[0];
           if (file) matchedFiles.push(file);
+          if (candidates.length > 1) {
+            matchedFiles.push(...candidates.slice(1));
+            extras.push({
+              row,
+              rowIndex,
+              field: item.field,
+              view: item.label,
+              files: candidates.slice(1)
+            });
+          }
           mapped[rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
         });
         const expected = applicable.length;
@@ -410,12 +422,14 @@
           user,
           entries: [],
           files: [],
+          extras: [],
           expected: 0,
           notes: [],
           status: "ok"
         };
         review.entries.push({ row, rowIndex });
         review.files.push(...matchedFiles);
+        review.extras.push(...extras);
         review.expected += expected;
         const note = singleDeviceSelections.get(row[userField])?.candidates.length > 1 ?
           `未配置设备字段，已按自然排序使用第一套设备：${singleDeviceSelections.get(row[userField]).selected}` : "";
@@ -484,6 +498,19 @@
             field,
             view: viewLabels[field] || field,
             message: "缺失照片"
+          });
+        });
+      });
+      (review.extras || []).forEach(extra => {
+        (extra.files || []).forEach(file => {
+          auditRows.push({
+            status: "extra",
+            user: review.user,
+            device: deviceField ? extra.row[deviceField] || "" : "",
+            rowIndex: extra.rowIndex + 1,
+            field: extra.field,
+            view: viewLabels[extra.field] || extra.view || extra.field,
+            message: `重复/补拍照片：${file.relative_path || file.name || file.absolute_path || ""}`
           });
         });
       });
@@ -595,7 +622,8 @@
       secondaryDimension: keepField(config.secondaryDimension),
       metric: keepField(config.metric),
       yAxisMode: config.yAxisMode === "full" ? "full" : config.yAxisMode === "adaptive" ? "adaptive" : "",
-      showErrorBars: typeof config.showErrorBars === "boolean" ? config.showErrorBars : undefined
+      showErrorBars: typeof config.showErrorBars === "boolean" ? config.showErrorBars : undefined,
+      pressureWorst: config.pressureWorst === "high" ? "high" : config.pressureWorst === "low" ? "low" : ""
     };
   }
 

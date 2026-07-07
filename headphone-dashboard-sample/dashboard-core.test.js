@@ -361,6 +361,38 @@ test("photo audit rows list missing photos and mapping notes", () => {
   assert.equal(auditRows.some(row => row.status === "note" && row.message === "测试备注"), true);
 });
 
+test("folder photo audit reports duplicate or reshoot photos for the same slot", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A" }
+  ];
+  const files = [
+    { relative_path: "U001/A/左耳/正面/001.jpg", absolute_path: "/photos/001.jpg", name: "001.jpg" },
+    { relative_path: "U001/A/左耳/正面/002-reshoot.jpg", absolute_path: "/photos/002-reshoot.jpg", name: "002-reshoot.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面"],
+    expectedEars: ["左耳"]
+  });
+  const auditRows = core.buildPhotoAuditRows(result.reviews, result.photoFields, result.mapped, {
+    deviceField: "device_name",
+    viewLabels: Object.fromEntries(result.photoViews.map(view => [view.field, view.label]))
+  });
+
+  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/001.jpg");
+  assert.equal(result.reviews[0].files.length, 2);
+  assert.equal(result.reviews[0].status, "extra");
+  assert.equal(auditRows.some(row =>
+    row.status === "extra" &&
+    row.user === "U001" &&
+    row.device === "A" &&
+    row.view === "左耳 · 正面" &&
+    row.message.includes("002-reshoot.jpg")
+  ), true);
+});
+
 test("folder photo audit uses protocol expected ears and views", () => {
   const rows = [
     { user_id: "U001", device_name: "A" }
@@ -421,13 +453,15 @@ test("dashboard config import keeps only fields in the current schema", () => {
     fieldRoleOverrides: { gender: "user", old_field: "metric" },
     primaryDimension: "gender",
     metric: "old_field",
-    showErrorBars: false
+    showErrorBars: false,
+    pressureWorst: "high"
   }, ["gender", "comfort_score"]);
   assert.deepEqual(config.fieldRoleOverrides, { gender: "user" });
   assert.deepEqual(config.layout.columns, [{ id: "gender", visible: true }]);
   assert.equal(config.primaryDimension, "gender");
   assert.equal(config.metric, "");
   assert.equal(config.showErrorBars, false);
+  assert.equal(config.pressureWorst, "high");
 });
 
 test("project documents keep rows, mapping state, and dashboard config together", () => {

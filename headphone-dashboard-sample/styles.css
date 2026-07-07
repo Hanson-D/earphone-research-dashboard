@@ -174,6 +174,7 @@ select[multiple] { min-height: 84px; }
 .project-panel h2 { margin-bottom: 12px; }
 .project-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.compact-config { margin-top: 12px; margin-bottom: 0; }
 .protocol-panel { margin-top: 14px; padding: 12px; background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); }
 .protocol-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--accent-dark); font-size: 11px; }
 .text-button { padding: 0; color: var(--accent); background: transparent; border: 0; font-size: 10px; font-weight: 800; cursor: pointer; }

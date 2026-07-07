@@ -92,6 +92,7 @@ const state = {
   metric: "comfort_score",
   yAxisMode: "adaptive",
   showErrorBars: true,
+  pressureWorst: "low",
   search: "",
   columnFilters: {},
   headers: [],
@@ -127,7 +128,7 @@ const els = Object.fromEntries([
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
-  "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
+  "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
   "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
 
@@ -237,7 +238,8 @@ function dashboardConfigSnapshot() {
     secondaryDimension: state.secondaryDimension,
     metric: state.metric,
     yAxisMode: state.yAxisMode,
-    showErrorBars: state.showErrorBars
+    showErrorBars: state.showErrorBars,
+    pressureWorst: state.pressureWorst
   };
 }
 
@@ -479,6 +481,7 @@ function applyDashboardConfig(config) {
   if (clean.metric) state.metric = clean.metric;
   if (clean.yAxisMode) state.yAxisMode = clean.yAxisMode;
   if (typeof clean.showErrorBars === "boolean") state.showErrorBars = clean.showErrorBars;
+  if (clean.pressureWorst) state.pressureWorst = clean.pressureWorst;
   state.selectedGroup = null;
   buildSchema();
   initializeControls();
@@ -758,6 +761,7 @@ function initializeControls() {
   els.metricSelect.value = state.metric;
   els.yAxisMode.value = state.yAxisMode;
   els.showErrorBars.checked = state.showErrorBars;
+  els.pressureWorstSelect.value = state.pressureWorst;
   renderViewControls();
 }
 
@@ -943,15 +947,22 @@ function pressureClass(value) {
   if (value === "" || value == null) return "";
   const score = Number(value);
   if (!Number.isFinite(score)) return "";
-  if (score >= 8 && score <= 9) return "clear";
-  if (score >= 6 && score <= 7) return "warn";
-  if (score >= 0 && score <= 5) return `red-${Math.round(score)}`;
+  const severityScore = state.pressureWorst === "high" ? 10 - score : score;
+  if (severityScore >= 8 && severityScore <= 9) return "clear";
+  if (severityScore >= 6 && severityScore <= 7) return "warn";
+  if (severityScore >= 0 && severityScore <= 5) return `red-${Math.round(severityScore)}`;
   return "";
 }
 
 function pressureTitle(value) {
   const score = Number(value);
   if (!Number.isFinite(score)) return "挤压程度：未填写";
+  if (state.pressureWorst === "high") {
+    if (score === 0) return "挤压程度：0=无挤压";
+    if (score <= 2) return "挤压程度：1-2=轻微或基本无挤压";
+    if (score <= 4) return "挤压程度：3-4=轻中度挤压";
+    return "挤压程度：5-10=明显挤压，10 最严重";
+  }
   if (score === 10) return "挤压程度：10=无挤压";
   if (score >= 8) return "挤压程度：8-9=轻微或基本无挤压";
   if (score >= 6) return "挤压程度：6-7=轻中度挤压";
@@ -961,7 +972,8 @@ function pressureTitle(value) {
 function pressureTag(label, value) {
   if (value === "" || value == null) return "";
   const score = Number(value);
-  if (!Number.isFinite(score) || score === 10) return "";
+  const noPressureScore = state.pressureWorst === "high" ? 0 : 10;
+  if (!Number.isFinite(score) || score === noPressureScore) return "";
   return `<span class="pressure-tag ${pressureClass(value)}" title="${pressureTitle(value)}">${label}：${score}</span>`;
 }
 
@@ -1531,6 +1543,11 @@ function bindEvents() {
   els.metricSelect.addEventListener("change", () => { state.metric = els.metricSelect.value; render(); markProjectDirty(); });
   els.yAxisMode.addEventListener("change", () => { state.yAxisMode = els.yAxisMode.value; renderChart(groupedRows(filteredRows())); markProjectDirty(); });
   els.showErrorBars.addEventListener("change", () => { state.showErrorBars = els.showErrorBars.checked; renderChart(groupedRows(filteredRows())); markProjectDirty(); });
+  els.pressureWorstSelect.addEventListener("change", () => {
+    state.pressureWorst = els.pressureWorstSelect.value === "high" ? "high" : "low";
+    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    markProjectDirty();
+  });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
   els.detailHead.addEventListener("change", event => {
@@ -1653,6 +1670,7 @@ function bindEvents() {
     state.primaryDimension = "device_name"; state.secondaryDimension = "concha_size"; state.metric = "comfort_score";
     state.yAxisMode = "adaptive";
     state.showErrorBars = true;
+    state.pressureWorst = "low";
     state.selectedGroup = null; state.search = ""; state.columnFilters = {}; els.detailSearch.value = "";
     buildSchema();
     initializeControls(); renderFieldRoleConfig(); render();

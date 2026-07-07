@@ -39,6 +39,14 @@
             <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
           </div>
           <div id="projectStatus" class="project-status">未加载项目文件</div>
+          <label class="mapping-input compact-config">
+            <span>挤压分数方向</span>
+            <select id="pressureWorstSelect">
+              <option value="low">0 最差，10 表示无挤压</option>
+              <option value="high">10 最差，0 表示无挤压</option>
+            </select>
+            <small>影响挤压标签的颜色和是否隐藏无挤压位置。</small>
+          </label>
           <div class="protocol-panel">
             <div class="protocol-heading">
               <strong>项目模板（可选）</strong>
