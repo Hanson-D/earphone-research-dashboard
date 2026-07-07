@@ -109,7 +109,12 @@ const state = {
   projectTitle: "",
   projectDirty: false,
   protocolTemplate: null,
-  protocolValidation: null
+  protocolValidation: null,
+  pressureDeviceFilter: "",
+  pressureEarFilter: "",
+  pressureGroupField: "",
+  pressureGroupValue: "",
+  pressureAggregation: "mean"
 };
 
 let draggedColumnId = "";
@@ -130,6 +135,8 @@ const els = Object.fromEntries([
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
+  "pressurePage", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
+  "pressureAggregation", "pressureSummary", "pressureHeatmaps", "pressureRanking",
   "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
 
@@ -763,6 +770,7 @@ function initializeControls() {
   els.yAxisMode.value = state.yAxisMode;
   els.showErrorBars.checked = state.showErrorBars;
   els.pressureWorstSelect.value = state.pressureWorst;
+  refreshPressureControls();
   renderViewControls();
 }
 
@@ -940,6 +948,203 @@ function renderChart(groups) {
   </div>` : '<div class="empty-state">没有可绘制的数据。</div>';
 }
 
+function pressureFields() {
+  return state.headers.filter(field => fieldRole(field) === "pressure");
+}
+
+function deviceField() {
+  return state.headers.find(field => fieldRole(field) === "device") ||
+    state.headers.find(field => /device|condition|设备|条件|样机/i.test(field));
+}
+
+function pressureSelectableFields() {
+  return state.headers.filter(field => {
+    const role = fieldRole(field);
+    return ["user", "dimension", "device"].includes(role) &&
+      field !== state.userIdField &&
+      field !== deviceField() &&
+      field !== earSideField() &&
+      unique(field).length > 0 &&
+      unique(field).length <= 60;
+  });
+}
+
+function refreshPressureControls() {
+  if (!els.pressureDeviceFilter) return;
+  const currentDevice = state.pressureDeviceFilter;
+  const currentEar = state.pressureEarFilter;
+  const currentField = state.pressureGroupField;
+  const currentValue = state.pressureGroupValue;
+  const currentAggregation = state.pressureAggregation;
+  const pressureDeviceField = deviceField();
+  const pressureEarField = earSideField();
+  const devices = pressureDeviceField ? unique(pressureDeviceField) : [];
+  const ears = pressureEarField ? unique(pressureEarField) : [];
+  const groupFields = pressureSelectableFields();
+
+  fillSelect(els.pressureDeviceFilter, devices, true, fieldLabels);
+  els.pressureDeviceFilter.options[0].textContent = "全部设备";
+  fillSelect(els.pressureEarFilter, ears, true, fieldLabels);
+  els.pressureEarFilter.options[0].textContent = "全部耳侧";
+  fillSelect(els.pressureGroupField, groupFields, true, fieldLabels);
+  els.pressureGroupField.options[0].textContent = "不使用";
+
+  els.pressureDeviceFilter.value = devices.includes(currentDevice) ? currentDevice : "";
+  els.pressureEarFilter.value = ears.includes(currentEar) ? currentEar : "";
+  els.pressureGroupField.value = groupFields.includes(currentField) ? currentField : "";
+
+  const values = els.pressureGroupField.value ? unique(els.pressureGroupField.value) : [];
+  fillSelect(els.pressureGroupValue, values, true, fieldLabels);
+  els.pressureGroupValue.options[0].textContent = els.pressureGroupField.value ? "全部取值" : "先选择字段";
+  els.pressureGroupValue.value = values.includes(currentValue) ? currentValue : "";
+
+  els.pressureAggregation.value = ["mean", "median", "highRate"].includes(currentAggregation) ? currentAggregation : "mean";
+  state.pressureDeviceFilter = els.pressureDeviceFilter.value;
+  state.pressureEarFilter = els.pressureEarFilter.value;
+  state.pressureGroupField = els.pressureGroupField.value;
+  state.pressureGroupValue = els.pressureGroupValue.value;
+  state.pressureAggregation = els.pressureAggregation.value;
+}
+
+function pressureMechanismRows() {
+  const pressureDeviceField = deviceField();
+  const pressureEarField = earSideField();
+  return filteredRows().filter(row => {
+    if (state.pressureDeviceFilter && pressureDeviceField && row[pressureDeviceField] !== state.pressureDeviceFilter) return false;
+    if (state.pressureEarFilter && pressureEarField && row[pressureEarField] !== state.pressureEarFilter) return false;
+    if (state.pressureGroupField && state.pressureGroupValue && row[state.pressureGroupField] !== state.pressureGroupValue) return false;
+    return true;
+  });
+}
+
+function heatColor(value, aggregation) {
+  const risk = aggregation === "highRate" ? value * 10 : value;
+  const clamped = Math.max(0, Math.min(10, risk));
+  const alpha = 0.12 + clamped / 10 * 0.78;
+  return `rgba(143, 29, 34, ${alpha.toFixed(2)})`;
+}
+
+function heatRadius(value, aggregation) {
+  const risk = aggregation === "highRate" ? value * 10 : value;
+  return 15 + Math.max(0, Math.min(10, risk)) * 2.1;
+}
+
+function pressureSpotPosition(siteKey, view) {
+  const positions = {
+    front: {
+      tragus: [108, 164],
+      antitragus: [121, 218],
+      helix: [190, 82],
+      concha: [157, 176],
+      canal: [150, 194],
+      lobe: [151, 282],
+      "upper-ear": [175, 78],
+      postauricular: [206, 165]
+    },
+    rear: {
+      postauricular: [148, 175],
+      helix: [188, 94],
+      "upper-ear": [170, 78],
+      lobe: [150, 280]
+    },
+    top: {
+      "upper-ear": [158, 116],
+      helix: [210, 130],
+      postauricular: [145, 186],
+      concha: [160, 158]
+    }
+  };
+  return positions[view]?.[siteKey] || positions.front[siteKey] || [160, 170];
+}
+
+function pressureSvgBase(view) {
+  if (view === "rear") {
+    return `
+      <path class="ear-outline" d="M168 48 C230 62 258 124 244 198 C232 263 197 318 151 326 C113 333 84 301 77 248 C67 174 92 78 168 48 Z"/>
+      <path class="ear-fold" d="M174 72 C214 98 223 156 209 207 C196 258 174 291 145 304"/>
+      <path class="ear-fold" d="M132 90 C106 141 103 214 126 267"/>
+      <path class="ear-fold accent-line" d="M137 130 C156 151 162 198 143 236"/>
+    `;
+  }
+  if (view === "top") {
+    return `
+      <path class="ear-outline" d="M72 176 C91 94 153 55 218 85 C260 105 265 165 226 207 C181 256 98 246 72 176 Z"/>
+      <path class="ear-fold" d="M108 169 C125 112 174 91 215 115 C236 129 240 161 217 184 C187 215 130 209 108 169 Z"/>
+      <path class="ear-fold accent-line" d="M88 164 C124 153 168 157 232 181"/>
+      <path class="ear-fold" d="M148 118 C169 139 170 174 148 194"/>
+    `;
+  }
+  return `
+    <path class="ear-outline" d="M179 39 C238 55 266 112 254 185 C244 245 211 306 160 323 C119 337 88 308 86 263 C88 215 111 203 101 168 C88 123 113 55 179 39 Z"/>
+    <path class="ear-fold" d="M185 69 C221 92 231 134 221 179 C210 231 187 276 151 291"/>
+    <path class="ear-fold" d="M152 95 C119 124 119 169 137 191 C155 213 185 199 188 170 C192 135 174 113 152 95 Z"/>
+    <path class="ear-fold accent-line" d="M105 168 C126 161 148 170 151 194 C154 216 137 227 120 221"/>
+    <path class="ear-fold" d="M143 203 C162 221 172 246 157 274"/>
+  `;
+}
+
+function renderPressureSvg(view, title, summaries) {
+  const visible = summaries.filter(item => item.view === view || (view === "front" && !["rear", "top"].includes(item.view)));
+  return `<article class="pressure-map-card">
+    <div class="pressure-map-title">${attrEscape(title)}<small>${visible.length} 个部位</small></div>
+    <svg viewBox="0 0 320 360" role="img" aria-label="${attrEscape(title)}标准耳挤压热图">
+      ${pressureSvgBase(view)}
+      ${visible.map(item => {
+        const [x, y] = pressureSpotPosition(item.siteKey, view);
+        const radius = heatRadius(item.value, state.pressureAggregation);
+        const color = heatColor(item.value, state.pressureAggregation);
+        const label = attrEscape(item.label);
+        return `<g class="pressure-hotspot" tabindex="0">
+          <circle cx="${x}" cy="${y}" r="${radius}" fill="${color}"></circle>
+          <circle cx="${x}" cy="${y}" r="4"></circle>
+          <text x="${x}" y="${y - radius - 7}" text-anchor="middle">${label}</text>
+          <title>${label}：${attrEscape(item.valueLabel)}，n=${item.n}</title>
+        </g>`;
+      }).join("")}
+    </svg>
+  </article>`;
+}
+
+function renderPressureMechanism() {
+  if (!els.pressureHeatmaps) return;
+  refreshPressureControls();
+  const fields = pressureFields();
+  const rows = pressureMechanismRows();
+  if (!state.rows.length) {
+    els.pressureSummary.textContent = "尚未加载数据";
+    els.pressureHeatmaps.innerHTML = '<div class="empty-state">请先在 01 页加载项目或应用照片映射数据。</div>';
+    els.pressureRanking.innerHTML = "";
+    return;
+  }
+  if (!fields.length) {
+    els.pressureSummary.textContent = "未识别到挤压字段";
+    els.pressureHeatmaps.innerHTML = '<div class="empty-state">请在 02 页“字段角色”中把挤压列设为“挤压程度”。</div>';
+    els.pressureRanking.innerHTML = "";
+    return;
+  }
+  const summaries = Core.aggregatePressureSites(rows, fields, {
+    labels: fieldLabels,
+    pressureWorst: state.pressureWorst,
+    aggregation: state.pressureAggregation
+  });
+  const users = new Set(rows.map(row => row[state.userIdField]).filter(Boolean)).size;
+  const aggLabel = { mean: "平均风险", median: "中位风险", highRate: "高挤压比例" }[state.pressureAggregation];
+  els.pressureSummary.textContent = `${rows.length} 条记录 · ${users} 位用户 · ${aggLabel}`;
+  els.pressureHeatmaps.innerHTML = summaries.length ? [
+    renderPressureSvg("rear", "耳后", summaries),
+    renderPressureSvg("top", "耳上", summaries),
+    renderPressureSvg("front", "正对耳朵", summaries)
+  ].join("") : '<div class="empty-state">当前筛选条件下没有可聚合的挤压数据。</div>';
+  els.pressureRanking.innerHTML = summaries.length ? summaries.map((item, index) => {
+    const width = state.pressureAggregation === "highRate" ? item.value * 100 : item.value * 10;
+    return `<div class="pressure-rank-row">
+      <strong>${index + 1}. ${attrEscape(item.label)}</strong>
+      <span>${attrEscape(item.valueLabel)} · n=${item.n}</span>
+      <i style="width:${Math.max(2, Math.min(100, width))}%"></i>
+    </div>`;
+  }).join("") : '<div class="empty-state">暂无排行。</div>';
+}
+
 function scoreClass(value) {
   return Number(value) >= 8 ? "high" : Number(value) <= 5 ? "low" : "";
 }
@@ -1113,6 +1318,7 @@ function render() {
   renderPivot(groups);
   renderChart(groups);
   renderDetails(rows, groups);
+  renderPressureMechanism();
 }
 
 function switchPage(page) {
@@ -1557,7 +1763,29 @@ function bindEvents() {
   els.pressureWorstSelect.addEventListener("change", () => {
     state.pressureWorst = els.pressureWorstSelect.value === "high" ? "high" : "low";
     renderDetails(filteredRows(), groupedRows(filteredRows()));
+    renderPressureMechanism();
     markProjectDirty();
+  });
+  els.pressureDeviceFilter.addEventListener("change", () => {
+    state.pressureDeviceFilter = els.pressureDeviceFilter.value;
+    renderPressureMechanism();
+  });
+  els.pressureEarFilter.addEventListener("change", () => {
+    state.pressureEarFilter = els.pressureEarFilter.value;
+    renderPressureMechanism();
+  });
+  els.pressureGroupField.addEventListener("change", () => {
+    state.pressureGroupField = els.pressureGroupField.value;
+    state.pressureGroupValue = "";
+    renderPressureMechanism();
+  });
+  els.pressureGroupValue.addEventListener("change", () => {
+    state.pressureGroupValue = els.pressureGroupValue.value;
+    renderPressureMechanism();
+  });
+  els.pressureAggregation.addEventListener("change", () => {
+    state.pressureAggregation = els.pressureAggregation.value;
+    renderPressureMechanism();
   });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });

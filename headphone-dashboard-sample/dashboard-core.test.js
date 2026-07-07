@@ -30,6 +30,60 @@ test("pressure fields support English suffix and Chinese column names", () => {
   assert.equal(core.pressureSiteLabel("custom_part_pressure_score"), "custom part");
 });
 
+test("pressure risk score follows configured score direction", () => {
+  assert.equal(core.pressureRiskScore("10", "low"), 0);
+  assert.equal(core.pressureRiskScore("0", "low"), 10);
+  assert.equal(core.pressureRiskScore("0", "high"), 0);
+  assert.equal(core.pressureRiskScore("10", "high"), 10);
+  assert.equal(core.pressureRiskScore("", "low"), null);
+});
+
+test("aggregatePressureSites summarizes fixed standard ear regions", () => {
+  const rows = [
+    { device_name: "A", tragus_pressure_score: "8", ear_hook_pressure_score: "4", rear_clip_pressure_score: "5" },
+    { device_name: "A", tragus_pressure_score: "6", ear_hook_pressure_score: "2", rear_clip_pressure_score: "" },
+    { device_name: "B", tragus_pressure_score: "10", ear_hook_pressure_score: "9", rear_clip_pressure_score: "8" }
+  ];
+  const summaries = core.aggregatePressureSites(rows.slice(0, 2), [
+    "tragus_pressure_score",
+    "ear_hook_pressure_score",
+    "rear_clip_pressure_score"
+  ], {
+    pressureWorst: "low",
+    labels: {
+      tragus_pressure_score: "耳屏",
+      ear_hook_pressure_score: "耳挂挤压",
+      rear_clip_pressure_score: "耳后夹持挤压"
+    },
+    aggregation: "mean"
+  });
+
+  const tragus = summaries.find(item => item.siteKey === "tragus");
+  const upper = summaries.find(item => item.siteKey === "upper-ear");
+  const rear = summaries.find(item => item.siteKey === "postauricular");
+  assert.equal(tragus.label, "耳屏");
+  assert.equal(tragus.n, 2);
+  assert.equal(tragus.value, 3);
+  assert.equal(upper.view, "top");
+  assert.equal(upper.value, 7);
+  assert.equal(rear.view, "rear");
+  assert.equal(rear.n, 1);
+});
+
+test("aggregatePressureSites can show high pressure rate", () => {
+  const summaries = core.aggregatePressureSites([
+    { helix_pressure_score: "10" },
+    { helix_pressure_score: "4" },
+    { helix_pressure_score: "2" }
+  ], ["helix_pressure_score"], {
+    pressureWorst: "high",
+    aggregation: "highRate",
+    highThreshold: 6
+  });
+  assert.equal(summaries[0].value, 1 / 3);
+  assert.equal(summaries[0].valueLabel, "33%");
+});
+
 test("data quality report catches missing IDs, duplicate conditions, score ranges, and user-level conflicts", () => {
   const rows = [
     { user_id: "U001", device_name: "A", gender: "女", comfort_score: "8" },

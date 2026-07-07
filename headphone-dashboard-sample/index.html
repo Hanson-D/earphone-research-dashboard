@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>耳机佩戴研究看板</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260707-pressure-map">
 </head>
 <body>
   <header class="topbar">
@@ -20,6 +20,7 @@
   <nav class="page-nav">
     <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
     <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
+    <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
   </nav>
 
   <main id="mappingPage" class="app-page active">
@@ -269,6 +270,87 @@
     </section>
   </main>
 
+  <main id="pressurePage" class="app-page">
+    <section class="pressure-layout">
+      <aside class="control-panel pressure-control-panel">
+        <div class="section-heading">
+          <span>挤压热图配置</span>
+          <small>标准耳模板</small>
+        </div>
+
+        <div class="control-block">
+          <label for="pressureDeviceFilter">设备</label>
+          <select id="pressureDeviceFilter"></select>
+        </div>
+
+        <div class="control-block">
+          <label for="pressureEarFilter">耳侧</label>
+          <select id="pressureEarFilter"></select>
+        </div>
+
+        <div class="control-block">
+          <label for="pressureGroupField">额外筛选字段</label>
+          <select id="pressureGroupField"></select>
+        </div>
+
+        <div class="control-block">
+          <label for="pressureGroupValue">字段取值</label>
+          <select id="pressureGroupValue"></select>
+        </div>
+
+        <div class="control-block">
+          <label for="pressureAggregation">聚合方式</label>
+          <select id="pressureAggregation">
+            <option value="mean">平均挤压风险</option>
+            <option value="median">中位挤压风险</option>
+            <option value="highRate">高挤压比例</option>
+          </select>
+        </div>
+
+        <p class="pressure-note">热图使用固定标准耳模板。颜色越深表示当前筛选条件下该部位整体挤压风险越高；不是个体耳形重建。</p>
+      </aside>
+
+      <section class="pressure-main">
+        <div class="panel pressure-hero">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">PRESSURE MECHANISM</p>
+              <h2>标准耳挤压热图</h2>
+            </div>
+            <span id="pressureSummary" class="hint">等待数据</span>
+          </div>
+          <div id="pressureHeatmaps" class="pressure-heatmaps"></div>
+        </div>
+
+        <div class="pressure-side-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">REGION RANKING</p>
+                <h2>挤压部位排行</h2>
+              </div>
+            </div>
+            <div id="pressureRanking" class="pressure-ranking"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">INTERPRETATION</p>
+                <h2>读图说明</h2>
+              </div>
+            </div>
+            <div class="pressure-guide">
+              <p><strong>耳后</strong>用于观察耳夹、后侧夹持或耳后结构挤压。</p>
+              <p><strong>耳上</strong>用于观察耳挂、上耳轮或挂钩类结构挤压。</p>
+              <p><strong>正对耳朵</strong>用于观察耳屏、对耳屏、耳轮、耳甲腔和耳道口区域挤压。</p>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
   <template id="emptyTemplate">
     <div class="empty-state">当前筛选条件下没有数据。</div>
   </template>
@@ -282,7 +364,7 @@
   </div>
 
   <script src="modules/protocol-template/protocol-template.js?v=20260706-protocol"></script>
-  <script src="dashboard-core.js?v=20260630-pressure-scale"></script>
-  <script src="app.js?v=20260630-pressure-scale"></script>
+  <script src="dashboard-core.js?v=20260707-pressure-map"></script>
+  <script src="app.js?v=20260707-pressure-map"></script>
 </body>
 </html>

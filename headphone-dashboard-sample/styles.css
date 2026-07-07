@@ -348,6 +348,88 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .profile-tags { display: flex; flex-wrap: wrap; gap: 3px 7px; }
 .profile-tag { display: inline-flex; gap: 3px; color: var(--ink); font-size: .82em; white-space: nowrap; }
 .profile-tag b { color: var(--muted); font-size: .72em; font-weight: 700; }
+
+.pressure-layout { display: grid; grid-template-columns: 285px minmax(0, 1fr); gap: 20px; }
+.pressure-control-panel { align-self: start; }
+.pressure-note {
+  margin: 4px 0 0;
+  padding: 10px 11px;
+  color: var(--sage-dark);
+  background: #fbf4ee;
+  border: 1px solid #ecd8cc;
+  border-left: 3px solid var(--accent);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.pressure-main { min-width: 0; display: grid; gap: 14px; }
+.pressure-hero { overflow: hidden; }
+.pressure-heatmaps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px;
+}
+.pressure-map-card {
+  min-width: 0;
+  padding: 13px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(143,29,34,.08), transparent 42%),
+    #fffdfa;
+  border: 1px solid var(--line);
+}
+.pressure-map-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+.pressure-map-title small { color: var(--muted); font-size: 10px; font-weight: 700; }
+.pressure-map-card svg { display: block; width: 100%; height: min(48vw, 340px); margin-top: 8px; }
+.ear-outline { fill: #fbefe8; stroke: #6d5550; stroke-width: 2.2; }
+.ear-fold { fill: none; stroke: #9e827c; stroke-width: 1.7; stroke-linecap: round; }
+.accent-line { stroke: var(--accent); stroke-opacity: .55; }
+.pressure-hotspot circle:first-child {
+  stroke: rgba(104,17,22,.45);
+  stroke-width: 1.3;
+  mix-blend-mode: multiply;
+}
+.pressure-hotspot circle:nth-child(2) { fill: var(--accent-dark); }
+.pressure-hotspot text {
+  fill: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #fffdf9;
+  stroke-width: 3px;
+}
+.pressure-side-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 14px; }
+.pressure-ranking { display: grid; gap: 9px; padding: 16px 18px 18px; }
+.pressure-rank-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px 11px 12px;
+  overflow: hidden;
+  background: var(--accent-pale);
+  border: 1px solid #ead6d6;
+}
+.pressure-rank-row strong,
+.pressure-rank-row span { position: relative; z-index: 1; }
+.pressure-rank-row strong { color: var(--accent-dark); font-size: 12px; }
+.pressure-rank-row span { color: var(--muted); font-family: Georgia, serif; font-size: 12px; font-weight: 700; }
+.pressure-rank-row i {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), #d6a4a6);
+}
+.pressure-guide { padding: 16px 18px 18px; color: var(--muted); font-size: 12px; line-height: 1.75; }
+.pressure-guide p { margin-bottom: 10px; }
+.pressure-guide strong { color: var(--accent-dark); }
 .ear-photo { width: var(--photo-size); height: var(--photo-size); object-fit: cover; border: 2px solid #fff; outline: 1px solid #dbc8c8; box-shadow: 0 3px 10px rgba(67,30,32,.14); }
 .photo-gallery { display: grid; grid-template-columns: repeat(var(--photo-count, 3), minmax(0, 1fr)); align-items: start; gap: 3px; }
 .user-view-select { width: 100%; margin-bottom: 5px; padding: 3px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid #d8c5c5; font-size: 8px; }
@@ -433,8 +515,10 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 @media (max-width: 1100px) {
   .mapping-layout { grid-template-columns: 1fr; }
   .hero-grid { grid-template-columns: 1fr; }
+  .pressure-layout { grid-template-columns: 1fr; }
   .control-panel { position: static; }
   .comparison-grid { grid-template-columns: 1fr; }
+  .pressure-heatmaps, .pressure-side-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {

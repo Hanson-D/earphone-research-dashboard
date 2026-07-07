@@ -82,6 +82,82 @@
     return known[cleaned.toLowerCase()] || cleaned || source;
   }
 
+  function pressureRiskScore(value, pressureWorst = "low") {
+    if (value === "" || value == null) return null;
+    const score = Number(value);
+    if (!Number.isFinite(score)) return null;
+    const clipped = Math.max(0, Math.min(10, score));
+    return pressureWorst === "high" ? clipped : 10 - clipped;
+  }
+
+  function pressureSiteMeta(field, label = "") {
+    const text = `${field || ""} ${label || ""} ${pressureSiteLabel(field, label)}`.toLowerCase();
+    const source = `${field || ""} ${label || ""} ${pressureSiteLabel(field, label)}`;
+    const includes = (...patterns) => patterns.some(pattern => pattern.test(source) || pattern.test(text));
+    if (includes(/耳后|后耳|耳背|后脑|后侧|夹持|耳夹|rear|back|behind|postauricular|clip/i)) {
+      return { siteKey: "postauricular", label: "耳后", view: "rear" };
+    }
+    if (includes(/耳上|上耳|耳挂|挂钩|挂耳|upper|top|hook|hanger/i)) {
+      return { siteKey: "upper-ear", label: "耳上/耳挂", view: "top" };
+    }
+    if (includes(/对耳屏|antitragus/i)) return { siteKey: "antitragus", label: "对耳屏", view: "front" };
+    if (includes(/耳屏|tragus/i)) return { siteKey: "tragus", label: "耳屏", view: "front" };
+    if (includes(/耳轮|helix/i)) return { siteKey: "helix", label: "耳轮", view: "front" };
+    if (includes(/耳甲|concha/i)) return { siteKey: "concha", label: "耳甲腔", view: "front" };
+    if (includes(/耳道|耳塞|canal/i)) return { siteKey: "canal", label: "耳道口", view: "front" };
+    if (includes(/耳垂|lobe/i)) return { siteKey: "lobe", label: "耳垂", view: "front" };
+    const fallback = pressureSiteLabel(field, label);
+    return { siteKey: normalizeToken(fallback) || normalizeToken(field), label: fallback, view: "front" };
+  }
+
+  function median(values = []) {
+    const sorted = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+    if (!sorted.length) return 0;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function aggregatePressureSites(rows = [], pressureFields = [], options = {}) {
+    const {
+      labels = {},
+      pressureWorst = "low",
+      aggregation = "mean",
+      highThreshold = 6
+    } = options;
+    const bySite = new Map();
+    pressureFields.forEach(field => {
+      const meta = pressureSiteMeta(field, labels[field]);
+      if (!bySite.has(meta.siteKey)) bySite.set(meta.siteKey, { ...meta, fields: [], risks: [] });
+      const site = bySite.get(meta.siteKey);
+      site.fields.push(field);
+      rows.forEach(row => {
+        const risk = pressureRiskScore(row[field], pressureWorst);
+        if (risk != null) site.risks.push(risk);
+      });
+    });
+    return [...bySite.values()].map(site => {
+      const n = site.risks.length;
+      const mean = n ? site.risks.reduce((sum, value) => sum + value, 0) / n : 0;
+      const med = median(site.risks);
+      const highCount = site.risks.filter(value => value >= highThreshold).length;
+      const highRate = n ? highCount / n : 0;
+      const value = aggregation === "median" ? med : aggregation === "highRate" ? highRate : mean;
+      return {
+        siteKey: site.siteKey,
+        label: site.label,
+        view: site.view,
+        fields: site.fields,
+        n,
+        mean,
+        median: med,
+        highCount,
+        highRate,
+        value,
+        valueLabel: aggregation === "highRate" ? `${Math.round(value * 100)}%` : value.toFixed(1)
+      };
+    }).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "zh-CN"));
+  }
+
   function inferFieldRole(field, rows = []) {
     if (/^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) return "user_id";
     if (/^device_name$|device_id|condition|设备|条件/i.test(field)) return "device";
@@ -671,6 +747,9 @@
     numericSummary,
     isPressureField,
     pressureSiteLabel,
+    pressureRiskScore,
+    pressureSiteMeta,
+    aggregatePressureSites,
     inferFieldRole,
     resolveFieldRoles,
     naturalCompare,
