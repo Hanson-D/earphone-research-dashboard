@@ -18,7 +18,7 @@
   </header>
 
   <nav class="page-nav">
-    <button class="page-tab active" data-page="mapping">01 · 照片映射</button>
+    <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
     <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
   </nav>
 
@@ -30,7 +30,7 @@
           <h2>项目文件</h2>
           <label class="mapping-input">
             <span>项目 JSON 路径</span>
-            <input id="projectPathInput" type="text" placeholder="/Users/name/research/project-a.json">
+            <input id="projectPathInput" name="projectPath" type="text" autocomplete="off" placeholder="例如：/Users/name/research/project-a.json…">
             <small>每个项目保存为一个 JSON 文件。不同标签页可加载不同项目。</small>
           </label>
           <div class="project-actions">
@@ -38,26 +38,19 @@
             <button id="saveProjectConfigButton" class="outline-button" type="button">保存当前配置</button>
             <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
           </div>
-          <div id="projectStatus" class="project-status">未加载项目文件</div>
-          <label class="mapping-input compact-config">
-            <span>挤压分数方向</span>
-            <select id="pressureWorstSelect">
-              <option value="low">0 最差，10 表示无挤压</option>
-              <option value="high">10 最差，0 表示无挤压</option>
-            </select>
-            <small>影响挤压标签的颜色和是否隐藏无挤压位置。</small>
-          </label>
-          <div class="protocol-panel">
-            <div class="protocol-heading">
-              <strong>项目模板（可选）</strong>
-              <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
-            </div>
+          <div id="projectStatus" class="project-status" aria-live="polite">未加载项目文件</div>
+          <details class="protocol-panel">
+            <summary class="protocol-heading">
+              <strong>项目规则（可选）</strong>
+              <span>模板与校验</span>
+            </summary>
+            <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
             <label class="protocol-import">
               加载模板 JSON
               <input id="protocolTemplateInput" type="file" accept=".json,application/json">
             </label>
-            <div id="protocolStatus" class="protocol-status">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
-          </div>
+            <div id="protocolStatus" class="protocol-status" aria-live="polite">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
+          </details>
         </section>
 
         <p class="panel-kicker">PHOTO INDEX BUILDER</p>
@@ -70,7 +63,7 @@
         </label>
         <label id="photoRootInputWrap" class="mapping-input">
           <span>2. 输入照片根文件夹路径</span>
-          <input id="photoRootInput" type="text" placeholder="/Users/name/research/photos">
+          <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
           <small>填写本机照片根目录。可选择按拍摄顺序映射，或按姓名/左右耳/样机/方向子文件夹匹配。</small>
         </label>
         <label id="photoFolderInputWrap" class="mapping-input" data-server-only hidden>
@@ -94,7 +87,7 @@
         </div>
         <label id="viewNamesInputWrap" class="mapping-input">
           <span>3. 按拍摄顺序填写视角名称</span>
-          <input id="viewNamesInput" type="text" value="正面,侧面,后侧" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面">
+          <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…">
           <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
         </label>
         <button id="runMappingButton" class="primary-button">生成照片映射</button>
@@ -112,7 +105,7 @@
             <p class="panel-kicker">MAPPING REVIEW</p>
             <h2>映射检查</h2>
           </div>
-          <div id="mappingSummary" class="mapping-summary">等待选择 CSV 和照片文件夹</div>
+          <div id="mappingSummary" class="mapping-summary" aria-live="polite">等待选择 CSV 和照片文件夹</div>
         </div>
         <div id="mappingPreview" class="mapping-preview">
           <div class="empty-state">照片将按用户文件夹名称匹配用户，并按文件名自然排序。</div>
@@ -158,11 +151,19 @@
           显示误差线（±SD）
         </label>
 
+        <div class="control-block">
+          <label for="pressureWorstSelect">挤压分数方向</label>
+          <select id="pressureWorstSelect">
+            <option value="low">0 最差，10 表示无挤压</option>
+            <option value="high">10 最差，0 表示无挤压</option>
+          </select>
+        </div>
+
         <button id="clearGroupButton" class="primary-button">清除透视分组选择</button>
 
         <details class="field-role-config">
           <summary>字段角色</summary>
-          <p>用于控制哪些列是组间变量、评分指标、挤压程度（10=无挤压，0=严重挤压）、照片或忽略列。</p>
+          <p>用于控制哪些列是组间变量、评分指标、挤压程度、照片或忽略列；挤压方向由上方“挤压分数方向”控制。</p>
           <div id="fieldRoleList" class="field-role-list"></div>
           <button id="resetFieldRolesButton" type="button" class="compact-button">恢复自动识别</button>
         </details>
@@ -223,7 +224,7 @@
       </div>
 
       <div class="detail-toolbar">
-        <input id="detailSearch" type="search" placeholder="搜索当前组内的用户、设备或备注">
+        <input id="detailSearch" name="detailSearch" type="search" autocomplete="off" placeholder="搜索当前组内的用户、设备或备注…">
         <span id="detailCount"></span>
         <label id="globalViewControl" class="view-control">全局视角<select id="globalViewSelect"></select></label>
         <button id="resetViewsButton" type="button" class="compact-button">重置视角</button>

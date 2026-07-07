@@ -32,6 +32,15 @@ body {
 }
 
 button, input, select { font: inherit; }
+button, input, select, summary, [role="button"] { touch-action: manipulation; }
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid rgba(143,29,34,.28);
+  outline-offset: 3px;
+}
 .app-page { display: none; }
 .app-page.active { display: block; }
 
@@ -174,9 +183,9 @@ select[multiple] { min-height: 84px; }
 .project-panel h2 { margin-bottom: 12px; }
 .project-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
-.compact-config { margin-top: 12px; margin-bottom: 0; }
 .protocol-panel { margin-top: 14px; padding: 12px; background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); }
-.protocol-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--accent-dark); font-size: 11px; }
+.protocol-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--accent-dark); font-size: 11px; cursor: pointer; }
+.protocol-heading::-webkit-details-marker { display: none; }
 .text-button { padding: 0; color: var(--accent); background: transparent; border: 0; font-size: 10px; font-weight: 800; cursor: pointer; }
 .protocol-import { display: block; margin-top: 9px; color: var(--ink); font-size: 10px; font-weight: 800; }
 .protocol-import input { display: block; width: 100%; margin-top: 5px; font-size: 10px; }
@@ -188,85 +197,6 @@ select[multiple] { min-height: 84px; }
 .mapping-input span { display: block; margin-bottom: 6px; }
 .mapping-input input { width: 100%; padding: 9px 10px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
 
-.server-entry {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 20px;
-}
-
-.server-entry-page input[type="text"] {
-  width: 100%;
-  padding: 9px 10px;
-  color: var(--ink);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
-
-.server-create-panel,
-.server-project-panel {
-  padding: 22px;
-}
-
-.server-create-panel {
-  align-self: start;
-  border-top: 4px solid var(--accent);
-}
-
-.server-create-form {
-  display: grid;
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.server-create-form label {
-  display: block;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.server-create-form small {
-  display: block;
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.server-project-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.server-project-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px;
-  background: var(--accent-pale);
-  border: 1px solid #ead6d6;
-}
-
-.server-project-card strong {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--accent-dark);
-}
-
-.server-project-card span {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.server-project-card .outline-button {
-  flex: 0 0 auto;
-  text-decoration: none;
-}
 .mapping-input small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 500; line-height: 1.5; }
 .mapping-mode-note { margin: -4px 0 14px; padding: 10px 11px; color: var(--sage-dark); background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); font-size: 10px; line-height: 1.55; }
 .mapping-mode-note strong { display: block; margin-bottom: 3px; color: var(--accent-dark); font-size: 11px; }
@@ -308,7 +238,7 @@ select[multiple] { min-height: 84px; }
 .kpi:nth-child(3) { border-color: #be6669; }
 .kpi:nth-child(4) { border-color: #d49a9c; }
 .kpi-label { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
-.kpi-value { margin: 8px 0 2px; color: var(--accent-dark); font-family: Georgia, serif; font-size: 31px; font-weight: 700; }
+.kpi-value { margin: 8px 0 2px; color: var(--accent-dark); font-family: Georgia, serif; font-size: 31px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .kpi-note { color: var(--muted); font-size: 11px; }
 
 .comparison-grid { display: grid; grid-template-columns: minmax(480px, 1.2fr) minmax(300px, .8fr); gap: 14px; }
@@ -337,7 +267,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .pivot-table tbody tr:hover { background: var(--accent-pale); }
 .pivot-table tbody tr.active { color: #fff; background: var(--accent); }
 .pivot-table tbody tr.active .metric-chip { color: var(--ink); background: #fff; }
-.metric-chip { display: inline-block; min-width: 38px; padding: 3px 7px; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; text-align: center; font-weight: 800; }
+.metric-chip { display: inline-block; min-width: 38px; padding: 3px 7px; color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pivot-key { font-weight: 800; }
 .pivot-secondary { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
 .active .pivot-secondary { color: #f3d9da; }
@@ -354,7 +284,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .grid-lines i { position: absolute; right: 0; left: 0; border-top: 1px dashed #d8d5ca; }
 .column-chart { position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 8px; height: 100%; padding: 18px 4px 0; }
 .column-item { position: relative; display: grid; grid-template-rows: 18px 1fr 46px; align-items: end; justify-items: center; flex: 1; min-width: 24px; height: 100%; }
-.column-value { font-family: Georgia, serif; font-size: 12px; font-weight: 700; }
+.column-value { font-family: Georgia, serif; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .column-bar { width: min(34px, 68%); min-height: 2px; background: linear-gradient(180deg, #b94c51, var(--accent)); border: 1px solid var(--accent-dark); transform-origin: bottom; animation: grow-column .45s ease-out both; }
 .error-bar { position: absolute; bottom: auto; width: 1px; min-height: 4px; background: var(--ink); transform: translateY(18px); }
 .error-bar::before, .error-bar::after { position: absolute; left: -5px; width: 11px; height: 1px; background: var(--ink); content: ""; }
@@ -364,6 +294,9 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .column-label small { display: block; color: var(--accent-dark); font-family: Georgia, serif; font-weight: 700; }
 .x-axis-title { grid-column: 2; align-self: end; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-align: center; }
 @keyframes grow-column { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .column-bar { animation: none; }
+}
 
 .detail-section { margin-top: 20px; padding-bottom: 8px; }
 .detail-heading { padding: 20px 20px 14px; }
@@ -422,7 +355,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .photo-thumb .ear-photo { width: min(100%, var(--photo-size)); height: auto; aspect-ratio: 1; }
 .photo-thumb figcaption { max-width: 100%; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .lightbox-open { overflow: hidden; }
-.photo-lightbox { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 28px; background: rgba(36, 29, 29, .78); backdrop-filter: blur(3px); }
+.photo-lightbox { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 28px; background: rgba(36, 29, 29, .78); backdrop-filter: blur(3px); overscroll-behavior: contain; }
 .photo-lightbox[hidden] { display: none; }
 .photo-lightbox-card { position: relative; max-width: min(92vw, 1180px); max-height: 92vh; margin: 0; padding: 14px; background: var(--surface); border: 1px solid rgba(255,255,255,.48); box-shadow: 0 24px 70px rgba(0,0,0,.35); }
 .photo-lightbox-card img { display: block; max-width: calc(92vw - 28px); max-height: calc(86vh - 58px); object-fit: contain; background: #181313; }

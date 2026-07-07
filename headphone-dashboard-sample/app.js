@@ -115,6 +115,7 @@ const state = {
 let draggedColumnId = "";
 let columnDragScrollFrame = 0;
 const columnDragScroll = { list: 0, page: 0 };
+let photoLightboxReturnFocus = null;
 
 const els = Object.fromEntries([
   "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
@@ -1116,7 +1117,12 @@ function render() {
 
 function switchPage(page) {
   document.querySelectorAll(".app-page").forEach(element => element.classList.toggle("active", element.id === `${page}Page`));
-  document.querySelectorAll(".page-tab").forEach(button => button.classList.toggle("active", button.dataset.page === page));
+  document.querySelectorAll(".page-tab").forEach(button => {
+    const active = button.dataset.page === page;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
 }
 
 function mappingViews() {
@@ -1345,13 +1351,15 @@ function downloadPhotoAuditCsv() {
   URL.revokeObjectURL(link.href);
 }
 
-function openPhotoLightbox(src, caption = "") {
+function openPhotoLightbox(src, caption = "", returnFocus = document.activeElement) {
   if (!src) return;
+  photoLightboxReturnFocus = returnFocus;
   els.photoLightboxImage.src = src;
   els.photoLightboxImage.alt = caption || "照片大图";
   els.photoLightboxCaption.textContent = caption;
   els.photoLightbox.hidden = false;
   document.body.classList.add("lightbox-open");
+  els.photoLightboxClose.focus({ preventScroll: true });
 }
 
 function closePhotoLightbox() {
@@ -1360,6 +1368,8 @@ function closePhotoLightbox() {
   els.photoLightboxImage.alt = "";
   els.photoLightboxCaption.textContent = "";
   document.body.classList.remove("lightbox-open");
+  if (photoLightboxReturnFocus?.focus) photoLightboxReturnFocus.focus({ preventScroll: true });
+  photoLightboxReturnFocus = null;
 }
 
 function resetMappingOutputs() {
@@ -1438,7 +1448,8 @@ function bindEvents() {
     };
     reader.readAsText(file, "UTF-8");
   });
-  els.clearProtocolButton.addEventListener("click", () => {
+  els.clearProtocolButton.addEventListener("click", event => {
+    event.stopPropagation();
     state.protocolTemplate = null;
     state.protocolValidation = null;
     els.protocolTemplateInput.value = "";
@@ -1499,7 +1510,7 @@ function bindEvents() {
   document.addEventListener("click", event => {
     const trigger = event.target.closest(".photo-preview-trigger");
     if (trigger) {
-      openPhotoLightbox(trigger.dataset.previewSrc || trigger.currentSrc || trigger.src, trigger.dataset.previewCaption || trigger.alt || "");
+      openPhotoLightbox(trigger.dataset.previewSrc || trigger.currentSrc || trigger.src, trigger.dataset.previewCaption || trigger.alt || "", trigger);
       return;
     }
     if (event.target === els.photoLightbox) closePhotoLightbox();
@@ -1507,7 +1518,7 @@ function bindEvents() {
   document.addEventListener("keydown", event => {
     if ((event.key === "Enter" || event.key === " ") && event.target.classList?.contains("photo-preview-trigger")) {
       event.preventDefault();
-      openPhotoLightbox(event.target.dataset.previewSrc || event.target.currentSrc || event.target.src, event.target.dataset.previewCaption || event.target.alt || "");
+      openPhotoLightbox(event.target.dataset.previewSrc || event.target.currentSrc || event.target.src, event.target.dataset.previewCaption || event.target.alt || "", event.target);
     }
     if (event.key === "Escape" && !els.photoLightbox.hidden) closePhotoLightbox();
   });
