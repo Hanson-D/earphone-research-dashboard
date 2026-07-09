@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>耳机佩戴研究看板</title>
-  <link rel="stylesheet" href="styles.css?v=20260707-pressure-map">
+  <link rel="stylesheet" href="styles.css?v=20260709-mapping-review">
 </head>
 <body>
   <header class="topbar">
@@ -25,8 +25,8 @@
 
   <main id="mappingPage" class="app-page active">
     <section class="mapping-layout">
-      <aside class="mapping-config">
-        <section class="project-panel">
+      <section class="mapping-setup">
+        <section class="mapping-card project-panel">
           <p class="panel-kicker">PROJECT</p>
           <h2>项目文件</h2>
           <label class="mapping-input">
@@ -54,57 +54,57 @@
           </details>
         </section>
 
-        <p class="panel-kicker">PHOTO INDEX BUILDER</p>
-        <h2>照片自动映射</h2>
-        <p class="mapping-intro">从 CSV 与照片目录生成可直接用于看板的照片字段；可按拍摄顺序映射，也可按子文件夹自动识别。</p>
+        <section class="mapping-card mapping-builder">
+          <p class="panel-kicker">PHOTO INDEX BUILDER</p>
+          <h2>照片自动映射</h2>
+          <p class="mapping-intro">从 CSV 与照片目录生成可直接用于看板的照片字段；可按拍摄顺序映射，也可按子文件夹自动识别。</p>
 
-        <label class="mapping-input">
-          <span>1. 选择原始 CSV</span>
-          <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
-        </label>
-        <label id="photoRootInputWrap" class="mapping-input">
-          <span>2. 输入照片根文件夹路径</span>
-          <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
-          <small>填写本机照片根目录。可选择按拍摄顺序映射，或按姓名/左右耳/样机/方向子文件夹匹配。</small>
-        </label>
-        <label id="photoFolderInputWrap" class="mapping-input" data-server-only hidden>
-          <span>2. 选择照片文件夹</span>
-          <input id="photoFolderInput" type="file" webkitdirectory directory multiple accept="image/*">
-          <small>选择照片根文件夹后，页面会把照片写入当前项目资源中。</small>
-        </label>
-        <label class="mapping-input">
-          <span>照片匹配方式</span>
-          <select id="mappingMode">
-            <option value="sequence">照片顺序逻辑</option>
-            <option value="folders">子文件夹逻辑：姓名 / 左右耳 / 样机 / 方向</option>
-          </select>
-          <small>子文件夹逻辑不要求层级顺序固定；用户和方向必须能识别，左右耳与设备可从目录识别或不配置。</small>
-        </label>
-        <div id="mappingModeNote" class="mapping-mode-note"></div>
-        <div class="mapping-fields">
-          <label>姓名/用户字段<select id="mappingUserField"></select></label>
-          <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
-          <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
-        </div>
-        <label id="viewNamesInputWrap" class="mapping-input">
-          <span>3. 按拍摄顺序填写视角名称</span>
-          <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…">
-          <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
-        </label>
-        <button id="runMappingButton" class="primary-button">生成照片映射</button>
+          <div class="mapping-form-grid">
+            <label class="mapping-input">
+              <span>1. 选择原始 CSV</span>
+              <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
+            </label>
+            <label id="photoRootInputWrap" class="mapping-input">
+              <span>2. 输入照片根文件夹路径</span>
+              <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
+              <small>填写本机照片根目录。可选择按拍摄顺序映射，或按姓名/左右耳/样机/方向子文件夹匹配。</small>
+            </label>
+            <label class="mapping-input">
+              <span>照片匹配方式</span>
+              <select id="mappingMode">
+                <option value="sequence">照片顺序逻辑</option>
+                <option value="folders">子文件夹逻辑：姓名 / 左右耳 / 样机 / 方向</option>
+              </select>
+              <small>子文件夹逻辑不要求层级顺序固定；用户和方向必须能识别，左右耳与设备可从目录识别或不配置。</small>
+            </label>
+          </div>
+          <div id="mappingModeNote" class="mapping-mode-note"></div>
+          <div class="mapping-fields">
+            <label>姓名/用户字段<select id="mappingUserField"></select></label>
+            <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
+            <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
+          </div>
+          <label id="viewNamesInputWrap" class="mapping-input">
+            <span>3. 按拍摄顺序填写视角名称</span>
+            <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…">
+            <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
+          </label>
+          <button id="runMappingButton" class="primary-button">生成照片映射</button>
 
-        <div class="mapping-actions">
-          <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
-          <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
-          <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
-        </div>
-      </aside>
+          <div class="mapping-actions">
+            <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
+            <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
+            <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
+          </div>
+        </section>
+      </section>
 
       <section class="mapping-results panel">
         <div class="panel-heading">
           <div>
             <p class="panel-kicker">MAPPING REVIEW</p>
             <h2>映射检查</h2>
+            <p class="mapping-review-help">如果同一用户内照片顺序错了，直接拖动缩略图到目标照片框即可交换；不会跨用户移动。</p>
           </div>
           <div id="mappingSummary" class="mapping-summary" aria-live="polite">等待选择 CSV 和照片文件夹</div>
         </div>
@@ -364,7 +364,7 @@
   </div>
 
   <script src="modules/protocol-template/protocol-template.js?v=20260706-protocol"></script>
-  <script src="dashboard-core.js?v=20260707-pressure-map"></script>
-  <script src="app.js?v=20260707-pressure-map"></script>
+  <script src="dashboard-core.js?v=20260709-mapping-review"></script>
+  <script src="app.js?v=20260709-mapping-review"></script>
 </body>
 </html>

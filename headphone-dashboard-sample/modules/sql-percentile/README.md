@@ -1,6 +1,6 @@
 # 03 SQL 百分位分析模块
 
-该目录是独立模块草案，不直接接入当前 `index.html`、`app.js`、`server.py`。
+该目录是独立模块草案，不直接接入当前 `index.html`、`app.js`、`server/server.py`。
 
 目标：
 
@@ -26,7 +26,7 @@
 后续合并方式：
 
 1. 在主 `index.html` 增加 `03 · SQL 百分位分析` 页面入口。
-2. 在主 `server.py` 中挂载 `sql_percentile.py` 提供的 schema 和 percentile API。
+2. 在主 `server/server.py` 中挂载 `sql_percentile.py` 提供的 schema 和 percentile API。
 3. 在主 `app.js` 中从 02 详情行传入当前用户记录，并调用 `sql-percentile.js` 渲染 03 页面。
 
 与后续模块的关系：

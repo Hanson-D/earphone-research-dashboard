@@ -65,7 +65,7 @@ chmod +x 打开耳机数据看板.command
 从 `headphone-dashboard-sample` 目录启动项目自带服务器：
 
 ```bash
-python3 server.py
+python3 server/server.py
 ```
 
 然后在 Chrome 中访问：
@@ -74,7 +74,7 @@ python3 server.py
 http://localhost:7362
 ```
 
-必须使用 `server.py`，而不是普通的 `python3 -m http.server`。项目服务器负责：
+必须使用 `server/server.py`，而不是普通的 `python3 -m http.server`。项目服务器负责：
 
 - 扫描用户填写的本地照片根目录
 - 读取用户文件夹与照片文件名
@@ -89,26 +89,26 @@ http://localhost:7362
 
 ```bash
 cd headphone-dashboard-sample
-HOST=0.0.0.0 DASHBOARD_LEGACY_PATHS=0 python3 server.py
+HOST=0.0.0.0 DASHBOARD_LEGACY_PATHS=0 python3 server/server.py
 ```
 
 访问：
 
 ```text
-http://服务器地址:7362/server.html
+http://服务器地址:7362/server/server.html
 ```
 
 说明：
 
-- `server.html` 是统一入口页，可以创建项目、查看项目列表，并在新标签页打开多个看板。
+- `server/server.html` 是统一入口页，可以创建项目、查看项目列表，并在新标签页打开多个看板。
 - 每个服务器项目使用一个稳定的 `projectId`，实际保存为 `projects/<projectId>.json`。
 - 打开的看板 URL 形如 `index.html?projectId=study-01`，布局缓存会按项目隔离，同一浏览器同时打开多个项目不会串配置。
 - 服务器项目保存带 `revision`。如果多人同时编辑同一个项目，后保存者如果版本落后，会收到冲突提示，不会静默覆盖别人刚保存的内容。
 - 多人只查看、筛选、切换图表，不会写入项目文件，因此不会互相冲突。
 - `DASHBOARD_LEGACY_PATHS=0` 会关闭老的任意本地路径读取/保存和任意照片目录扫描接口，适合服务器部署。
 - 单机使用时不要设置 `DASHBOARD_LEGACY_PATHS=0`，否则页面里的本地 JSON 路径、照片根目录扫描和绝对照片路径预览会被禁用。
-- 默认端口是 `7362`；如果被占用，启动器和 `server.py` 会自动尝试 `7362-7461`。如果显式设置 `PORT`，则使用指定端口，不自动改端口。
-- 服务器项目模式下，照片映射不再读取客户端本地路径；页面会提供照片文件夹选择入口，并把照片上传到当前服务器项目资产目录后再映射。
+- 默认端口是 `7362`；如果被占用，启动器和 `server/server.py` 会自动尝试 `7362-7461`。如果显式设置 `PORT`，则使用指定端口，不自动改端口。
+- 服务器项目模式下不应读取客户端本地绝对路径；当前服务器入口为隐藏保留能力，照片上传映射流程后续如恢复服务器版时再单独接回。
 
 服务器部署时，建议把 CSV 和照片整理为服务器项目目录中的相对资源路径，避免依赖客户端电脑上的本地绝对路径。权限管理可以交给上层服务器或反向代理，本看板只负责项目隔离和保存冲突检测。
 

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-cd /d "%~dp0"
+cd /d "%~dp0\.."
 
 if "%PORT%"=="" (
   for /f %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$listener=$null; foreach($p in 7362..7461){ try { $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), $p); $listener.Start(); $listener.Stop(); Write-Output $p; exit 0 } catch { if($listener){ try { $listener.Stop() } catch {} } } }; exit 1"') do set "PORT=%%P"
@@ -16,7 +16,7 @@ if "%PORT%"=="" (
 
 if "%HOST%"=="" set "HOST=0.0.0.0"
 set "DASHBOARD_LEGACY_PATHS=0"
-set "URL=http://127.0.0.1:%PORT%/server.html"
+set "URL=http://127.0.0.1:%PORT%/server/server.html"
 
 where py >nul 2>nul
 if not errorlevel 1 (
@@ -38,9 +38,9 @@ exit /b 1
 :run_server
 echo Starting Earphone Research Dashboard server mode...
 echo Local test entry: %URL%
-echo LAN users should open: http://SERVER_IP:%PORT%/server.html
+echo LAN users should open: http://SERVER_IP:%PORT%/server/server.html
 echo.
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1; Start-Process '%URL%'"
 set "PORT=%PORT%"
-%PYTHON_CMD% server.py
+%PYTHON_CMD% server\server.py
 pause

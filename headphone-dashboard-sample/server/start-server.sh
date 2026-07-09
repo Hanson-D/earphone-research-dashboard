@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 export HOST="${HOST:-0.0.0.0}"
 if [[ -z "${PORT:-}" ]]; then
@@ -29,7 +29,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 echo "Starting Earphone Research Dashboard server mode..."
-echo "Local test entry: http://127.0.0.1:${PORT}/server.html"
-echo "LAN users should open: http://SERVER_IP:${PORT}/server.html"
+echo "Local test entry: http://127.0.0.1:${PORT}/server/server.html"
+echo "LAN users should open: http://SERVER_IP:${PORT}/server/server.html"
 echo
-python3 server.py
+python3 server/server.py

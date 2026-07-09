@@ -405,7 +405,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    os.chdir(Path(__file__).resolve().parent)
+    os.chdir(Path(__file__).resolve().parents[1])
     explicit_port = "PORT" in os.environ and os.environ.get("PORT", "").strip() != ""
     port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
     host = os.environ.get("HOST", "127.0.0.1")
@@ -426,6 +426,6 @@ if __name__ == "__main__":
         print(f"原始错误：{error}")
         raise SystemExit(1)
     print(f"Dashboard: http://{host}:{port}")
-    print(f"Server entry: http://{host}:{port}/server.html")
+    print(f"Server entry: http://{host}:{port}/server/server.html")
     print("Press Ctrl+C to stop.")
     server.serve_forever()

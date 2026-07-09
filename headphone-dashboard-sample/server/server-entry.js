@@ -9,7 +9,7 @@ const els = {
 };
 
 function dashboardUrl(projectId) {
-  const url = new URL("index.html", window.location.href);
+  const url = new URL("../index.html", window.location.href);
   url.searchParams.set("projectId", projectId);
   return url.toString();
 }

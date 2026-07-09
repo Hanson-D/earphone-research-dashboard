@@ -84,6 +84,24 @@ test("aggregatePressureSites can show high pressure rate", () => {
   assert.equal(summaries[0].valueLabel, "33%");
 });
 
+test("swapMappedPhotoAssignments swaps photo slots without mutating source rows", () => {
+  const rows = [
+    { user_id: "U001", photo_front: "/photos/front.jpg", photo_side: "/photos/side.jpg" },
+    { user_id: "U001", photo_front: "/photos/front-b.jpg", photo_side: "" }
+  ];
+  const swapped = core.swapMappedPhotoAssignments(rows, {
+    rowIndex: 0,
+    field: "photo_front"
+  }, {
+    rowIndex: 1,
+    field: "photo_side"
+  });
+
+  assert.equal(swapped[0].photo_front, "");
+  assert.equal(swapped[1].photo_side, "/photos/front.jpg");
+  assert.equal(rows[0].photo_front, "/photos/front.jpg");
+});
+
 test("data quality report catches missing IDs, duplicate conditions, score ranges, and user-level conflicts", () => {
   const rows = [
     { user_id: "U001", device_name: "A", gender: "女", comfort_score: "8" },

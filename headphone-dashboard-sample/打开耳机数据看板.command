@@ -39,4 +39,4 @@ echo "使用期间请不要关闭这个窗口；关闭窗口会停止本地看�
 echo
 
 (sleep 1; open "$URL") &
-python3 server.py
+python3 server/server.py

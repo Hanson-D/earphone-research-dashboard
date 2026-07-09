@@ -6,7 +6,7 @@
 
 入口页面：
 
-http://服务器地址:端口/server.html
+http://服务器地址:端口/server/server.html
 
 看板本身不做账号和权限管理。如果需要权限控制，请在服务器、反向代理或单位内网系统中完成。
 
@@ -34,11 +34,11 @@ chmod +x start-server.sh
 
 本机测试：
 
-http://127.0.0.1:7362/server.html
+http://127.0.0.1:7362/server/server.html
 
 其他设备访问：
 
-http://服务器IP:7362/server.html
+http://服务器IP:7362/server/server.html
 
 
 三、Windows 服务器或内网电脑启动
@@ -48,7 +48,7 @@ http://服务器IP:7362/server.html
 3. 双击 start-server.bat。
 4. 在其他设备浏览器访问：
 
-http://服务器IP:7362/server.html
+http://服务器IP:7362/server/server.html
 
 
 四、修改端口
@@ -67,7 +67,7 @@ $env:PORT="9000"
 
 服务器版：
 
-1. 默认入口是 server.html。
+1. 默认入口是 server/server.html。
 2. 项目按 projectId 保存在服务器的 projects 目录。
 3. 支持统一项目列表和多看板切换。
 4. 保存时带 revision，能阻止多人同时编辑时的静默覆盖。

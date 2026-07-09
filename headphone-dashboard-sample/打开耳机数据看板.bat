@@ -46,5 +46,5 @@ echo Keep this window open while using the dashboard.
 echo.
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1; Start-Process '%URL%'"
 set "PORT=%PORT%"
-%PYTHON_CMD% server.py
+%PYTHON_CMD% server\server.py
 pause

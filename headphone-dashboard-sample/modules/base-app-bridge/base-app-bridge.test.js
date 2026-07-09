@@ -31,7 +31,7 @@ test("buildPatchPlan maps integration plan to base app patch descriptions", () =
 test("validatePatchPlan catches incomplete API route patches", () => {
   const plan = {
     patches: [{
-      target: "server.py",
+      target: "server/server.py",
       type: "mount-api-route",
       summary: "bad route",
       payload: { method: "GET", path: "/api/test" }

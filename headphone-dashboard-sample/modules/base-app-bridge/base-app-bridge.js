@@ -6,7 +6,7 @@
   const TARGETS = {
     html: "headphone-dashboard-sample/index.html",
     app: "headphone-dashboard-sample/app.js",
-    server: "headphone-dashboard-sample/server.py",
+    server: "headphone-dashboard-sample/server/server.py",
   };
 
   function buildPatchPlan(integrationPlan = {}) {

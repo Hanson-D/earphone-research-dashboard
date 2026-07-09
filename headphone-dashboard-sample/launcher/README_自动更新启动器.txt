@@ -34,7 +34,8 @@
         index.html
         app.js
         dashboard-core.js
-        server.py
+        server\
+          server.py
         styles.css
         ...
 

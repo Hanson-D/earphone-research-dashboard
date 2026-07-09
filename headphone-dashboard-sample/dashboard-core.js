@@ -158,6 +158,17 @@
     }).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "zh-CN"));
   }
 
+  function swapMappedPhotoAssignments(rows = [], source = {}, target = {}) {
+    const nextRows = rows.map(row => ({ ...row }));
+    const sourceRow = nextRows[source.rowIndex];
+    const targetRow = nextRows[target.rowIndex];
+    if (!sourceRow || !targetRow || !source.field || !target.field) return nextRows;
+    const sourceValue = sourceRow[source.field] || "";
+    sourceRow[source.field] = targetRow[target.field] || "";
+    targetRow[target.field] = sourceValue;
+    return nextRows;
+  }
+
   function inferFieldRole(field, rows = []) {
     if (/^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) return "user_id";
     if (/^device_name$|device_id|condition|设备|条件/i.test(field)) return "device";
@@ -750,6 +761,7 @@
     pressureRiskScore,
     pressureSiteMeta,
     aggregatePressureSites,
+    swapMappedPhotoAssignments,
     inferFieldRole,
     resolveFieldRoles,
     naturalCompare,

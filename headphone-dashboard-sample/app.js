@@ -118,6 +118,7 @@ const state = {
 };
 
 let draggedColumnId = "";
+let draggedMappingPhoto = null;
 let columnDragScrollFrame = 0;
 const columnDragScroll = { list: 0, page: 0 };
 let photoLightboxReturnFocus = null;
@@ -1366,8 +1367,8 @@ function renderPhotoSourceMode() {
   document.querySelectorAll("[data-server-only]").forEach(element => {
     element.hidden = !serverMode;
   });
-  els.photoRootInputWrap.hidden = serverMode;
-  els.photoFolderInputWrap.hidden = !serverMode;
+  if (els.photoRootInputWrap) els.photoRootInputWrap.hidden = serverMode;
+  if (els.photoFolderInputWrap) els.photoFolderInputWrap.hidden = !serverMode;
 }
 
 async function scanPhotoRoot() {
@@ -1386,6 +1387,7 @@ async function scanPhotoRoot() {
 }
 
 async function uploadServerPhotoFiles() {
+  if (!els.photoFolderInput) throw new Error("当前入口未提供服务器照片上传控件。");
   const files = [...(els.photoFolderInput.files || [])]
     .filter(file => Core.isImagePath(file.name));
   if (!files.length) throw new Error("服务器版请先选择包含照片的文件夹。");
@@ -1495,7 +1497,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
             const path = state.mappedRows[entry.rowIndex][field];
             const src = path ? photoUrl(path) : "";
             const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
-            return `<figure>
+            return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
               ${path ? `<img class="photo-preview-trigger" src="${src}" alt="${state.viewLabels[field]}" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
               <figcaption>${state.viewLabels[field]}</figcaption>
               <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
@@ -1508,6 +1510,35 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
       ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
     </article>
   `).join("");
+}
+
+function mappingSlotFromElement(element) {
+  const slot = element?.closest?.(".mapping-photo-slot");
+  if (!slot) return null;
+  return {
+    user: slot.dataset.user || "",
+    rowIndex: Number(slot.dataset.rowIndex),
+    field: slot.dataset.field || ""
+  };
+}
+
+function applyPhotoSlotOverrides(slots = []) {
+  slots.forEach(slot => {
+    const row = state.mappedRows[slot.rowIndex];
+    if (!row || !slot.field) return;
+    state.photoMappingOverrides[`${slot.rowIndex}::${slot.field}`] = row[slot.field] || "";
+  });
+}
+
+function swapMappingPhotoSlots(source, target) {
+  if (!source || !target) return false;
+  if (source.user !== target.user) return false;
+  if (source.rowIndex === target.rowIndex && source.field === target.field) return false;
+  state.mappedRows = Core.swapMappedPhotoAssignments(state.mappedRows, source, target);
+  applyPhotoSlotOverrides([source, target]);
+  renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
+  markProjectDirty();
+  return true;
 }
 
 function csvEscape(value) {
@@ -1677,11 +1708,13 @@ function bindEvents() {
     };
     reader.readAsText(file, "UTF-8");
   });
-  els.photoFolderInput.addEventListener("change", () => {
-    resetMappingOutputs();
-    const count = [...(els.photoFolderInput.files || [])].filter(file => Core.isImagePath(file.name)).length;
-    els.mappingSummary.textContent = count ? `已选择 ${count} 张照片，点击“生成照片映射”上传并映射。` : "未选择可用图片。";
-  });
+  if (els.photoFolderInput) {
+    els.photoFolderInput.addEventListener("change", () => {
+      resetMappingOutputs();
+      const count = [...(els.photoFolderInput.files || [])].filter(file => Core.isImagePath(file.name)).length;
+      els.mappingSummary.textContent = count ? `已选择 ${count} 张照片，点击“生成照片映射”上传并映射。` : "未选择可用图片。";
+    });
+  }
   els.photoRootInput.addEventListener("input", resetMappingOutputs);
   els.runMappingButton.addEventListener("click", async () => {
     els.runMappingButton.disabled = true;
@@ -1712,6 +1745,44 @@ function bindEvents() {
     else state.photoMappingOverrides[key] = "";
     buildPhotoMapping();
     markProjectDirty();
+  });
+  els.mappingPreview.addEventListener("dragstart", event => {
+    const slot = mappingSlotFromElement(event.target);
+    if (!slot) return;
+    const path = state.mappedRows[slot.rowIndex]?.[slot.field] || "";
+    if (!path) {
+      event.preventDefault();
+      return;
+    }
+    draggedMappingPhoto = slot;
+    event.target.closest(".mapping-photo-slot")?.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `${slot.user}::${slot.rowIndex}::${slot.field}`);
+  });
+  els.mappingPreview.addEventListener("dragover", event => {
+    const slotElement = event.target.closest(".mapping-photo-slot");
+    const slot = mappingSlotFromElement(slotElement);
+    if (!draggedMappingPhoto || !slot || slot.user !== draggedMappingPhoto.user) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    slotElement.classList.add("drop-target");
+  });
+  els.mappingPreview.addEventListener("dragleave", event => {
+    event.target.closest(".mapping-photo-slot")?.classList.remove("drop-target");
+  });
+  els.mappingPreview.addEventListener("drop", event => {
+    const slotElement = event.target.closest(".mapping-photo-slot");
+    const target = mappingSlotFromElement(slotElement);
+    if (!draggedMappingPhoto || !target) return;
+    event.preventDefault();
+    slotElement?.classList.remove("drop-target");
+    swapMappingPhotoSlots(draggedMappingPhoto, target);
+  });
+  els.mappingPreview.addEventListener("dragend", () => {
+    draggedMappingPhoto = null;
+    els.mappingPreview.querySelectorAll(".mapping-photo-slot").forEach(slot => {
+      slot.classList.remove("dragging", "drop-target");
+    });
   });
   document.addEventListener("click", event => {
     const trigger = event.target.closest(".photo-preview-trigger");

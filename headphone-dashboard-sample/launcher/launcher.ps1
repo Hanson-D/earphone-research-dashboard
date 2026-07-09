@@ -145,8 +145,8 @@ $appPath = Join-Path $selectedVersionPath "app"
 if (!(Test-Path -LiteralPath $appPath)) {
   $appPath = $selectedVersionPath
 }
-if (!(Test-Path -LiteralPath (Join-Path $appPath "server.py"))) {
-  throw "server.py was not found in selected version: $appPath"
+if (!(Test-Path -LiteralPath (Join-Path $appPath "server\server.py"))) {
+  throw "server/server.py was not found in selected version: $appPath"
 }
 
 $port = Get-FreePort -PreferredPort $preferredPort -Limit $portSearchLimit
@@ -156,10 +156,10 @@ Write-LauncherLog "Starting local dashboard service on port $port."
 $pythonCommand = $null
 if (Get-Command py -ErrorAction SilentlyContinue) {
   $pythonCommand = "py"
-  $pythonArgs = @("-3", "server.py")
+  $pythonArgs = @("-3", "server\server.py")
 } elseif (Get-Command python -ErrorAction SilentlyContinue) {
   $pythonCommand = "python"
-  $pythonArgs = @("server.py")
+  $pythonArgs = @("server\server.py")
 } else {
   throw "Python 3 was not found."
 }
