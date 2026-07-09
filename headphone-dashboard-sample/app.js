@@ -80,6 +80,7 @@ const state = {
   mappedRows: [],
   mappingFiles: [],
   mappingObjectUrls: [],
+  thumbnailUrls: {},
   mappingViews: [],
   mappingReviews: [],
   mappingPhotoFields: [],
@@ -632,6 +633,10 @@ function photoUrl(path) {
   if (/^(blob:|data:|https?:|\/api\/)/i.test(path)) return path;
   if (/^[A-Za-z]:[\\/]|^\//.test(path)) return `/api/photo?path=${encodeURIComponent(path)}`;
   return path;
+}
+
+function photoThumbUrl(path) {
+  return state.thumbnailUrls[path] || photoUrl(path);
 }
 
 function isUserLevelField(field) {
@@ -1236,9 +1241,10 @@ function photoGalleryCell(column, userRows) {
   const items = userRows.filter(row => rowMatchesPhotoView(row, selectedView)).map(row => {
     const caption = [earField ? row[earField] : "", row[deviceField] || column.label].filter(Boolean).join(" · ");
     const src = photoUrl(row[selectedView.field]);
+    const thumbSrc = photoThumbUrl(row[selectedView.field]);
     return `
     <figure class="photo-thumb">
-      <img class="ear-photo photo-preview-trigger" src="${src}" alt="${row[state.userIdField]} ${caption}" loading="lazy" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
+      <img class="ear-photo photo-preview-trigger" src="${thumbSrc}" alt="${row[state.userIdField]} ${caption}" loading="lazy" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
       <figcaption>${caption}</figcaption>
     </figure>`;
   }).join("");
@@ -1377,9 +1383,51 @@ function renderPhotoSourceMode() {
 function clearMappingObjectUrls() {
   state.mappingObjectUrls.forEach(url => URL.revokeObjectURL(url));
   state.mappingObjectUrls = [];
+  Object.values(state.thumbnailUrls).forEach(url => {
+    if (String(url).startsWith("blob:")) URL.revokeObjectURL(url);
+  });
+  state.thumbnailUrls = {};
 }
 
-function loadBrowserPhotoFolder(files = []) {
+function imageLoad(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = url;
+  });
+}
+
+async function createThumbnailUrl(sourceUrl, maxSize = 128) {
+  const image = await imageLoad(sourceUrl);
+  const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { alpha: false });
+  context.drawImage(image, 0, 0, width, height);
+  return new Promise(resolve => {
+    canvas.toBlob(blob => {
+      resolve(blob ? URL.createObjectURL(blob) : sourceUrl);
+    }, "image/jpeg", 0.72);
+  });
+}
+
+async function buildMappingThumbnails(photos = []) {
+  await Promise.all(photos.map(async photo => {
+    if (!photo.absolute_path || state.thumbnailUrls[photo.absolute_path]) return;
+    try {
+      const thumbUrl = await createThumbnailUrl(photo.absolute_path);
+      state.thumbnailUrls[photo.absolute_path] = thumbUrl;
+    } catch {
+      state.thumbnailUrls[photo.absolute_path] = photo.absolute_path;
+    }
+  }));
+}
+
+async function loadBrowserPhotoFolder(files = []) {
   clearMappingObjectUrls();
   const photos = Core.photoFilesFromBrowserSelection(files, {
     urlForFile: file => {
@@ -1388,6 +1436,8 @@ function loadBrowserPhotoFolder(files = []) {
       return url;
     }
   });
+  if (els.photoFolderStatus) els.photoFolderStatus.textContent = `正在生成 ${photos.length} 张缩略图…`;
+  await buildMappingThumbnails(photos);
   state.mappingFiles = photos;
   const rootName = [...files].find(file => file.webkitRelativePath)?.webkitRelativePath?.split(/[\\/]/)[0] || "已选择文件夹";
   els.photoRootInput.value = photos.length ? `browser-folder:${rootName}` : "";
@@ -1510,38 +1560,50 @@ function photoSelectOptions(files, selectedPath) {
     files.map(file => `<option value="${file.absolute_path}" ${file.absolute_path === selectedPath ? "selected" : ""}>${file.name}</option>`).join("");
 }
 
+function renderMappingReviewCard(review, deviceField, photoFields) {
+  const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
+  return `<article class="mapping-user ${review.status}" data-review-user="${attrEscape(review.user)}">
+    <div class="mapping-user-heading">
+      <strong>${review.user}</strong>
+      <span>预期 ${review.expected} 张 / 实际 ${review.files.length} 张</span>
+      <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
+    </div>
+    <div class="mapping-device-list">${review.entries.map(entry => `
+      <div class="mapping-device-row">
+        <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
+        ${photoFields.map(field => {
+          const path = state.mappedRows[entry.rowIndex][field];
+          const src = path ? photoUrl(path) : "";
+          const thumbSrc = path ? photoThumbUrl(path) : "";
+          const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
+          return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
+            ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
+            <figcaption>${state.viewLabels[field]}</figcaption>
+            <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
+              ${photoSelectOptions(selectFiles || review.files, path)}
+            </select>
+          </figure>`;
+        }).join("")}
+      </div>
+    `).join("")}</div>
+    ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
+  </article>`;
+}
+
 function renderMappingPreview(reviews, userField, deviceField, photoFields) {
   const ok = reviews.filter(review => review.status === "ok").length;
   const issues = reviews.length - ok;
-  const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
   els.mappingSummary.innerHTML = `<strong>${reviews.length}</strong> 位用户 · <strong>${ok}</strong> 正常 · <strong>${issues}</strong> 异常`;
-  els.mappingPreview.innerHTML = reviews.map(review => `
-    <article class="mapping-user ${review.status}">
-      <div class="mapping-user-heading">
-        <strong>${review.user}</strong>
-        <span>预期 ${review.expected} 张 / 实际 ${review.files.length} 张</span>
-        <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
-      </div>
-      <div class="mapping-device-list">${review.entries.map(entry => `
-        <div class="mapping-device-row">
-          <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
-          ${photoFields.map(field => {
-            const path = state.mappedRows[entry.rowIndex][field];
-            const src = path ? photoUrl(path) : "";
-            const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
-            return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
-              ${path ? `<img class="photo-preview-trigger" src="${src}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
-              <figcaption>${state.viewLabels[field]}</figcaption>
-              <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
-                ${photoSelectOptions(selectFiles || review.files, path)}
-              </select>
-            </figure>`;
-          }).join("")}
-        </div>
-      `).join("")}</div>
-      ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
-    </article>
-  `).join("");
+  els.mappingPreview.innerHTML = reviews.map(review => renderMappingReviewCard(review, deviceField, photoFields)).join("");
+}
+
+function renderMappingReviewUser(user) {
+  const review = state.mappingReviews.find(item => String(item.user) === String(user));
+  if (!review) return;
+  const current = [...els.mappingPreview.querySelectorAll(".mapping-user")]
+    .find(element => element.dataset.reviewUser === String(user));
+  const html = renderMappingReviewCard(review, els.mappingDeviceField.value, state.mappingPhotoFields);
+  if (current) current.outerHTML = html;
 }
 
 function mappingSlotFromElement(element) {
@@ -1568,7 +1630,7 @@ function swapMappingPhotoSlots(source, target) {
   if (source.rowIndex === target.rowIndex && source.field === target.field) return false;
   state.mappedRows = Core.swapMappedPhotoAssignments(state.mappedRows, source, target);
   applyPhotoSlotOverrides([source, target]);
-  renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
+  renderMappingReviewUser(source.user);
   markProjectDirty();
   return true;
 }
@@ -1767,10 +1829,15 @@ function bindEvents() {
     });
   }
   if (els.photoFolderChooser) {
-    els.photoFolderChooser.addEventListener("change", () => {
-      const photos = loadBrowserPhotoFolder(els.photoFolderChooser.files || []);
-      els.mappingSummary.textContent = photos.length ? `已选择 ${photos.length} 张照片，点击“生成照片映射”开始审查。` : "未选择可用图片。";
-      markProjectDirty();
+    els.photoFolderChooser.addEventListener("change", async () => {
+      els.mappingSummary.textContent = "正在读取照片并生成缩略图…";
+      try {
+        const photos = await loadBrowserPhotoFolder(els.photoFolderChooser.files || []);
+        els.mappingSummary.textContent = photos.length ? `已选择 ${photos.length} 张照片，点击“生成照片映射”开始审查。` : "未选择可用图片。";
+        markProjectDirty();
+      } catch (error) {
+        els.mappingSummary.textContent = `照片读取失败：${error.message}`;
+      }
     });
   }
   els.photoRootInput.addEventListener("input", () => {
