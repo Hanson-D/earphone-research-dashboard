@@ -65,9 +65,13 @@
               <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
             </label>
             <label id="photoRootInputWrap" class="mapping-input">
-              <span>2. 输入照片根文件夹路径</span>
-              <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
-              <small>填写本机照片根目录。可选择按拍摄顺序映射，或按姓名/左右耳/样机/方向子文件夹匹配。</small>
+              <span>2. 选择照片根文件夹</span>
+              <input id="photoFolderChooser" type="file" webkitdirectory directory multiple accept="image/*">
+              <small id="photoFolderStatus">选择包含用户照片子文件夹的根目录；系统会读取文件夹结构和照片顺序。</small>
+              <details class="advanced-path-input">
+                <summary>高级：手动输入路径</summary>
+                <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
+              </details>
             </label>
             <label class="mapping-input">
               <span>照片匹配方式</span>

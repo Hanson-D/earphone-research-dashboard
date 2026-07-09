@@ -79,6 +79,7 @@ const state = {
   mappingRows: [],
   mappedRows: [],
   mappingFiles: [],
+  mappingObjectUrls: [],
   mappingViews: [],
   mappingReviews: [],
   mappingPhotoFields: [],
@@ -119,6 +120,8 @@ const state = {
 
 let draggedColumnId = "";
 let draggedMappingPhoto = null;
+let mappingDragTargetElement = null;
+let mappingDragImage = null;
 let columnDragScrollFrame = 0;
 const columnDragScroll = { list: 0, page: 0 };
 let photoLightboxReturnFocus = null;
@@ -130,7 +133,7 @@ const els = Object.fromEntries([
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
-  "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderInput", "photoFolderInputWrap",
+  "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
@@ -423,7 +426,7 @@ async function loadProject(path) {
   if (project.mappingFields.userField && [...els.mappingUserField.options].some(option => option.value === project.mappingFields.userField)) els.mappingUserField.value = project.mappingFields.userField;
   if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
   if (project.mappingFields.deviceField && [...els.mappingDeviceField.options].some(option => option.value === project.mappingFields.deviceField)) els.mappingDeviceField.value = project.mappingFields.deviceField;
-  if (project.photoRoot) {
+  if (project.photoRoot && !project.photoRoot.startsWith("browser-folder:")) {
     try {
       await scanPhotoRoot();
     } catch (error) {
@@ -1371,10 +1374,39 @@ function renderPhotoSourceMode() {
   if (els.photoFolderInputWrap) els.photoFolderInputWrap.hidden = !serverMode;
 }
 
+function clearMappingObjectUrls() {
+  state.mappingObjectUrls.forEach(url => URL.revokeObjectURL(url));
+  state.mappingObjectUrls = [];
+}
+
+function loadBrowserPhotoFolder(files = []) {
+  clearMappingObjectUrls();
+  const photos = Core.photoFilesFromBrowserSelection(files, {
+    urlForFile: file => {
+      const url = URL.createObjectURL(file);
+      state.mappingObjectUrls.push(url);
+      return url;
+    }
+  });
+  state.mappingFiles = photos;
+  const rootName = [...files].find(file => file.webkitRelativePath)?.webkitRelativePath?.split(/[\\/]/)[0] || "已选择文件夹";
+  els.photoRootInput.value = photos.length ? `browser-folder:${rootName}` : "";
+  if (els.photoFolderStatus) {
+    els.photoFolderStatus.textContent = photos.length ?
+      `已选择 ${rootName}，识别到 ${photos.length} 张图片。` :
+      "未识别到图片，请选择包含照片的文件夹。";
+  }
+  resetMappingOutputs();
+  return photos;
+}
+
 async function scanPhotoRoot() {
   if (state.serverProjectId) return uploadServerPhotoFiles();
+  if (state.mappingFiles.some(file => file.source === "browser_folder")) {
+    return { root: els.photoRootInput.value || "browser-folder", photos: state.mappingFiles };
+  }
   const root = els.photoRootInput.value.trim();
-  if (!root) throw new Error("请填写照片根文件夹路径。");
+  if (!root) throw new Error("请选择照片根文件夹，或在高级设置中手动输入路径。");
   const response = await fetch("/api/scan-photos", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1498,7 +1530,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
             const src = path ? photoUrl(path) : "";
             const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
             return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
-              ${path ? `<img class="photo-preview-trigger" src="${src}" alt="${state.viewLabels[field]}" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
+              ${path ? `<img class="photo-preview-trigger" src="${src}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
               <figcaption>${state.viewLabels[field]}</figcaption>
               <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
                 ${photoSelectOptions(selectFiles || review.files, path)}
@@ -1539,6 +1571,25 @@ function swapMappingPhotoSlots(source, target) {
   renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
   markProjectDirty();
   return true;
+}
+
+function createMappingDragImage(label = "交换照片") {
+  const element = document.createElement("div");
+  element.className = "mapping-drag-image";
+  element.textContent = label;
+  document.body.append(element);
+  mappingDragImage = element;
+  return element;
+}
+
+function clearMappingDragState() {
+  draggedMappingPhoto = null;
+  mappingDragTargetElement = null;
+  mappingDragImage?.remove();
+  mappingDragImage = null;
+  els.mappingPreview.querySelectorAll(".mapping-photo-slot").forEach(slot => {
+    slot.classList.remove("dragging", "drop-target");
+  });
 }
 
 function csvEscape(value) {
@@ -1715,7 +1766,20 @@ function bindEvents() {
       els.mappingSummary.textContent = count ? `已选择 ${count} 张照片，点击“生成照片映射”上传并映射。` : "未选择可用图片。";
     });
   }
-  els.photoRootInput.addEventListener("input", resetMappingOutputs);
+  if (els.photoFolderChooser) {
+    els.photoFolderChooser.addEventListener("change", () => {
+      const photos = loadBrowserPhotoFolder(els.photoFolderChooser.files || []);
+      els.mappingSummary.textContent = photos.length ? `已选择 ${photos.length} 张照片，点击“生成照片映射”开始审查。` : "未选择可用图片。";
+      markProjectDirty();
+    });
+  }
+  els.photoRootInput.addEventListener("input", () => {
+    clearMappingObjectUrls();
+    state.mappingFiles = [];
+    if (els.photoFolderChooser) els.photoFolderChooser.value = "";
+    if (els.photoFolderStatus) els.photoFolderStatus.textContent = "将使用手动路径扫描照片目录。";
+    resetMappingOutputs();
+  });
   els.runMappingButton.addEventListener("click", async () => {
     els.runMappingButton.disabled = true;
     els.mappingSummary.textContent = "正在扫描并映射照片…";
@@ -1755,9 +1819,12 @@ function bindEvents() {
       return;
     }
     draggedMappingPhoto = slot;
-    event.target.closest(".mapping-photo-slot")?.classList.add("dragging");
+    const slotElement = event.target.closest(".mapping-photo-slot");
+    slotElement?.classList.add("dragging");
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", `${slot.user}::${slot.rowIndex}::${slot.field}`);
+    const dragImage = createMappingDragImage(slotElement?.querySelector("figcaption")?.textContent || "交换照片");
+    event.dataTransfer.setDragImage(dragImage, 12, 12);
   });
   els.mappingPreview.addEventListener("dragover", event => {
     const slotElement = event.target.closest(".mapping-photo-slot");
@@ -1765,24 +1832,29 @@ function bindEvents() {
     if (!draggedMappingPhoto || !slot || slot.user !== draggedMappingPhoto.user) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    slotElement.classList.add("drop-target");
+    if (slotElement === mappingDragTargetElement) return;
+    mappingDragTargetElement?.classList.remove("drop-target");
+    mappingDragTargetElement = slotElement;
+    mappingDragTargetElement.classList.add("drop-target");
   });
   els.mappingPreview.addEventListener("dragleave", event => {
-    event.target.closest(".mapping-photo-slot")?.classList.remove("drop-target");
+    const slotElement = event.target.closest(".mapping-photo-slot");
+    if (slotElement && !slotElement.contains(event.relatedTarget)) {
+      slotElement.classList.remove("drop-target");
+      if (mappingDragTargetElement === slotElement) mappingDragTargetElement = null;
+    }
   });
   els.mappingPreview.addEventListener("drop", event => {
     const slotElement = event.target.closest(".mapping-photo-slot");
     const target = mappingSlotFromElement(slotElement);
     if (!draggedMappingPhoto || !target) return;
     event.preventDefault();
-    slotElement?.classList.remove("drop-target");
+    mappingDragTargetElement?.classList.remove("drop-target");
+    mappingDragTargetElement = null;
     swapMappingPhotoSlots(draggedMappingPhoto, target);
   });
   els.mappingPreview.addEventListener("dragend", () => {
-    draggedMappingPhoto = null;
-    els.mappingPreview.querySelectorAll(".mapping-photo-slot").forEach(slot => {
-      slot.classList.remove("dragging", "drop-target");
-    });
+    clearMappingDragState();
   });
   document.addEventListener("click", event => {
     const trigger = event.target.closest(".photo-preview-trigger");

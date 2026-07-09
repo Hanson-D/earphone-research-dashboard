@@ -102,6 +102,22 @@ test("swapMappedPhotoAssignments swaps photo slots without mutating source rows"
   assert.equal(rows[0].photo_front, "/photos/front.jpg");
 });
 
+test("photoFilesFromBrowserSelection builds relative photo records from folder input", () => {
+  const files = [
+    { name: "001.jpg", webkitRelativePath: "photos/U001/左耳/正面/001.jpg" },
+    { name: "notes.txt", webkitRelativePath: "photos/U001/notes.txt" },
+    { name: "002.PNG", webkitRelativePath: "photos/U002/右耳/侧面/002.PNG" }
+  ];
+  const photos = core.photoFilesFromBrowserSelection(files, {
+    urlForFile: file => `blob:${file.name}`
+  });
+  assert.equal(photos.length, 2);
+  assert.equal(photos[0].relative_path, "U001/左耳/正面/001.jpg");
+  assert.equal(photos[0].user_folder, "U001");
+  assert.equal(photos[0].absolute_path, "blob:001.jpg");
+  assert.equal(photos[1].relative_path, "U002/右耳/侧面/002.PNG");
+});
+
 test("data quality report catches missing IDs, duplicate conditions, score ranges, and user-level conflicts", () => {
   const rows = [
     { user_id: "U001", device_name: "A", gender: "女", comfort_score: "8" },

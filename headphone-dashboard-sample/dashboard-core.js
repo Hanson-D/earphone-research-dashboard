@@ -286,6 +286,29 @@
     }));
   }
 
+  function photoFilesFromBrowserSelection(files = [], options = {}) {
+    const imageFiles = [...files].filter(file => isImagePath(file.name || file.webkitRelativePath || ""));
+    const rawPaths = imageFiles.map(file => file.webkitRelativePath || file.name || "");
+    const firstParts = rawPaths.map(path => path.split(/[\\/]/).filter(Boolean)[0]).filter(Boolean);
+    const stripSelectedRoot = firstParts.length > 0 && firstParts.every(part => part === firstParts[0]) &&
+      rawPaths.some(path => path.split(/[\\/]/).filter(Boolean).length > 1);
+    return imageFiles.map(file => {
+      const rawPath = file.webkitRelativePath || file.name || "";
+      const parts = rawPath.split(/[\\/]/).filter(Boolean);
+      const relativePath = stripSelectedRoot ? parts.slice(1).join("/") : parts.join("/");
+      const relativeParts = relativePath.split(/[\\/]/).filter(Boolean);
+      const url = options.urlForFile ? options.urlForFile(file) : (file.absolute_path || relativePath);
+      return {
+        name: file.name || relativeParts[relativeParts.length - 1] || "",
+        relative_path: relativePath,
+        absolute_path: url,
+        user_folder: relativeParts.length > 1 ? relativeParts[0] : "",
+        url,
+        source: "browser_folder"
+      };
+    }).sort((a, b) => naturalCompare(a.relative_path, b.relative_path));
+  }
+
   function pathParts(file) {
     return String(file.relative_path || file.path || file.absolute_path || "")
       .split(/[\\/]/)
@@ -766,6 +789,7 @@
     resolveFieldRoles,
     naturalCompare,
     photoFieldNames,
+    photoFilesFromBrowserSelection,
     folderEarValues,
     combinedEarValues,
     inferFolderPhotoCombos,
