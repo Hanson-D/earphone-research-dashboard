@@ -83,6 +83,7 @@ const state = {
   thumbnailUrls: {},
   mappingViews: [],
   includeBareEarPhotos: false,
+  bareEarConfig: { splitByEar: false, genericCount: 1, leftCount: 1, rightCount: 1 },
   singleEarMode: false,
   mappingReviews: [],
   mappingPhotoFields: [],
@@ -138,7 +139,8 @@ const els = Object.fromEntries([
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
-  "bareEarToggleWrap", "includeBareEarPhotos", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
+  "bareEarToggleWrap", "includeBareEarPhotos", "bareEarConfigPanel", "bareEarSplitByEar", "bareEarGenericCountWrap",
+  "bareEarGenericCount", "bareEarSideCounts", "bareEarLeftCount", "bareEarRightCount", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
@@ -177,6 +179,47 @@ function protocolPhotoViews(template = state.protocolTemplate || {}) {
 function protocolExpectedEars(template = state.protocolTemplate || {}) {
   const schema = protocolPhotoSchema(template);
   return Array.isArray(schema.ears) ? schema.ears.map(String).map(value => value.trim()).filter(Boolean) : [];
+}
+
+function boundedCount(value, fallback = 1) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(12, number));
+}
+
+function sanitizeBareEarConfig(config = {}) {
+  return {
+    splitByEar: Boolean(config.splitByEar),
+    genericCount: Math.max(1, boundedCount(config.genericCount, 1)),
+    leftCount: boundedCount(config.leftCount, 1),
+    rightCount: boundedCount(config.rightCount, 1)
+  };
+}
+
+function bareEarConfigFromControls() {
+  return sanitizeBareEarConfig({
+    splitByEar: els.bareEarSplitByEar.checked,
+    genericCount: els.bareEarGenericCount.value,
+    leftCount: els.bareEarLeftCount.value,
+    rightCount: els.bareEarRightCount.value
+  });
+}
+
+function applyBareEarConfigToControls() {
+  const config = sanitizeBareEarConfig(state.bareEarConfig);
+  state.bareEarConfig = config;
+  els.bareEarSplitByEar.checked = config.splitByEar;
+  els.bareEarGenericCount.value = config.genericCount;
+  els.bareEarLeftCount.value = config.leftCount;
+  els.bareEarRightCount.value = config.rightCount;
+}
+
+function renderBareEarConfigControls() {
+  const folderMode = els.mappingMode.value === "folders";
+  const showPanel = !folderMode && state.includeBareEarPhotos;
+  els.bareEarConfigPanel.hidden = !showPanel;
+  els.bareEarGenericCountWrap.hidden = state.bareEarConfig.splitByEar;
+  els.bareEarSideCounts.hidden = !state.bareEarConfig.splitByEar;
 }
 
 function applyProtocolFieldRoles(template = state.protocolTemplate) {
@@ -270,6 +313,7 @@ function projectDocumentSnapshot() {
       earField: els.mappingEarField.value,
       deviceField: els.mappingDeviceField.value,
       includeBareEarPhotos: state.includeBareEarPhotos,
+      bareEarConfig: state.bareEarConfig,
       singleEarMode: state.singleEarMode
     },
     mappingViews: mappingViews(),
@@ -288,6 +332,7 @@ function mappingConfigSnapshot() {
       earField: els.mappingEarField.value,
       deviceField: els.mappingDeviceField.value,
       includeBareEarPhotos: state.includeBareEarPhotos,
+      bareEarConfig: state.bareEarConfig,
       singleEarMode: state.singleEarMode
     },
     mappingViews: mappingViews()
@@ -419,8 +464,10 @@ async function loadProject(path) {
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
+  state.bareEarConfig = sanitizeBareEarConfig(project.mappingFields.bareEarConfig);
   state.singleEarMode = Boolean(project.mappingFields.singleEarMode);
   els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
+  applyBareEarConfigToControls();
   els.singleEarMode.checked = state.singleEarMode;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
@@ -468,8 +515,10 @@ async function loadServerProject() {
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
+  state.bareEarConfig = sanitizeBareEarConfig(project.mappingFields.bareEarConfig);
   state.singleEarMode = Boolean(project.mappingFields.singleEarMode);
   els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
+  applyBareEarConfigToControls();
   els.singleEarMode.checked = state.singleEarMode;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
@@ -1384,6 +1433,7 @@ function renderMappingMode() {
   els.mappingModeNote.innerHTML = folderMode ?
     `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向；若未配置耳侧且每个用户/设备只有一侧照片，会自动按单耳模式生成视角列。</span>` :
     `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。单耳模式会去掉视角名里的左/右耳，只生成正面、侧面等视角列。</span>`;
+  renderBareEarConfigControls();
 }
 
 function renderPhotoSourceMode() {
@@ -1523,6 +1573,7 @@ async function uploadServerPhotoFiles() {
 function buildPhotoMapping() {
   const mode = els.mappingMode.value;
   const includeBareEar = mode === "sequence" && state.includeBareEarPhotos;
+  const bareEarConfig = includeBareEar ? { enabled: true, ...state.bareEarConfig } : { enabled: false };
   const singleEarMode = state.singleEarMode;
   const userField = els.mappingUserField.value;
   const earField = els.mappingEarField.value;
@@ -1548,6 +1599,7 @@ function buildPhotoMapping() {
     views,
     expectedEars,
     includeBareEar,
+    bareEarConfig,
     singleEarMode,
     overrides: state.photoMappingOverrides
   });
@@ -1566,7 +1618,7 @@ function buildPhotoMapping() {
   const bareFieldCount = photoFields.filter(field => field.startsWith("bare_ear_photo")).length;
   photoFields.forEach((field, index) => {
     const bareMatch = field.match(/^bare_ear_photo(?:_(.+))?$/);
-    const label = bareMatch ? `${bareMatch[1] ? `${bareMatch[1]} · ` : ""}空耳` : photoViews[index - bareFieldCount]?.label || views[index] || field;
+    const label = bareMatch ? barePhotoFieldLabel(field) : photoViews[index - bareFieldCount]?.label || views[index] || field;
     state.viewLabels[field] = label;
     fieldLabels[field] = label;
   });
@@ -1583,8 +1635,21 @@ function photoSelectOptions(files, selectedPath) {
     files.map(file => `<option value="${file.absolute_path}" ${file.absolute_path === selectedPath ? "selected" : ""}>${file.name}</option>`).join("");
 }
 
+function barePhotoFieldLabel(field) {
+  const rest = String(field || "").replace(/^bare_ear_photo_?/, "");
+  if (!rest) return "空耳";
+  const parts = rest.split("_").filter(Boolean);
+  const last = parts[parts.length - 1];
+  const hasNumber = /^\d+$/.test(last);
+  const number = hasNumber ? last : "";
+  const ear = hasNumber ? parts.slice(0, -1).join("_") : parts.join("_");
+  if (ear) return `${ear} · 空耳${number ? ` ${number}` : ""}`;
+  return `空耳${number ? ` ${number}` : ""}`;
+}
+
 function renderMappingReviewCard(review, deviceField, photoFields) {
   const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
+  const sequenceMode = els.mappingMode.value === "sequence";
   const bareFields = photoFields.filter(field => field.startsWith("bare_ear_photo"));
   const devicePhotoFields = photoFields.filter(field => !field.startsWith("bare_ear_photo"));
   const hasBare = bareFields.length && review.bareSlots?.length;
@@ -1612,9 +1677,15 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
     </div>
     <div class="${hasBare ? "mapping-review-columns" : ""}">
     ${bareHtml}
-    <div class="mapping-device-list">${review.entries.map(entry => `
+    <div class="mapping-device-list">${review.entries.map((entry, entryIndex) => `
       <div class="mapping-device-row">
-        <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
+        <div class="mapping-device-meta">
+          <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
+          ${sequenceMode && review.entries.length > 1 ? `<div class="mapping-device-actions">
+            <button type="button" class="mini-button mapping-device-move" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-direction="-1" ${entryIndex === 0 ? "disabled" : ""}>上移整组</button>
+            <button type="button" class="mini-button mapping-device-move" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-direction="1" ${entryIndex === review.entries.length - 1 ? "disabled" : ""}>下移整组</button>
+          </div>` : ""}
+        </div>
         ${devicePhotoFields.map(field => {
           const path = state.mappedRows[entry.rowIndex][field];
           const src = path ? photoUrl(path) : "";
@@ -1678,6 +1749,23 @@ function swapMappingPhotoSlots(source, target) {
   state.mappedRows = Core.swapMappedPhotoAssignments(state.mappedRows, source, target);
   applyPhotoSlotOverrides([source, target]);
   renderMappingReviewUser(source.user);
+  markProjectDirty();
+  return true;
+}
+
+function moveMappingDeviceGroup(user, rowIndex, direction) {
+  const review = state.mappingReviews.find(item => String(item.user) === String(user));
+  if (!review) return false;
+  const currentIndex = review.entries.findIndex(entry => entry.rowIndex === rowIndex);
+  const targetEntry = review.entries[currentIndex + direction];
+  if (currentIndex < 0 || !targetEntry) return false;
+  const fields = state.mappingPhotoFields.filter(field => !field.startsWith("bare_ear_photo"));
+  state.mappedRows = Core.swapMappedPhotoDeviceGroups(state.mappedRows, rowIndex, targetEntry.rowIndex, fields);
+  applyPhotoSlotOverrides([
+    ...fields.map(field => ({ rowIndex, field })),
+    ...fields.map(field => ({ rowIndex: targetEntry.rowIndex, field }))
+  ]);
+  renderMappingReviewUser(user);
   markProjectDirty();
   return true;
 }
@@ -1951,9 +2039,24 @@ function bindEvents() {
   });
   els.includeBareEarPhotos.addEventListener("change", () => {
     state.includeBareEarPhotos = els.includeBareEarPhotos.checked;
+    state.bareEarConfig = bareEarConfigFromControls();
     state.photoMappingOverrides = {};
     resetMappingOutputs();
+    renderBareEarConfigControls();
     markProjectDirty();
+  });
+  [els.bareEarSplitByEar, els.bareEarGenericCount, els.bareEarLeftCount, els.bareEarRightCount].forEach(control => {
+    control.addEventListener("change", () => {
+      state.bareEarConfig = bareEarConfigFromControls();
+      state.photoMappingOverrides = {};
+      resetMappingOutputs();
+      renderBareEarConfigControls();
+      markProjectDirty();
+    });
+    control.addEventListener("input", () => {
+      state.bareEarConfig = bareEarConfigFromControls();
+      renderBareEarConfigControls();
+    });
   });
   els.singleEarMode.addEventListener("change", () => {
     state.singleEarMode = els.singleEarMode.checked;
@@ -1968,6 +2071,11 @@ function bindEvents() {
     else state.photoMappingOverrides[key] = "";
     buildPhotoMapping();
     markProjectDirty();
+  });
+  els.mappingPreview.addEventListener("click", event => {
+    const button = event.target.closest(".mapping-device-move");
+    if (!button) return;
+    moveMappingDeviceGroup(button.dataset.user || "", Number(button.dataset.rowIndex), Number(button.dataset.direction));
   });
   els.mappingPreview.addEventListener("dragstart", event => {
     const slot = mappingSlotFromElement(event.target);

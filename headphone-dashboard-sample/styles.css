@@ -33,6 +33,7 @@ body {
 
 button, input, select { font: inherit; }
 button, input, select, summary, [role="button"] { touch-action: manipulation; }
+[hidden] { display: none !important; }
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -209,6 +210,19 @@ select[multiple] { min-height: 84px; }
 .mapping-mode-note span { display: block; }
 .mapping-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .mapping-fields select { margin-top: 6px; }
+.bare-ear-config {
+  display: grid;
+  grid-template-columns: minmax(140px, .7fr) repeat(2, minmax(110px, .45fr));
+  gap: 8px;
+  align-items: end;
+  padding: 9px 10px;
+  background: #fff8f3;
+  border: 1px solid #ecd8cc;
+  border-left: 3px solid var(--accent);
+}
+.bare-ear-config input[type="number"] { width: 100%; margin-top: 5px; }
+.bare-ear-config small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; line-height: 1.45; }
+#bareEarSideCounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; grid-column: span 2; }
 .mapping-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .mapping-summary { color: var(--muted); font-size: 11px; }
 .mapping-review-help { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
@@ -233,6 +247,20 @@ select[multiple] { min-height: 84px; }
 .mapping-device-row { contain: layout paint; display: grid; grid-template-columns: 150px repeat(auto-fit, minmax(86px, 1fr)); gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .mapping-device-row:last-child { border-bottom: 0; }
 .mapping-device-row figure { margin: 0; text-align: center; }
+.mapping-device-meta { display: grid; gap: 6px; align-self: center; }
+.mapping-device-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.mini-button {
+  padding: 3px 6px;
+  color: var(--accent-dark);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 800;
+}
+.mini-button:not(:disabled) { cursor: pointer; }
+.mini-button:not(:disabled):hover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(143,29,34,.1); }
+.mini-button:disabled { opacity: .45; }
 .mapping-photo-slot {
   padding: 5px;
   background: #fffdf9;

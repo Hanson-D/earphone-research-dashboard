@@ -102,6 +102,20 @@ test("swapMappedPhotoAssignments swaps photo slots without mutating source rows"
   assert.equal(rows[0].photo_front, "/photos/front.jpg");
 });
 
+test("swapMappedPhotoDeviceGroups swaps all photo fields between two device rows", () => {
+  const rows = [
+    { device: "A", photo_front: "/a-front.jpg", photo_side: "/a-side.jpg" },
+    { device: "B", photo_front: "/b-front.jpg", photo_side: "/b-side.jpg" }
+  ];
+  const swapped = core.swapMappedPhotoDeviceGroups(rows, 0, 1, ["photo_front", "photo_side"]);
+
+  assert.equal(swapped[0].photo_front, "/b-front.jpg");
+  assert.equal(swapped[0].photo_side, "/b-side.jpg");
+  assert.equal(swapped[1].photo_front, "/a-front.jpg");
+  assert.equal(swapped[1].photo_side, "/a-side.jpg");
+  assert.equal(rows[0].photo_front, "/a-front.jpg");
+});
+
 test("photoFilesFromBrowserSelection builds relative photo records from folder input", () => {
   const files = [
     { name: "001.jpg", webkitRelativePath: "photos/U001/左耳/正面/001.jpg" },
@@ -292,6 +306,52 @@ test("single-ear mode uses one generic bare ear slot", () => {
   assert.deepEqual(result.photoFields, ["bare_ear_photo", "photo_正面"]);
   assert.equal(result.mapped[0].bare_ear_photo, "/photos/bare.jpg");
   assert.equal(result.mapped[0].photo_正面, "/photos/front.jpg");
+});
+
+test("sequence bare ear config can reserve multiple generic photos", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A" }
+  ];
+  const files = [
+    { user_folder: "U001", name: "0.jpg", absolute_path: "/photos/bare-1.jpg" },
+    { user_folder: "U001", name: "1.jpg", absolute_path: "/photos/bare-2.jpg" },
+    { user_folder: "U001", name: "2.jpg", absolute_path: "/photos/front.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    userField: "user_id",
+    views: ["正面"],
+    bareEarConfig: { enabled: true, splitByEar: false, genericCount: 2 }
+  });
+  assert.deepEqual(result.photoFields, ["bare_ear_photo_1", "bare_ear_photo_2", "photo_正面"]);
+  assert.equal(result.mapped[0].bare_ear_photo_1, "/photos/bare-1.jpg");
+  assert.equal(result.mapped[0].bare_ear_photo_2, "/photos/bare-2.jpg");
+  assert.equal(result.mapped[0].photo_正面, "/photos/front.jpg");
+});
+
+test("sequence bare ear config reserves one side before the other", () => {
+  const rows = [
+    { user_id: "U001", ear_side: "左耳", device_name: "A" },
+    { user_id: "U001", ear_side: "右耳", device_name: "A" }
+  ];
+  const files = [
+    { user_folder: "U001", name: "0.jpg", absolute_path: "/photos/left-bare-1.jpg" },
+    { user_folder: "U001", name: "1.jpg", absolute_path: "/photos/left-bare-2.jpg" },
+    { user_folder: "U001", name: "2.jpg", absolute_path: "/photos/right-bare.jpg" },
+    { user_folder: "U001", name: "3.jpg", absolute_path: "/photos/left-front.jpg" },
+    { user_folder: "U001", name: "4.jpg", absolute_path: "/photos/right-front.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    userField: "user_id",
+    earField: "ear_side",
+    views: ["正面"],
+    bareEarConfig: { enabled: true, splitByEar: true, leftCount: 2, rightCount: 1 }
+  });
+  assert.deepEqual(result.photoFields.slice(0, 3), ["bare_ear_photo_左耳_1", "bare_ear_photo_左耳_2", "bare_ear_photo_右耳"]);
+  assert.equal(result.mapped[0].bare_ear_photo_左耳_1, "/photos/left-bare-1.jpg");
+  assert.equal(result.mapped[0].bare_ear_photo_左耳_2, "/photos/left-bare-2.jpg");
+  assert.equal(result.mapped[1].bare_ear_photo_右耳, "/photos/right-bare.jpg");
+  assert.equal(result.mapped[0].photo_正面, "/photos/left-front.jpg");
+  assert.equal(result.mapped[1].photo_正面, "/photos/right-front.jpg");
 });
 
 test("bare ear override removes that file from device sequence", () => {

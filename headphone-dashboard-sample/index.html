@@ -87,6 +87,20 @@
             <input id="includeBareEarPhotos" type="checkbox">
             包含空耳照片
           </label>
+          <div id="bareEarConfigPanel" class="bare-ear-config" hidden>
+            <label class="check-control">
+              <input id="bareEarSplitByEar" type="checkbox">
+              空耳区分左右耳
+            </label>
+            <div id="bareEarGenericCountWrap">
+              <label>空耳张数<input id="bareEarGenericCount" type="number" min="1" max="12" value="1"></label>
+            </div>
+            <div id="bareEarSideCounts" hidden>
+              <label>左耳空耳张数<input id="bareEarLeftCount" type="number" min="0" max="12" value="1"></label>
+              <label>右耳空耳张数<input id="bareEarRightCount" type="number" min="0" max="12" value="1"></label>
+              <small>顺序逻辑按“先拍完一侧，再拍另一侧”解析：左耳全部空耳照片在前，右耳全部空耳照片在后。</small>
+            </div>
+          </div>
           <label id="singleEarToggleWrap" class="check-control mapping-check-control">
             <input id="singleEarMode" type="checkbox">
             单耳模式（照片列只按视角生成）

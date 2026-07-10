@@ -169,6 +169,19 @@
     return nextRows;
   }
 
+  function swapMappedPhotoDeviceGroups(rows = [], sourceRowIndex, targetRowIndex, fields = []) {
+    const nextRows = rows.map(row => ({ ...row }));
+    const sourceRow = nextRows[sourceRowIndex];
+    const targetRow = nextRows[targetRowIndex];
+    if (!sourceRow || !targetRow) return nextRows;
+    fields.forEach(field => {
+      const sourceValue = sourceRow[field] || "";
+      sourceRow[field] = targetRow[field] || "";
+      targetRow[field] = sourceValue;
+    });
+    return nextRows;
+  }
+
   function inferFieldRole(field, rows = []) {
     if (/^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) return "user_id";
     if (/^device_name$|device_id|condition|设备|条件/i.test(field)) return "device";
@@ -363,8 +376,60 @@
     return ear ? `bare_ear_photo_${String(ear).replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "")}` : "bare_ear_photo";
   }
 
+  function numberedBareEarFieldName(ear = "", index = 1, total = 1) {
+    const suffix = total > 1 ? `_${index}` : "";
+    if (!ear) return `bare_ear_photo${suffix}`;
+    return `${bareEarFieldName(ear)}${suffix}`;
+  }
+
+  function normalizeBareEarConfig(options = {}) {
+    const config = options.bareEarConfig && typeof options.bareEarConfig === "object" ? options.bareEarConfig : {};
+    const enabled = Boolean(config.enabled ?? options.includeBareEar);
+    const splitByEar = Boolean(config.splitByEar);
+    const genericCount = Math.max(0, Math.floor(Number(config.genericCount ?? config.count ?? 1)) || 0);
+    const leftCount = Math.max(0, Math.floor(Number(config.leftCount ?? 1)) || 0);
+    const rightCount = Math.max(0, Math.floor(Number(config.rightCount ?? 1)) || 0);
+    return { enabled, splitByEar, genericCount, leftCount, rightCount };
+  }
+
+  function configuredBareEarDescriptors(options = {}) {
+    if (!options.bareEarConfig || typeof options.bareEarConfig !== "object") return [];
+    const config = normalizeBareEarConfig(options);
+    if (!config.enabled) return [];
+    if (!config.splitByEar) {
+      const count = Math.max(1, config.genericCount);
+      return Array.from({ length: count }, (_, index) => ({
+        ear: "",
+        sequenceIndex: index,
+        field: numberedBareEarFieldName("", index + 1, count),
+        label: count > 1 ? `空耳 ${index + 1}` : "空耳"
+      }));
+    }
+    return [
+      ["左耳", config.leftCount],
+      ["右耳", config.rightCount]
+    ].flatMap(([ear, count]) => Array.from({ length: count }, (_, index) => ({
+      ear,
+      sequenceIndex: index,
+      field: numberedBareEarFieldName(ear, index + 1, count),
+      label: count > 1 ? `${ear} · 空耳 ${index + 1}` : `${ear} · 空耳`
+    })));
+  }
+
   function bareEarDescriptorsForEntries(entries = [], options = {}) {
     const { earField } = options;
+    const configured = configuredBareEarDescriptors(options);
+    if (configured.length) {
+      if (!earField || options.singleEarMode) return configured.map(item => ({ ...item, ear: "" }));
+      const presentEars = new Set();
+      entries.forEach(entry => {
+        const raw = entry.row?.[earField] || "";
+        const ear = inferEarLabel(raw) || String(raw || "").trim();
+        const key = normalizeToken(ear);
+        if (key) presentEars.add(key);
+      });
+      return configured.filter(item => !item.ear || presentEars.has(normalizeToken(item.ear)));
+    }
     if (!earField || options.singleEarMode) return [{ ear: "", field: bareEarFieldName(), label: "空耳" }];
     const ears = [];
     const seen = new Set();
@@ -383,7 +448,8 @@
 
   function bareEarDescriptors(rows = [], options = {}) {
     const hasFolderBare = options.mode === "folders" && (options.files || []).some(pathHasBareEar);
-    if ((!options.includeBareEar && !hasFolderBare)) return [];
+    const config = normalizeBareEarConfig(options);
+    if ((!config.enabled && !hasFolderBare)) return [];
     const byUser = new Map();
     rows.forEach((row, rowIndex) => {
       const user = row[options.userField];
@@ -747,7 +813,8 @@
 
     rowsByUser.forEach((entries, user) => {
       const userFiles = filesByUser.get(user) || [];
-      const bareSlots = options.includeBareEar ? bareEarDescriptorsForEntries(entries, { ...effectiveOptions, mode }) : [];
+      const bareConfig = normalizeBareEarConfig(options);
+      const bareSlots = bareConfig.enabled ? bareEarDescriptorsForEntries(entries, { ...effectiveOptions, mode }) : [];
       const bareValues = new Set();
       bareSlots.forEach((slot, index) => {
         const applicableEntries = entries.filter(entry =>
@@ -763,7 +830,7 @@
         slot.rowIndex = rowIndex;
         slot.value = value;
       });
-      const deviceFiles = options.includeBareEar ?
+      const deviceFiles = bareConfig.enabled ?
         userFiles.filter(file => !bareValues.has(file.absolute_path)) :
         userFiles;
       let cursor = 0;
@@ -997,6 +1064,7 @@
     pressureSiteMeta,
     aggregatePressureSites,
     swapMappedPhotoAssignments,
+    swapMappedPhotoDeviceGroups,
     inferFieldRole,
     resolveFieldRoles,
     naturalCompare,
