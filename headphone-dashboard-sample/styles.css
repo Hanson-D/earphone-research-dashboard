@@ -238,14 +238,15 @@ select[multiple] { min-height: 84px; }
 .mapping-bare-panel {
   align-self: start;
   display: grid;
-  grid-template-columns: repeat(var(--bare-slot-columns, 1), minmax(86px, 1fr));
   gap: 8px;
   padding: 10px;
   background: #fbf4ee;
   border: 1px solid #ecd8cc;
   border-left: 3px solid var(--accent);
 }
-.mapping-bare-panel h3 { grid-column: 1 / -1; margin: 0; color: var(--accent-dark); font-size: 12px; }
+.mapping-bare-panel h3 { margin: 0; color: var(--accent-dark); font-size: 12px; }
+.mapping-bare-row { display: grid; grid-template-columns: repeat(var(--bare-row-columns, 1), minmax(86px, 1fr)); gap: 8px; align-items: start; }
+.mapping-bare-row > strong { grid-column: 1 / -1; color: var(--accent-dark); font-size: 10px; }
 .mapping-bare-slot { margin: 0; text-align: center; }
 .mapping-device-row { contain: layout paint; display: grid; grid-template-columns: 150px repeat(auto-fit, minmax(86px, 1fr)); gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .mapping-device-row:last-child { border-bottom: 0; }

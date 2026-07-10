@@ -1701,6 +1701,35 @@ function bareSlotColumnCount(slots = []) {
   return Math.max(1, ...groups.values());
 }
 
+function bareSlotGroups(slots = []) {
+  const groups = new Map();
+  slots.forEach(slot => {
+    const key = slot.ear || "通用";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(slot);
+  });
+  return [...groups.entries()].sort(([a], [b]) =>
+    (a === "左耳" ? 0 : a === "右耳" ? 1 : 2) -
+    (b === "左耳" ? 0 : b === "右耳" ? 1 : 2) ||
+    a.localeCompare(b, "zh-CN")
+  );
+}
+
+function renderBareSlotFigure(review, slot) {
+  const path = state.mappedRows[slot.rowIndex]?.[slot.field] || "";
+  const src = path ? photoUrl(path) : "";
+  const thumbSrc = path ? photoThumbUrl(path) : "";
+  const label = currentBarePhotoLabel(slot.field, slot.label);
+  return `<figure class="mapping-photo-slot mapping-bare-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="bare" data-user="${attrEscape(review.user)}" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}" title="拖动照片到这里会重置该用户设备排序">
+    ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${attrEscape(label)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
+    <figcaption>${attrEscape(label)}</figcaption>
+    <input class="bare-ear-label-input" data-field="${attrEscape(slot.field)}" value="${attrEscape(label)}" aria-label="${attrEscape(label)}名称">
+    <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${slot.field}">
+      ${photoSelectOptions(review.files, path)}
+    </select>
+  </figure>`;
+}
+
 function renderMappingReviewCard(review, deviceField, photoFields) {
   const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
   const sequenceMode = els.mappingMode.value === "sequence";
@@ -1711,20 +1740,12 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
   const bareColumns = bareSlotColumnCount(review.bareSlots || []);
   const bareHtml = hasBare ? `<aside class="mapping-bare-panel" style="--bare-slot-columns:${bareColumns}">
     <h3>空耳</h3>
-    ${review.bareSlots.map(slot => {
-    const path = state.mappedRows[slot.rowIndex]?.[slot.field] || "";
-    const src = path ? photoUrl(path) : "";
-    const thumbSrc = path ? photoThumbUrl(path) : "";
-    const label = currentBarePhotoLabel(slot.field, slot.label);
-    return `<figure class="mapping-photo-slot mapping-bare-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="bare" data-user="${attrEscape(review.user)}" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}" title="拖动照片到这里会重置该用户设备排序">
-      ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${attrEscape(label)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
-      <figcaption>${attrEscape(label)}</figcaption>
-      <input class="bare-ear-label-input" data-field="${attrEscape(slot.field)}" value="${attrEscape(label)}" aria-label="${attrEscape(label)}名称">
-      <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${slot.field}">
-        ${photoSelectOptions(review.files, path)}
-      </select>
-    </figure>`;
-  }).join("")}
+    ${bareSlotGroups(review.bareSlots || []).map(([group, slots]) => `
+      <section class="mapping-bare-row" style="--bare-row-columns:${slots.length}">
+        ${group !== "通用" ? `<strong>${group}</strong>` : ""}
+        ${slots.map(slot => renderBareSlotFigure(review, slot)).join("")}
+      </section>
+    `).join("")}
   </aside>` : "";
   return `<article class="mapping-user ${review.status}" data-review-user="${attrEscape(review.user)}">
     <div class="mapping-user-heading">
