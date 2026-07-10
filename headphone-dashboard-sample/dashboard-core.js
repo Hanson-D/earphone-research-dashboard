@@ -267,8 +267,81 @@
       String(view || "");
   }
 
+  function stripAnyEarFromView(view) {
+    const ear = inferEarLabel(view);
+    return ear ? stripEarFromView(view, ear) : String(view || "").trim();
+  }
+
+  function firstEarInParts(parts = []) {
+    for (const part of parts) {
+      const ear = inferEarLabel(part);
+      if (ear) return ear;
+    }
+    return "";
+  }
+
+  function singleEarViewItems(views = []) {
+    const items = [];
+    const seen = new Set();
+    views.forEach(view => {
+      const cleanView = stripAnyEarFromView(view);
+      const key = normalizeToken(cleanView);
+      if (!cleanView || !key || seen.has(key)) return;
+      seen.add(key);
+      items.push({ ear: "", view: cleanView, label: cleanView });
+    });
+    return items;
+  }
+
+  function resolveSingleEarMode(rows = [], files = [], options = {}) {
+    const { mode = "sequence", userField, earField, deviceField, singleEarMode = false, expectedEars = [] } = options;
+    const sortedFiles = (files || [])
+      .slice()
+      .sort((a, b) => naturalCompare(a.relative_path || a.name || a.absolute_path, b.relative_path || b.name || b.absolute_path));
+    const firstEar = folderEarValues([], "", sortedFiles)[0] || firstEarInParts(sortedFiles.flatMap(file => pathParts(file)));
+    if (singleEarMode) return { enabled: true, forced: true, automatic: false, ear: firstEar };
+    if (mode !== "folders" || !userField || !rows.length || !sortedFiles.length) {
+      return { enabled: false, forced: false, automatic: false, ear: "" };
+    }
+    const expectedEarCount = new Set((expectedEars || []).map(value => inferEarLabel(value) || String(value || "").trim()).filter(Boolean).map(normalizeToken)).size;
+    if (earField || expectedEarCount > 0) {
+      return { enabled: false, forced: false, automatic: false, ear: firstEar };
+    }
+
+    const users = uniqueValues(rows, userField);
+    const devices = uniqueValues(rows, deviceField);
+    const groups = new Map();
+    sortedFiles.forEach(file => {
+      if (pathHasBareEar(file)) return;
+      const parts = pathParts(file);
+      const user = users.find(value => partsInclude(parts, value)) || "";
+      if (!user) return;
+      const device = deviceField ? devices.find(value => partsInclude(parts, value)) || "" : "";
+      if (deviceField && !device) return;
+      const ear = firstEarInParts(parts);
+      if (!ear) return;
+      const key = deviceField ? [user, device].join("|||") : user;
+      if (!groups.has(key)) groups.set(key, new Set());
+      groups.get(key).add(ear);
+    });
+
+    if (!groups.size) return { enabled: false, forced: false, automatic: false, ear: "" };
+    const groupEars = [...groups.values()];
+    if (groupEars.some(ears => ears.size !== 1)) return { enabled: false, forced: false, automatic: false, ear: firstEar };
+    return { enabled: true, forced: false, automatic: true, ear: firstEar || [...groupEars[0]][0] || "" };
+  }
+
   function viewDescriptors(rows = [], options = {}) {
     const { mode = "sequence", earField, views = [], files = [], expectedEars = [] } = options;
+    if (resolveSingleEarMode(rows, files, options).enabled) {
+      const items = singleEarViewItems(views);
+      const fields = photoFieldNames(items.map(item => item.label));
+      return items.map((item, index) => ({
+        ...item,
+        field: fields[index],
+        label: item.view
+      }));
+    }
     const ears = mode === "folders" ? combinedEarValues(rows, earField, files, expectedEars) : (earField ? combinedEarValues(rows, earField, files, expectedEars) : []);
     const hasEarInViews = ears.length && views.some(view => ears.some(ear => folderPartMatches(view, ear)));
     const items = mode === "folders" && ears.length && !hasEarInViews ?
@@ -292,7 +365,7 @@
 
   function bareEarDescriptorsForEntries(entries = [], options = {}) {
     const { earField } = options;
-    if (!earField) return [{ ear: "", field: bareEarFieldName(), label: "空耳" }];
+    if (!earField || options.singleEarMode) return [{ ear: "", field: bareEarFieldName(), label: "空耳" }];
     const ears = [];
     const seen = new Set();
     entries.forEach(entry => {
@@ -552,11 +625,13 @@
   function mapPhotosToRows(rows = [], files = [], options = {}) {
     const { mode = "sequence", userField, earField, deviceField, views = [], overrides = {}, expectedEars = [] } = options;
     const expandedRows = expandRowsForPhotoCombos(rows, files, options);
-    const descriptors = viewDescriptors(expandedRows, { ...options, files });
-    const bareDescriptors = bareEarDescriptors(expandedRows, { ...options, mode, files });
+    const singleEarInfo = resolveSingleEarMode(expandedRows, files, options);
+    const effectiveOptions = { ...options, singleEarMode: singleEarInfo.enabled };
+    const descriptors = viewDescriptors(expandedRows, { ...effectiveOptions, files });
+    const bareDescriptors = bareEarDescriptors(expandedRows, { ...effectiveOptions, mode, files });
     const bareDescriptorFields = new Set(bareDescriptors.map(item => item.field));
     const photoFields = [...bareDescriptors.map(item => item.field), ...descriptors.map(item => item.field)];
-    const singleDeviceSelections = mode === "folders" ? inferSingleDeviceSelections(expandedRows, files, { ...options, views }) : new Map();
+    const singleDeviceSelections = mode === "folders" ? inferSingleDeviceSelections(expandedRows, files, { ...effectiveOptions, views }) : new Map();
     const folderEars = mode === "folders" ? combinedEarValues(expandedRows, earField, files, expectedEars) : [];
     const applicableDescriptors = row => descriptors.filter(item =>
       mode === "folders" || !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
@@ -582,7 +657,7 @@
           status: "ok"
         };
         const existingBareKeys = new Set(review.bareSlots.map(slot => slot.field));
-        const bareSlots = bareEarDescriptorsForEntries([{ row, rowIndex }], { ...options, mode })
+        const bareSlots = bareEarDescriptorsForEntries([{ row, rowIndex }], { ...effectiveOptions, mode })
           .filter(slot => bareDescriptorFields.has(slot.field));
         bareSlots.forEach(slot => {
           if (existingBareKeys.has(slot.field)) return;
@@ -617,6 +692,7 @@
                 !bareOverrideValues.has(candidate.absolute_path) &&
                 partsInclude(parts, row[userField]) &&
                 (!item.ear || partsInclude(parts, item.ear)) &&
+                (!singleEarInfo.forced || !singleEarInfo.ear || !firstEarInParts(parts) || partsInclude(parts, singleEarInfo.ear)) &&
                 (mode === "folders" || !earField || !row[earField] || partsInclude(parts, row[earField])) &&
                 (!deviceField || partsInclude(parts, row[deviceField])) &&
                 (!singleDevice || !inferredDevice || folderPartMatches(inferredDevice, singleDevice.selected)) &&
@@ -671,7 +747,7 @@
 
     rowsByUser.forEach((entries, user) => {
       const userFiles = filesByUser.get(user) || [];
-      const bareSlots = options.includeBareEar ? bareEarDescriptorsForEntries(entries, { ...options, mode }) : [];
+      const bareSlots = options.includeBareEar ? bareEarDescriptorsForEntries(entries, { ...effectiveOptions, mode }) : [];
       const bareValues = new Set();
       bareSlots.forEach((slot, index) => {
         const applicableEntries = entries.filter(entry =>
@@ -928,6 +1004,7 @@
     photoFilesFromBrowserSelection,
     folderEarValues,
     combinedEarValues,
+    resolveSingleEarMode,
     inferFolderPhotoCombos,
     expandRowsForPhotoCombos,
     viewDescriptors,

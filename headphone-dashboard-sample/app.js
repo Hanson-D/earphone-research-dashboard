@@ -83,6 +83,7 @@ const state = {
   thumbnailUrls: {},
   mappingViews: [],
   includeBareEarPhotos: false,
+  singleEarMode: false,
   mappingReviews: [],
   mappingPhotoFields: [],
   photoMappingOverrides: {},
@@ -137,7 +138,7 @@ const els = Object.fromEntries([
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
-  "bareEarToggleWrap", "includeBareEarPhotos", "runMappingButton",
+  "bareEarToggleWrap", "includeBareEarPhotos", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
@@ -268,7 +269,8 @@ function projectDocumentSnapshot() {
       userField: els.mappingUserField.value,
       earField: els.mappingEarField.value,
       deviceField: els.mappingDeviceField.value,
-      includeBareEarPhotos: state.includeBareEarPhotos
+      includeBareEarPhotos: state.includeBareEarPhotos,
+      singleEarMode: state.singleEarMode
     },
     mappingViews: mappingViews(),
     photoMappingOverrides: state.photoMappingOverrides,
@@ -285,7 +287,8 @@ function mappingConfigSnapshot() {
       userField: els.mappingUserField.value,
       earField: els.mappingEarField.value,
       deviceField: els.mappingDeviceField.value,
-      includeBareEarPhotos: state.includeBareEarPhotos
+      includeBareEarPhotos: state.includeBareEarPhotos,
+      singleEarMode: state.singleEarMode
     },
     mappingViews: mappingViews()
   };
@@ -416,7 +419,9 @@ async function loadProject(path) {
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
+  state.singleEarMode = Boolean(project.mappingFields.singleEarMode);
   els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
+  els.singleEarMode.checked = state.singleEarMode;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
@@ -463,7 +468,9 @@ async function loadServerProject() {
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
+  state.singleEarMode = Boolean(project.mappingFields.singleEarMode);
   els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
+  els.singleEarMode.checked = state.singleEarMode;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
@@ -1375,8 +1382,8 @@ function renderMappingMode() {
   els.bareEarToggleWrap.hidden = folderMode;
   els.viewNamesInput.placeholder = folderMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
   els.mappingModeNote.innerHTML = folderMode ?
-    `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向，并生成左右耳 × 方向照片列；若与设备文件夹平行存在空耳文件夹，会自动生成空耳栏。</span>` :
-    `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。每个用户文件夹内照片按名称自然排序，依次分配给 CSV 中该用户的设备记录和视角。</span>`;
+    `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向；若未配置耳侧且每个用户/设备只有一侧照片，会自动按单耳模式生成视角列。</span>` :
+    `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。单耳模式会去掉视角名里的左/右耳，只生成正面、侧面等视角列。</span>`;
 }
 
 function renderPhotoSourceMode() {
@@ -1516,6 +1523,7 @@ async function uploadServerPhotoFiles() {
 function buildPhotoMapping() {
   const mode = els.mappingMode.value;
   const includeBareEar = mode === "sequence" && state.includeBareEarPhotos;
+  const singleEarMode = state.singleEarMode;
   const userField = els.mappingUserField.value;
   const earField = els.mappingEarField.value;
   const deviceField = els.mappingDeviceField.value;
@@ -1540,6 +1548,7 @@ function buildPhotoMapping() {
     views,
     expectedEars,
     includeBareEar,
+    singleEarMode,
     overrides: state.photoMappingOverrides
   });
   state.mappedRows = mapped;
@@ -1551,6 +1560,7 @@ function buildPhotoMapping() {
     earField,
     views,
     expectedEars,
+    singleEarMode,
     files: state.mappingFiles
   });
   const bareFieldCount = photoFields.filter(field => field.startsWith("bare_ear_photo")).length;
@@ -1941,6 +1951,12 @@ function bindEvents() {
   });
   els.includeBareEarPhotos.addEventListener("change", () => {
     state.includeBareEarPhotos = els.includeBareEarPhotos.checked;
+    state.photoMappingOverrides = {};
+    resetMappingOutputs();
+    markProjectDirty();
+  });
+  els.singleEarMode.addEventListener("change", () => {
+    state.singleEarMode = els.singleEarMode.checked;
     state.photoMappingOverrides = {};
     resetMappingOutputs();
     markProjectDirty();

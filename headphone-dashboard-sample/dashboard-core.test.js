@@ -209,6 +209,25 @@ test("sequence photo mapping can use ear side in the capture order", () => {
   assert.equal(result.reviews[0].status, "ok");
 });
 
+test("sequence single-ear mode strips ear side from capture views", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A" }
+  ];
+  const files = [
+    { user_folder: "U001", name: "1.jpg", absolute_path: "/photos/front.jpg" },
+    { user_folder: "U001", name: "2.jpg", absolute_path: "/photos/side.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    userField: "user_id",
+    views: ["左耳正面", "左耳侧面"],
+    singleEarMode: true
+  });
+  assert.deepEqual(result.photoFields, ["photo_正面", "photo_侧面"]);
+  assert.equal(result.photoViews[0].label, "正面");
+  assert.equal(result.mapped[0].photo_正面, "/photos/front.jpg");
+  assert.equal(result.mapped[0].photo_侧面, "/photos/side.jpg");
+});
+
 test("sequence photo mapping can reserve a generic bare ear photo", () => {
   const rows = [
     { user_id: "U001", device_name: "A" },
@@ -253,6 +272,26 @@ test("sequence photo mapping reserves bare ear photos by actual ear side", () =>
   assert.equal(result.mapped[0].photo_正面, "/photos/left-front.jpg");
   assert.equal(result.mapped[1].photo_正面, "/photos/right-front.jpg");
   assert.equal(result.reviews[0].bareSlots.length, 2);
+});
+
+test("single-ear mode uses one generic bare ear slot", () => {
+  const rows = [
+    { user_id: "U001", ear_side: "左耳", device_name: "A" }
+  ];
+  const files = [
+    { user_folder: "U001", name: "0.jpg", absolute_path: "/photos/bare.jpg" },
+    { user_folder: "U001", name: "1.jpg", absolute_path: "/photos/front.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    userField: "user_id",
+    earField: "ear_side",
+    views: ["正面"],
+    includeBareEar: true,
+    singleEarMode: true
+  });
+  assert.deepEqual(result.photoFields, ["bare_ear_photo", "photo_正面"]);
+  assert.equal(result.mapped[0].bare_ear_photo, "/photos/bare.jpg");
+  assert.equal(result.mapped[0].photo_正面, "/photos/front.jpg");
 });
 
 test("bare ear override removes that file from device sequence", () => {
@@ -374,6 +413,96 @@ test("folder mode maps bare ear folders parallel to device folders", () => {
   assert.equal(result.reviews[0].bareSlots.length, 2);
 });
 
+test("folder mode auto-enables single-ear columns when each condition has only one side", () => {
+  const rows = [
+    { name: "用户1", prototype: "样机A" },
+    { name: "用户2", prototype: "样机A" }
+  ];
+  const files = [
+    { relative_path: "用户1/样机A/左耳/正面/001.jpg", absolute_path: "/photos/u1-left-front.jpg", name: "001.jpg" },
+    { relative_path: "用户1/样机A/左耳/侧面/002.jpg", absolute_path: "/photos/u1-left-side.jpg", name: "002.jpg" },
+    { relative_path: "用户2/样机A/右耳/正面/003.jpg", absolute_path: "/photos/u2-right-front.jpg", name: "003.jpg" },
+    { relative_path: "用户2/样机A/右耳/侧面/004.jpg", absolute_path: "/photos/u2-right-side.jpg", name: "004.jpg" }
+  ];
+  const views = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "",
+    deviceField: "prototype"
+  });
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype",
+    views
+  });
+
+  assert.equal(core.resolveSingleEarMode(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype"
+  }).enabled, true);
+  assert.deepEqual(result.photoFields, ["photo_正面", "photo_侧面"]);
+  assert.equal(result.mapped[0].photo_正面, "/photos/u1-left-front.jpg");
+  assert.equal(result.mapped[0].photo_侧面, "/photos/u1-left-side.jpg");
+  assert.equal(result.mapped[1].photo_正面, "/photos/u2-right-front.jpg");
+  assert.equal(result.mapped[1].photo_侧面, "/photos/u2-right-side.jpg");
+});
+
+test("folder mode keeps ear columns when any condition has both sides", () => {
+  const rows = [
+    { name: "张三", prototype: "样机A" }
+  ];
+  const files = [
+    { relative_path: "张三/样机A/左耳/正面/001.jpg", absolute_path: "/photos/left.jpg", name: "001.jpg" },
+    { relative_path: "张三/样机A/右耳/正面/002.jpg", absolute_path: "/photos/right.jpg", name: "002.jpg" }
+  ];
+  const views = core.inferFolderViews(rows, files, {
+    userField: "name",
+    earField: "",
+    deviceField: "prototype"
+  });
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype",
+    views
+  });
+
+  assert.equal(core.resolveSingleEarMode(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype"
+  }).enabled, false);
+  assert.equal(result.photoFields.includes("photo_左耳_正面"), true);
+  assert.equal(result.photoFields.includes("photo_右耳_正面"), true);
+});
+
+test("folder mode can force single-ear columns even when both sides exist", () => {
+  const rows = [
+    { name: "张三", prototype: "样机A" }
+  ];
+  const files = [
+    { relative_path: "张三/样机A/左耳/正面/001.jpg", absolute_path: "/photos/left.jpg", name: "001.jpg" },
+    { relative_path: "张三/样机A/右耳/正面/002.jpg", absolute_path: "/photos/right.jpg", name: "002.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "name",
+    earField: "",
+    deviceField: "prototype",
+    views: ["正面"],
+    singleEarMode: true
+  });
+
+  assert.deepEqual(result.photoFields, ["photo_正面"]);
+  assert.equal(result.mapped[0].photo_正面, "/photos/left.jpg");
+  assert.equal(result.reviews[0].status, "ok");
+});
+
 test("folder mode does not treat bare ear folder as a device when device field is missing", () => {
   const rows = [
     { name: "张三", comfort_score: "8" }
@@ -398,7 +527,7 @@ test("folder mode does not treat bare ear folder as a device when device field i
   assert.deepEqual(views, ["正面"]);
   assert.equal(result.mapped.length, 1);
   assert.equal(result.mapped[0].bare_ear_photo, "/photos/bare.jpg");
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/device.jpg");
+  assert.equal(result.mapped[0].photo_正面, "/photos/device.jpg");
 });
 
 test("folder mode derives ear sides from photo folders even when csv has one ear side", () => {
