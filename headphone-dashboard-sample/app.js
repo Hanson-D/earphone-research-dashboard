@@ -193,16 +193,19 @@ function sanitizeBareEarConfig(config = {}) {
     splitByEar: Boolean(config.splitByEar),
     genericCount: Math.max(1, boundedCount(config.genericCount, 1)),
     leftCount: boundedCount(config.leftCount, 1),
-    rightCount: boundedCount(config.rightCount, 1)
+    rightCount: boundedCount(config.rightCount, 1),
+    labels: config.labels && typeof config.labels === "object" ? { ...config.labels } : {}
   };
 }
 
 function bareEarConfigFromControls() {
+  const current = sanitizeBareEarConfig(state.bareEarConfig);
   return sanitizeBareEarConfig({
     splitByEar: els.bareEarSplitByEar.checked,
     genericCount: els.bareEarGenericCount.value,
     leftCount: els.bareEarLeftCount.value,
-    rightCount: els.bareEarRightCount.value
+    rightCount: els.bareEarRightCount.value,
+    labels: current.labels
   });
 }
 
@@ -1620,8 +1623,10 @@ function buildPhotoMapping() {
   photoFields.forEach((field, index) => {
     const bareMatch = field.match(/^bare_ear_photo(?:_(.+))?$/);
     const label = bareMatch ? barePhotoFieldLabel(field) : photoViews[index - bareFieldCount]?.label || views[index] || field;
-    state.viewLabels[field] = label;
-    fieldLabels[field] = label;
+    const savedBareLabel = bareMatch ? state.bareEarConfig.labels?.[field] : "";
+    const finalLabel = savedBareLabel || label;
+    state.viewLabels[field] = finalLabel;
+    fieldLabels[field] = finalLabel;
   });
   renderMappingPreview(reviews, userField, deviceField, photoFields);
   els.applyMappingButton.disabled = false;
@@ -1682,6 +1687,20 @@ function barePhotoFieldLabel(field) {
   return `空耳${number ? ` ${number}` : ""}`;
 }
 
+function currentBarePhotoLabel(field, fallback = "") {
+  return state.bareEarConfig.labels?.[field] || state.viewLabels[field] || fallback || barePhotoFieldLabel(field);
+}
+
+function bareSlotColumnCount(slots = []) {
+  if (!slots.length) return 1;
+  const groups = new Map();
+  slots.forEach(slot => {
+    const key = slot.ear || "通用";
+    groups.set(key, (groups.get(key) || 0) + 1);
+  });
+  return Math.max(1, ...groups.values());
+}
+
 function renderMappingReviewCard(review, deviceField, photoFields) {
   const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
   const sequenceMode = els.mappingMode.value === "sequence";
@@ -1689,15 +1708,18 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
   const devicePhotoFields = photoFields.filter(field => !field.startsWith("bare_ear_photo"));
   const hasBare = bareFields.length && review.bareSlots?.length;
   const totalExpected = review.expected + (review.bareSlots?.length || 0);
-  const bareHtml = hasBare ? `<aside class="mapping-bare-panel">
+  const bareColumns = bareSlotColumnCount(review.bareSlots || []);
+  const bareHtml = hasBare ? `<aside class="mapping-bare-panel" style="--bare-slot-columns:${bareColumns}">
     <h3>空耳</h3>
     ${review.bareSlots.map(slot => {
     const path = state.mappedRows[slot.rowIndex]?.[slot.field] || "";
     const src = path ? photoUrl(path) : "";
     const thumbSrc = path ? photoThumbUrl(path) : "";
+    const label = currentBarePhotoLabel(slot.field, slot.label);
     return `<figure class="mapping-photo-slot mapping-bare-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="bare" data-user="${attrEscape(review.user)}" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}" title="拖动照片到这里会重置该用户设备排序">
-      ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${slot.label}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${slot.label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
-      <figcaption>${slot.label}</figcaption>
+      ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${attrEscape(label)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
+      <figcaption>${attrEscape(label)}</figcaption>
+      <input class="bare-ear-label-input" data-field="${attrEscape(slot.field)}" value="${attrEscape(label)}" aria-label="${attrEscape(label)}名称">
       <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${slot.field}">
         ${photoSelectOptions(review.files, path)}
       </select>
@@ -1710,7 +1732,7 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
       <span>预期 ${totalExpected} 张 / 实际 ${review.files.length} 张</span>
       <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
     </div>
-    <div class="${hasBare ? "mapping-review-columns" : ""}">
+    <div class="${hasBare ? "mapping-review-columns" : ""}" style="${hasBare ? `--bare-panel-width:${180 * bareColumns}px` : ""}">
     ${bareHtml}
     <div class="mapping-device-list">${review.entries.map((entry, entryIndex) => `
       <div class="mapping-device-row">
@@ -1803,6 +1825,19 @@ function moveMappingDeviceGroup(user, rowIndex, direction) {
   renderMappingReviewUser(user);
   markProjectDirty();
   return true;
+}
+
+function updateBareEarLabel(field, label) {
+  if (!field) return;
+  const config = sanitizeBareEarConfig(state.bareEarConfig);
+  const value = String(label || "").trim();
+  if (value) config.labels[field] = value;
+  else delete config.labels[field];
+  state.bareEarConfig = config;
+  const finalLabel = value || barePhotoFieldLabel(field);
+  state.viewLabels[field] = finalLabel;
+  fieldLabels[field] = finalLabel;
+  markProjectDirty();
 }
 
 function clearUserDevicePhotoOverrides(user) {
@@ -2100,6 +2135,11 @@ function bindEvents() {
     markProjectDirty();
   });
   els.mappingPreview.addEventListener("change", event => {
+    if (event.target.classList.contains("bare-ear-label-input")) {
+      updateBareEarLabel(event.target.dataset.field || "", event.target.value);
+      renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
+      return;
+    }
     if (!event.target.classList.contains("mapping-photo-select")) return;
     const key = `${event.target.dataset.rowIndex}::${event.target.dataset.field}`;
     if (event.target.value) state.photoMappingOverrides[key] = event.target.value;
