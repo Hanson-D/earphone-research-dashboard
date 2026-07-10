@@ -82,6 +82,7 @@ const state = {
   mappingObjectUrls: [],
   thumbnailUrls: {},
   mappingViews: [],
+  includeBareEarPhotos: false,
   mappingReviews: [],
   mappingPhotoFields: [],
   photoMappingOverrides: {},
@@ -135,7 +136,8 @@ const els = Object.fromEntries([
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
-  "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap", "runMappingButton",
+  "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
+  "bareEarToggleWrap", "includeBareEarPhotos", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
@@ -265,7 +267,8 @@ function projectDocumentSnapshot() {
     mappingFields: {
       userField: els.mappingUserField.value,
       earField: els.mappingEarField.value,
-      deviceField: els.mappingDeviceField.value
+      deviceField: els.mappingDeviceField.value,
+      includeBareEarPhotos: state.includeBareEarPhotos
     },
     mappingViews: mappingViews(),
     photoMappingOverrides: state.photoMappingOverrides,
@@ -281,7 +284,8 @@ function mappingConfigSnapshot() {
     mappingFields: {
       userField: els.mappingUserField.value,
       earField: els.mappingEarField.value,
-      deviceField: els.mappingDeviceField.value
+      deviceField: els.mappingDeviceField.value,
+      includeBareEarPhotos: state.includeBareEarPhotos
     },
     mappingViews: mappingViews()
   };
@@ -411,6 +415,8 @@ async function loadProject(path) {
   state.protocolTemplate = project.protocolTemplate;
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
+  state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
+  els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
@@ -456,6 +462,8 @@ async function loadServerProject() {
   state.protocolTemplate = project.protocolTemplate;
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
+  state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
+  els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
@@ -1364,9 +1372,10 @@ function renderMappingMode() {
   const folderMode = els.mappingMode.value === "folders";
   els.mappingEarFieldWrap.hidden = false;
   els.viewNamesInputWrap.hidden = folderMode;
+  els.bareEarToggleWrap.hidden = folderMode;
   els.viewNamesInput.placeholder = folderMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
   els.mappingModeNote.innerHTML = folderMode ?
-    `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向，并生成左右耳 × 方向照片列；左右耳字段和设备字段可不配置。</span>` :
+    `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向，并生成左右耳 × 方向照片列；若与设备文件夹平行存在空耳文件夹，会自动生成空耳栏。</span>` :
     `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。每个用户文件夹内照片按名称自然排序，依次分配给 CSV 中该用户的设备记录和视角。</span>`;
 }
 
@@ -1506,6 +1515,7 @@ async function uploadServerPhotoFiles() {
 
 function buildPhotoMapping() {
   const mode = els.mappingMode.value;
+  const includeBareEar = mode === "sequence" && state.includeBareEarPhotos;
   const userField = els.mappingUserField.value;
   const earField = els.mappingEarField.value;
   const deviceField = els.mappingDeviceField.value;
@@ -1529,6 +1539,7 @@ function buildPhotoMapping() {
     deviceField,
     views,
     expectedEars,
+    includeBareEar,
     overrides: state.photoMappingOverrides
   });
   state.mappedRows = mapped;
@@ -1542,8 +1553,10 @@ function buildPhotoMapping() {
     expectedEars,
     files: state.mappingFiles
   });
+  const bareFieldCount = photoFields.filter(field => field.startsWith("bare_ear_photo")).length;
   photoFields.forEach((field, index) => {
-    const label = photoViews[index]?.label || views[index] || field;
+    const bareMatch = field.match(/^bare_ear_photo(?:_(.+))?$/);
+    const label = bareMatch ? `${bareMatch[1] ? `${bareMatch[1]} · ` : ""}空耳` : photoViews[index - bareFieldCount]?.label || views[index] || field;
     state.viewLabels[field] = label;
     fieldLabels[field] = label;
   });
@@ -1562,21 +1575,42 @@ function photoSelectOptions(files, selectedPath) {
 
 function renderMappingReviewCard(review, deviceField, photoFields) {
   const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
+  const bareFields = photoFields.filter(field => field.startsWith("bare_ear_photo"));
+  const devicePhotoFields = photoFields.filter(field => !field.startsWith("bare_ear_photo"));
+  const hasBare = bareFields.length && review.bareSlots?.length;
+  const totalExpected = review.expected + (review.bareSlots?.length || 0);
+  const bareHtml = hasBare ? `<aside class="mapping-bare-panel">
+    <h3>空耳</h3>
+    ${review.bareSlots.map(slot => {
+    const path = state.mappedRows[slot.rowIndex]?.[slot.field] || "";
+    const src = path ? photoUrl(path) : "";
+    const thumbSrc = path ? photoThumbUrl(path) : "";
+    return `<figure class="mapping-photo-slot mapping-bare-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="bare" data-user="${attrEscape(review.user)}" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}" title="拖动照片到这里会重置该用户设备排序">
+      ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${slot.label}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${slot.label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
+      <figcaption>${slot.label}</figcaption>
+      <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${slot.field}">
+        ${photoSelectOptions(review.files, path)}
+      </select>
+    </figure>`;
+  }).join("")}
+  </aside>` : "";
   return `<article class="mapping-user ${review.status}" data-review-user="${attrEscape(review.user)}">
     <div class="mapping-user-heading">
       <strong>${review.user}</strong>
-      <span>预期 ${review.expected} 张 / 实际 ${review.files.length} 张</span>
+      <span>预期 ${totalExpected} 张 / 实际 ${review.files.length} 张</span>
       <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
     </div>
+    <div class="${hasBare ? "mapping-review-columns" : ""}">
+    ${bareHtml}
     <div class="mapping-device-list">${review.entries.map(entry => `
       <div class="mapping-device-row">
         <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
-        ${photoFields.map(field => {
+        ${devicePhotoFields.map(field => {
           const path = state.mappedRows[entry.rowIndex][field];
           const src = path ? photoUrl(path) : "";
           const thumbSrc = path ? photoThumbUrl(path) : "";
           const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
-          return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
+          return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="device" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
             ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
             <figcaption>${state.viewLabels[field]}</figcaption>
             <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
@@ -1586,6 +1620,7 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
         }).join("")}
       </div>
     `).join("")}</div>
+    </div>
     ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
   </article>`;
 }
@@ -1612,7 +1647,8 @@ function mappingSlotFromElement(element) {
   return {
     user: slot.dataset.user || "",
     rowIndex: Number(slot.dataset.rowIndex),
-    field: slot.dataset.field || ""
+    field: slot.dataset.field || "",
+    kind: slot.dataset.slotKind || "device"
   };
 }
 
@@ -1628,8 +1664,38 @@ function swapMappingPhotoSlots(source, target) {
   if (!source || !target) return false;
   if (source.user !== target.user) return false;
   if (source.rowIndex === target.rowIndex && source.field === target.field) return false;
+  if (target.kind === "bare") return assignBareEarSlot(source, target);
   state.mappedRows = Core.swapMappedPhotoAssignments(state.mappedRows, source, target);
   applyPhotoSlotOverrides([source, target]);
+  renderMappingReviewUser(source.user);
+  markProjectDirty();
+  return true;
+}
+
+function clearUserDevicePhotoOverrides(user) {
+  const review = state.mappingReviews.find(item => String(item.user) === String(user));
+  if (!review) return;
+  const rowIndexes = new Set(review.entries.map(entry => entry.rowIndex));
+  state.mappingPhotoFields
+    .filter(field => !field.startsWith("bare_ear_photo"))
+    .forEach(field => rowIndexes.forEach(rowIndex => {
+      delete state.photoMappingOverrides[`${rowIndex}::${field}`];
+    }));
+}
+
+function assignBareEarSlot(source, target) {
+  if (source.kind === "bare") {
+    state.mappedRows = Core.swapMappedPhotoAssignments(state.mappedRows, source, target);
+    applyPhotoSlotOverrides([source, target]);
+    renderMappingReviewUser(source.user);
+    markProjectDirty();
+    return true;
+  }
+  const value = state.mappedRows[source.rowIndex]?.[source.field] || "";
+  if (!value) return false;
+  clearUserDevicePhotoOverrides(source.user);
+  state.photoMappingOverrides[`${target.rowIndex}::${target.field}`] = value;
+  buildPhotoMapping();
   renderMappingReviewUser(source.user);
   markProjectDirty();
   return true;
@@ -1866,7 +1932,17 @@ function bindEvents() {
   els.downloadPhotoAuditButton.addEventListener("click", downloadPhotoAuditCsv);
   els.mappingMode.addEventListener("change", () => {
     resetMappingOutputs();
+    if (els.mappingMode.value === "folders") {
+      state.includeBareEarPhotos = false;
+      els.includeBareEarPhotos.checked = false;
+    }
     renderMappingMode();
+    markProjectDirty();
+  });
+  els.includeBareEarPhotos.addEventListener("change", () => {
+    state.includeBareEarPhotos = els.includeBareEarPhotos.checked;
+    state.photoMappingOverrides = {};
+    resetMappingOutputs();
     markProjectDirty();
   });
   els.mappingPreview.addEventListener("change", event => {
