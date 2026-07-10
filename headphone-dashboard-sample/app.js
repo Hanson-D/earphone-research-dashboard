@@ -79,6 +79,7 @@ const state = {
   mappingRows: [],
   mappedRows: [],
   mappingFiles: [],
+  detailPhotoObserver: null,
   mappingObjectUrls: [],
   thumbnailUrls: {},
   mappingViews: [],
@@ -1305,10 +1306,9 @@ function photoGalleryCell(column, userRows) {
   const items = userRows.filter(row => rowMatchesPhotoView(row, selectedView)).map(row => {
     const caption = [earField ? row[earField] : "", row[deviceField] || column.label].filter(Boolean).join(" · ");
     const src = photoUrl(row[selectedView.field]);
-    const thumbSrc = photoThumbUrl(row[selectedView.field]);
     return `
     <figure class="photo-thumb">
-      <img class="ear-photo photo-preview-trigger" src="${thumbSrc}" alt="${row[state.userIdField]} ${caption}" loading="lazy" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
+      <img class="ear-photo detail-photo-lazy photo-preview-trigger" src="${detailPhotoPlaceholder()}" data-src="${attrEscape(src)}" alt="${row[state.userIdField]} ${caption}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
       <figcaption>${caption}</figcaption>
     </figure>`;
   }).join("");
@@ -1381,6 +1381,7 @@ function renderDetails(rows, groups) {
       }).join("")}
     </tr>`).join("")
   ).join("") : `<tr><td colspan="${visibleColumns.length || 1}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
+  observeDetailPhotos();
 }
 
 function render() {
@@ -1633,6 +1634,40 @@ function photoSelectOptions(files, selectedPath) {
   return `<option value="">缺失/不使用</option>` +
     (!selectedKnown && selectedPath ? `<option value="${selectedPath}" selected>当前手动路径</option>` : "") +
     files.map(file => `<option value="${file.absolute_path}" ${file.absolute_path === selectedPath ? "selected" : ""}>${file.name}</option>`).join("");
+}
+
+function detailPhotoPlaceholder() {
+  return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23f2eeee'/%3E%3C/svg%3E";
+}
+
+function loadDetailPhoto(image) {
+  if (!image?.dataset?.src) return;
+  image.src = image.dataset.src;
+  image.removeAttribute("data-src");
+  image.classList.remove("detail-photo-lazy");
+}
+
+function observeDetailPhotos() {
+  state.detailPhotoObserver?.disconnect?.();
+  const images = [...els.detailBody.querySelectorAll("img.detail-photo-lazy[data-src]")];
+  if (!images.length) return;
+  if (!("IntersectionObserver" in window)) {
+    images.forEach(loadDetailPhoto);
+    return;
+  }
+  const detailWrap = document.querySelector(".detail-table-wrap");
+  state.detailPhotoObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      loadDetailPhoto(entry.target);
+      state.detailPhotoObserver.unobserve(entry.target);
+    });
+  }, {
+    root: detailWrap || null,
+    rootMargin: "360px 0px",
+    threshold: 0.01
+  });
+  images.forEach(image => state.detailPhotoObserver.observe(image));
 }
 
 function barePhotoFieldLabel(field) {

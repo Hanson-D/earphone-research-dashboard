@@ -505,6 +505,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .user-view-select { width: 100%; margin-bottom: 5px; padding: 3px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid #d8c5c5; font-size: 8px; }
 .photo-thumb { min-width: 0; margin: 0; }
 .photo-thumb .ear-photo { width: min(100%, var(--photo-size)); height: auto; aspect-ratio: 1; }
+.photo-thumb .detail-photo-lazy { background: #f2eeee; filter: none; }
 .photo-thumb figcaption { max-width: 100%; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .lightbox-open { overflow: hidden; }
 .photo-lightbox { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 28px; background: rgba(36, 29, 29, .78); backdrop-filter: blur(3px); overscroll-behavior: contain; }
