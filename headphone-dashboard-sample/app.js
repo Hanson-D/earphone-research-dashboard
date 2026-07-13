@@ -104,6 +104,8 @@ const state = {
   showErrorBars: true,
   pressureWorst: "low",
   userPhotoPositions: {},
+  userFilter: null,
+  deviceOrderMode: "source",
   search: "",
   columnFilters: {},
   headers: [],
@@ -309,7 +311,9 @@ function dashboardConfigSnapshot() {
     yAxisMode: state.yAxisMode,
     showErrorBars: state.showErrorBars,
     pressureWorst: state.pressureWorst,
-    userPhotoPositions: state.userPhotoPositions
+    userPhotoPositions: state.userPhotoPositions,
+    userFilter: state.userFilter,
+    deviceOrderMode: state.deviceOrderMode
   };
 }
 
@@ -571,6 +575,8 @@ function applyDashboardConfig(config) {
   if (typeof clean.showErrorBars === "boolean") state.showErrorBars = clean.showErrorBars;
   if (clean.pressureWorst) state.pressureWorst = clean.pressureWorst;
   state.userPhotoPositions = clean.userPhotoPositions || {};
+  state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
+  state.deviceOrderMode = clean.deviceOrderMode || "source";
   state.selectedGroup = null;
   buildSchema();
   initializeControls();
@@ -990,10 +996,18 @@ function resetUserPhotoPosition(user) {
   controls?.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
 }
 
+function selectedUsersFromHeader() {
+  return [...els.detailHead.querySelectorAll(".user-filter-checkbox:checked")].map(input => input.value);
+}
+
 function filteredRows() {
-  return state.rows.filter(row => Object.entries(state.columnFilters).every(([field, value]) =>
-    !value || String(row[field] ?? "") === value
-  ));
+  const allowedUsers = Array.isArray(state.userFilter) ? new Set(state.userFilter.map(String)) : null;
+  return state.rows.filter(row => {
+    if (allowedUsers && !allowedUsers.has(String(row[state.userIdField] ?? ""))) return false;
+    return Object.entries(state.columnFilters).every(([field, value]) =>
+      !value || String(row[field] ?? "") === value
+    );
+  });
 }
 
 function groupedRows(rows) {
@@ -1345,7 +1359,16 @@ function groupByUser(rows) {
     if (!users.has(user)) users.set(user, []);
     users.get(user).push(row);
   });
-  return [...users.values()];
+  return [...users.values()].map(userRows => sortUserDeviceRows(userRows));
+}
+
+function sortUserDeviceRows(userRows = []) {
+  const field = deviceField();
+  if (!field || state.deviceOrderMode === "source") return userRows;
+  return userRows.slice().sort((a, b) => {
+    const result = String(a[field] || "").localeCompare(String(b[field] || ""), "zh-CN", { numeric: true, sensitivity: "base" });
+    return state.deviceOrderMode === "desc" ? -result : result;
+  });
 }
 
 function detailCell(column, row) {
@@ -1416,6 +1439,49 @@ function detailRows(allFilteredRows, groups) {
   return groups.find(group => group.key === state.selectedGroup)?.rows || allFilteredRows;
 }
 
+function allUserNames() {
+  return [...new Set(state.rows.map(row => row[state.userIdField]).filter(Boolean).map(String))]
+    .sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+}
+
+function renderUserHeaderMenu(column) {
+  const users = allUserNames();
+  const selected = Array.isArray(state.userFilter) ? new Set(state.userFilter.map(String)) : new Set(users);
+  return `<th><span>${column.label}</span>
+    <details class="header-menu user-filter-menu">
+      <summary>${selected.size}/${users.length} 用户</summary>
+      <div class="header-menu-panel">
+        <div class="header-menu-actions">
+          <button type="button" class="user-filter-all">全选</button>
+          <button type="button" class="user-filter-none">全不选</button>
+        </div>
+        <div class="user-filter-options">
+          ${users.map(user => `<label><input class="user-filter-checkbox" type="checkbox" value="${attrEscape(user)}" ${selected.has(user) ? "checked" : ""}>${attrEscape(user)}</label>`).join("")}
+        </div>
+      </div>
+    </details>
+  </th>`;
+}
+
+function renderDeviceHeaderMenu(column) {
+  return `<th><span>${column.label}</span>
+    <select class="device-order-select" aria-label="设备排序">
+      <option value="source" ${state.deviceOrderMode === "source" ? "selected" : ""}>原始顺序</option>
+      <option value="asc" ${state.deviceOrderMode === "asc" ? "selected" : ""}>设备名升序</option>
+      <option value="desc" ${state.deviceOrderMode === "desc" ? "selected" : ""}>设备名降序</option>
+    </select>
+  </th>`;
+}
+
+function renderDetailHeaderCell(column, rows) {
+  if (column.derived || column.photo) return `<th>${column.label}</th>`;
+  if (column.id === state.userIdField) return renderUserHeaderMenu(column);
+  if (column.id === deviceField()) return renderDeviceHeaderMenu(column);
+  const values = [...new Set(rows.map(row => row[column.id]).filter(value => value !== ""))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
+  const options = values.length <= 80 ? values.map(value => `<option value="${attrEscape(value)}" ${state.columnFilters[column.id] === String(value) ? "selected" : ""}>${attrEscape(value)}</option>`).join("") : "";
+  return `<th><span>${column.label}</span><select class="header-filter" data-field="${column.id}" aria-label="${column.label}筛选"><option value="">全部</option>${options}</select></th>`;
+}
+
 function renderDetails(rows, groups) {
   let selected = groups.find(group => group.key === state.selectedGroup);
   const baseRows = detailRows(rows, groups);
@@ -1453,13 +1519,10 @@ function renderDetails(rows, groups) {
   );
   const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
   els.detailColgroup.innerHTML = visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
-  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => {
-    if (column.derived || column.photo) return `<th>${column.label}</th>`;
-    const values = [...new Set(rows.map(row => row[column.id]).filter(value => value !== ""))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
-    const options = values.length <= 80 ? values.map(value => `<option value="${value}" ${state.columnFilters[column.id] === String(value) ? "selected" : ""}>${value}</option>`).join("") : "";
-    return `<th><span>${column.label}</span><select class="header-filter" data-field="${column.id}" aria-label="${column.label}筛选"><option value="">全部</option>${options}</select></th>`;
-  }).join("")}</tr>`;
-  els.detailBody.innerHTML = visibleRows.length ? groupByUser(visibleRows).map(userRows =>
+  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}</tr>`;
+  const noUsersSelected = Array.isArray(state.userFilter) && state.userFilter.length === 0;
+  els.detailBody.innerHTML = noUsersSelected ? `<tr><td colspan="${visibleColumns.length || 1}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
+    visibleRows.length ? groupByUser(visibleRows).map(userRows =>
     userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}">
       ${visibleColumns.map(column => {
         if (column.photo) return rowIndex === 0 ? photoGalleryCell(column, userRows) : "";
@@ -2381,15 +2444,45 @@ function bindEvents() {
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
   els.detailHead.addEventListener("change", event => {
+    if (event.target.classList.contains("user-filter-checkbox")) {
+      state.userFilter = selectedUsersFromHeader();
+      state.selectedGroup = null;
+      render();
+      markProjectDirty();
+      return;
+    }
+    if (event.target.classList.contains("device-order-select")) {
+      state.deviceOrderMode = event.target.value;
+      renderDetails(filteredRows(), groupedRows(filteredRows()));
+      markProjectDirty();
+      return;
+    }
     if (!event.target.classList.contains("header-filter")) return;
     state.columnFilters[event.target.dataset.field] = event.target.value;
     state.selectedGroup = null;
     render();
   });
+  els.detailHead.addEventListener("click", event => {
+    if (event.target.classList.contains("user-filter-all")) {
+      state.userFilter = null;
+      state.selectedGroup = null;
+      render();
+      markProjectDirty();
+      return;
+    }
+    if (event.target.classList.contains("user-filter-none")) {
+      state.userFilter = [];
+      state.selectedGroup = null;
+      render();
+      markProjectDirty();
+    }
+  });
   els.clearColumnFilters.addEventListener("click", () => {
     state.columnFilters = {};
+    state.userFilter = null;
     state.selectedGroup = null;
     render();
+    markProjectDirty();
   });
   els.globalViewSelect.addEventListener("change", () => {
     state.globalView = els.globalViewSelect.value;

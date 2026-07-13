@@ -1010,6 +1010,11 @@
         y: Math.max(0, Math.min(100, Number(value.y)))
       }])
       .filter(([, value]) => Number.isFinite(value.x) && Number.isFinite(value.y)));
+    const userField = headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
+    const validUsers = new Set((config.rows || []).map(row => row?.[userField]).filter(Boolean).map(String));
+    const userFilter = Array.isArray(config.userFilter) ?
+      config.userFilter.map(String).filter(user => !validUsers.size || validUsers.has(user)) : null;
+    const deviceOrderMode = ["source", "asc", "desc"].includes(config.deviceOrderMode) ? config.deviceOrderMode : "";
     const keepField = field => headerSet.has(field) ? field : "";
     return {
       layout,
@@ -1020,7 +1025,9 @@
       yAxisMode: config.yAxisMode === "full" ? "full" : config.yAxisMode === "adaptive" ? "adaptive" : "",
       showErrorBars: typeof config.showErrorBars === "boolean" ? config.showErrorBars : undefined,
       pressureWorst: config.pressureWorst === "high" ? "high" : config.pressureWorst === "low" ? "low" : "",
-      userPhotoPositions
+      userPhotoPositions,
+      userFilter,
+      deviceOrderMode
     };
   }
 

@@ -391,8 +391,18 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .detail-table tbody tr:hover { background: var(--accent-pale); }
 .detail-table th, .detail-table td { padding: 6px 7px; }
 .detail-table th { overflow: hidden; font-size: .82em; line-height: 1.2; text-overflow: ellipsis; }
+.detail-table th:has(.header-menu) { overflow: visible; }
 .detail-table th > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .header-filter { width: 100%; margin-top: 3px; padding: 2px 1px; color: var(--muted); background: #fffdfb; border: 1px solid #d8c5c5; font-size: .72em; }
+.device-order-select { width: 100%; margin-top: 3px; padding: 2px 1px; color: var(--muted); background: #fffdfb; border: 1px solid #d8c5c5; font-size: .72em; }
+.header-menu { position: relative; margin-top: 3px; overflow: visible; }
+.header-menu summary { padding: 3px 5px; color: var(--muted); background: #fffdfb; border: 1px solid #d8c5c5; cursor: pointer; font-size: .72em; list-style: none; }
+.header-menu summary::-webkit-details-marker { display: none; }
+.header-menu-panel { position: absolute; z-index: 8; min-width: 180px; max-height: 260px; padding: 8px; overflow: auto; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
+.header-menu-actions { display: flex; gap: 5px; margin-bottom: 7px; }
+.header-menu-actions button { flex: 1; padding: 4px 6px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid var(--line); font-size: 10px; font-weight: 800; cursor: pointer; }
+.user-filter-options { display: grid; gap: 5px; }
+.user-filter-options label { display: flex; gap: 5px; align-items: center; color: var(--ink); font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0; }
 .detail-table td { overflow: hidden; font-size: 1em; line-height: 1.25; overflow-wrap: anywhere; }
 .detail-table td.photo-cell { padding: 4px; text-align: center; }
 .detail-table tbody tr.user-group-start td { border-top: 3px solid var(--accent); }
@@ -528,6 +538,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .photo-lightbox-close { position: absolute; top: -14px; right: -14px; width: 31px; height: 31px; color: #fff; background: var(--accent); border: 2px solid #fff; border-radius: 999px; font-size: 21px; line-height: 1; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,.24); }
 .photo-lightbox-close:hover { background: var(--accent-dark); }
 .empty-state { padding: 30px; color: var(--muted); text-align: center; }
+.empty-state.error-state { color: var(--accent-dark); background: var(--accent-pale); border: 1px solid #ead6d6; }
 
 .layout-config { margin-left: auto; position: relative; }
 .layout-config summary {

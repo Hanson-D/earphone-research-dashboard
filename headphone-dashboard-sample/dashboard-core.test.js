@@ -860,7 +860,9 @@ test("dashboard config import keeps only fields in the current schema", () => {
     primaryDimension: "gender",
     metric: "old_field",
     showErrorBars: false,
-    pressureWorst: "high"
+    pressureWorst: "high",
+    userFilter: ["U001"],
+    deviceOrderMode: "asc"
   }, ["gender", "comfort_score"]);
   assert.deepEqual(config.fieldRoleOverrides, { gender: "user" });
   assert.deepEqual(config.layout.columns, [{ id: "gender", visible: true }]);
@@ -868,6 +870,8 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.metric, "");
   assert.equal(config.showErrorBars, false);
   assert.equal(config.pressureWorst, "high");
+  assert.deepEqual(config.userFilter, ["U001"]);
+  assert.equal(config.deviceOrderMode, "asc");
 });
 
 test("project documents keep rows, mapping state, and dashboard config together", () => {
