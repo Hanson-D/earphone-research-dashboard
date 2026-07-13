@@ -42,6 +42,8 @@ function defaultLayout() {
   return {
     fontSize: 12,
     photoSize: 120,
+    photoPositionX: 50,
+    photoPositionY: 50,
     version: 5,
     schema: "",
     columns: []
@@ -56,6 +58,8 @@ function loadLayout() {
     return {
       fontSize: Number(saved.fontSize) || 12,
       photoSize: Number(saved.photoSize) || 120,
+      photoPositionX: Number.isFinite(Number(saved.photoPositionX)) ? Number(saved.photoPositionX) : 50,
+      photoPositionY: Number.isFinite(Number(saved.photoPositionY)) ? Number(saved.photoPositionY) : 50,
       version: Number(saved.version) || 1,
       schema: saved.schema || "",
       columns: saved.columns
@@ -99,6 +103,7 @@ const state = {
   yAxisMode: "adaptive",
   showErrorBars: true,
   pressureWorst: "low",
+  userPhotoPositions: {},
   search: "",
   columnFilters: {},
   headers: [],
@@ -137,7 +142,8 @@ const els = Object.fromEntries([
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
-  "photoSizeValue", "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
+  "photoSizeValue", "photoPositionXControl", "photoPositionXValue", "photoPositionYControl", "photoPositionYValue",
+  "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
   "bareEarToggleWrap", "includeBareEarPhotos", "bareEarConfigPanel", "bareEarSplitByEar", "bareEarGenericCountWrap",
@@ -302,7 +308,8 @@ function dashboardConfigSnapshot() {
     metric: state.metric,
     yAxisMode: state.yAxisMode,
     showErrorBars: state.showErrorBars,
-    pressureWorst: state.pressureWorst
+    pressureWorst: state.pressureWorst,
+    userPhotoPositions: state.userPhotoPositions
   };
 }
 
@@ -563,6 +570,7 @@ function applyDashboardConfig(config) {
   if (clean.yAxisMode) state.yAxisMode = clean.yAxisMode;
   if (typeof clean.showErrorBars === "boolean") state.showErrorBars = clean.showErrorBars;
   if (clean.pressureWorst) state.pressureWorst = clean.pressureWorst;
+  state.userPhotoPositions = clean.userPhotoPositions || {};
   state.selectedGroup = null;
   buildSchema();
   initializeControls();
@@ -574,10 +582,31 @@ function applyDashboardConfig(config) {
 function applyLayoutVariables() {
   document.documentElement.style.setProperty("--detail-font-size", `${state.layout.fontSize}px`);
   document.documentElement.style.setProperty("--photo-size", `${state.layout.photoSize}px`);
+  document.documentElement.style.setProperty("--photo-position-x", `${state.layout.photoPositionX ?? 50}%`);
+  document.documentElement.style.setProperty("--photo-position-y", `${state.layout.photoPositionY ?? 50}%`);
   els.fontSizeControl.value = state.layout.fontSize;
   els.fontSizeValue.value = `${state.layout.fontSize}px`;
   els.photoSizeControl.value = state.layout.photoSize;
   els.photoSizeValue.value = `${state.layout.photoSize}px`;
+  els.photoPositionXControl.value = state.layout.photoPositionX ?? 50;
+  els.photoPositionXValue.value = `${state.layout.photoPositionX ?? 50}%`;
+  els.photoPositionYControl.value = state.layout.photoPositionY ?? 50;
+  els.photoPositionYValue.value = `${state.layout.photoPositionY ?? 50}%`;
+  syncVisiblePhotoPositionControls();
+}
+
+function syncVisiblePhotoPositionControls() {
+  if (!els.detailBody) return;
+  els.detailBody.querySelectorAll(".photo-position-controls").forEach(controls => {
+    const user = controls.dataset.user || "";
+    if (state.userPhotoPositions[user]) return;
+    const position = userPhotoPosition(user);
+    controls.querySelectorAll(".user-photo-position").forEach(input => {
+      const value = input.dataset.axis === "x" ? position.x : position.y;
+      input.value = value;
+      input.nextElementSibling.value = `${value}%`;
+    });
+  });
 }
 
 function renderColumnConfig() {
@@ -910,6 +939,55 @@ function photoViewOptions(rows = state.rows) {
 function rowMatchesPhotoView(row, view) {
   const earField = earSideField();
   return (!view.ear || !earField || String(row[earField] || "") === view.ear) && row[view.field];
+}
+
+function clampPercent(value, fallback = 50) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function userPhotoPosition(user) {
+  const custom = state.userPhotoPositions[user];
+  return {
+    x: clampPercent(custom?.x, clampPercent(state.layout.photoPositionX, 50)),
+    y: clampPercent(custom?.y, clampPercent(state.layout.photoPositionY, 50))
+  };
+}
+
+function updateUserPhotoPosition(user, axis, value) {
+  if (!user || !["x", "y"].includes(axis)) return;
+  const current = userPhotoPosition(user);
+  const next = { ...current, [axis]: clampPercent(value, current[axis]) };
+  state.userPhotoPositions[user] = next;
+  const gallery = els.detailBody.querySelector(`[data-photo-user="${CSS.escape(user)}"]`);
+  if (gallery) {
+    gallery.style.setProperty("--user-photo-position-x", `${next.x}%`);
+    gallery.style.setProperty("--user-photo-position-y", `${next.y}%`);
+  }
+  const controls = els.detailBody.querySelector(`.photo-position-controls[data-user="${CSS.escape(user)}"]`);
+  controls?.querySelectorAll(".user-photo-position").forEach(input => {
+    const position = input.dataset.axis === "x" ? next.x : next.y;
+    input.value = position;
+    input.nextElementSibling.value = `${position}%`;
+  });
+  controls?.querySelector(".photo-position-reset")?.removeAttribute("disabled");
+}
+
+function resetUserPhotoPosition(user) {
+  if (!user) return;
+  delete state.userPhotoPositions[user];
+  const gallery = els.detailBody.querySelector(`[data-photo-user="${CSS.escape(user)}"]`);
+  gallery?.style.removeProperty("--user-photo-position-x");
+  gallery?.style.removeProperty("--user-photo-position-y");
+  const globalPosition = userPhotoPosition(user);
+  const controls = els.detailBody.querySelector(`.photo-position-controls[data-user="${CSS.escape(user)}"]`);
+  controls?.querySelectorAll(".user-photo-position").forEach(input => {
+    const position = input.dataset.axis === "x" ? globalPosition.x : globalPosition.y;
+    input.value = position;
+    input.nextElementSibling.value = `${position}%`;
+  });
+  controls?.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
 }
 
 function filteredRows() {
@@ -1306,6 +1384,8 @@ function photoGalleryCell(column, userRows) {
   const userOptions = photoViewOptions(userRows);
   const selectedValue = state.userViews[user] || state.globalView || userOptions[0]?.value || state.photoFields[0];
   const selectedView = parsePhotoViewValue(selectedValue);
+  const position = userPhotoPosition(user);
+  const customPosition = Boolean(state.userPhotoPositions[user]);
   const items = userRows.filter(row => rowMatchesPhotoView(row, selectedView)).map(row => {
     const caption = [earField ? row[earField] : "", row[deviceField] || column.label].filter(Boolean).join(" · ");
     const src = photoUrl(row[selectedView.field]);
@@ -1322,7 +1402,12 @@ function photoGalleryCell(column, userRows) {
     <select class="user-view-select" data-user="${user}" aria-label="${user}照片视角">
       <option value="">跟随全局</option>${options}
     </select>
-    <div class="photo-gallery" style="--photo-count:${Math.max(1, userRows.length)}">${items || "—"}</div>
+    <div class="photo-position-controls" data-user="${attrEscape(user)}">
+      <label>水平<input class="user-photo-position" data-axis="x" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.x}"><output>${position.x}%</output></label>
+      <label>垂直<input class="user-photo-position" data-axis="y" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.y}"><output>${position.y}%</output></label>
+      <button type="button" class="photo-position-reset" data-user="${attrEscape(user)}" ${customPosition ? "" : "disabled"}>跟随全局</button>
+    </div>
+    <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customPosition ? `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;` : ""}">${items || "—"}</div>
   </td>`;
 }
 
@@ -2326,12 +2411,35 @@ function bindEvents() {
     renderDetails(filteredRows(), groupedRows(filteredRows()));
     markProjectDirty();
   });
+  els.detailBody.addEventListener("input", event => {
+    if (!event.target.classList.contains("user-photo-position")) return;
+    updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+  });
+  els.detailBody.addEventListener("change", event => {
+    if (!event.target.classList.contains("user-photo-position")) return;
+    updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+    markProjectDirty();
+  });
+  els.detailBody.addEventListener("click", event => {
+    const button = event.target.closest(".photo-position-reset");
+    if (!button) return;
+    resetUserPhotoPosition(button.dataset.user || "");
+    markProjectDirty();
+  });
   els.fontSizeControl.addEventListener("input", () => {
     state.layout.fontSize = Number(els.fontSizeControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
   });
   els.photoSizeControl.addEventListener("input", () => {
     state.layout.photoSize = Number(els.photoSizeControl.value);
+    applyLayoutVariables(); saveLayout(); markProjectDirty();
+  });
+  els.photoPositionXControl.addEventListener("input", () => {
+    state.layout.photoPositionX = Number(els.photoPositionXControl.value);
+    applyLayoutVariables(); saveLayout(); markProjectDirty();
+  });
+  els.photoPositionYControl.addEventListener("input", () => {
+    state.layout.photoPositionY = Number(els.photoPositionYControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
   });
   els.exportConfigButton.addEventListener("click", exportDashboardConfig);

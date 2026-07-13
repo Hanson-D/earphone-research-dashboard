@@ -1003,6 +1003,13 @@
       layout.columns.filter(column => headerSet.has(column.id) || String(column.id || "").startsWith("__")) : [];
     const fieldRoleOverrides = Object.fromEntries(Object.entries(config.fieldRoleOverrides || {})
       .filter(([field]) => headerSet.has(field)));
+    const userPhotoPositions = Object.fromEntries(Object.entries(config.userPhotoPositions || {})
+      .filter(([, value]) => value && typeof value === "object")
+      .map(([user, value]) => [user, {
+        x: Math.max(0, Math.min(100, Number(value.x))),
+        y: Math.max(0, Math.min(100, Number(value.y)))
+      }])
+      .filter(([, value]) => Number.isFinite(value.x) && Number.isFinite(value.y)));
     const keepField = field => headerSet.has(field) ? field : "";
     return {
       layout,
@@ -1012,7 +1019,8 @@
       metric: keepField(config.metric),
       yAxisMode: config.yAxisMode === "full" ? "full" : config.yAxisMode === "adaptive" ? "adaptive" : "",
       showErrorBars: typeof config.showErrorBars === "boolean" ? config.showErrorBars : undefined,
-      pressureWorst: config.pressureWorst === "high" ? "high" : config.pressureWorst === "low" ? "low" : ""
+      pressureWorst: config.pressureWorst === "high" ? "high" : config.pressureWorst === "low" ? "low" : "",
+      userPhotoPositions
     };
   }
 
