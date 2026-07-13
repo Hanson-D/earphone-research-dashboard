@@ -1001,6 +1001,7 @@
     const layout = config.layout && typeof config.layout === "object" ? { ...config.layout } : {};
     layout.columns = Array.isArray(layout.columns) ?
       layout.columns.filter(column => headerSet.has(column.id) || String(column.id || "").startsWith("__")) : [];
+    layout.detailPhotoMode = layout.detailPhotoMode === "capture" ? "capture" : "performance";
     const fieldRoleOverrides = Object.fromEntries(Object.entries(config.fieldRoleOverrides || {})
       .filter(([field]) => headerSet.has(field)));
     const userPhotoPositions = Object.fromEntries(Object.entries(config.userPhotoPositions || {})

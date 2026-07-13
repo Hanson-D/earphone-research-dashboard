@@ -855,7 +855,7 @@ test("numeric summaries include n, mean, and sample standard deviation", () => {
 
 test("dashboard config import keeps only fields in the current schema", () => {
   const config = core.sanitizeDashboardConfig({
-    layout: { columns: [{ id: "gender", visible: true }, { id: "old_field", visible: false }] },
+    layout: { detailPhotoMode: "capture", columns: [{ id: "gender", visible: true }, { id: "old_field", visible: false }] },
     fieldRoleOverrides: { gender: "user", old_field: "metric" },
     primaryDimension: "gender",
     metric: "old_field",
@@ -866,12 +866,20 @@ test("dashboard config import keeps only fields in the current schema", () => {
   }, ["gender", "comfort_score"]);
   assert.deepEqual(config.fieldRoleOverrides, { gender: "user" });
   assert.deepEqual(config.layout.columns, [{ id: "gender", visible: true }]);
+  assert.equal(config.layout.detailPhotoMode, "capture");
   assert.equal(config.primaryDimension, "gender");
   assert.equal(config.metric, "");
   assert.equal(config.showErrorBars, false);
   assert.equal(config.pressureWorst, "high");
   assert.deepEqual(config.userFilter, ["U001"]);
   assert.equal(config.deviceOrderMode, "asc");
+});
+
+test("dashboard config import defaults invalid detail photo mode to performance", () => {
+  const config = core.sanitizeDashboardConfig({
+    layout: { detailPhotoMode: "raw", columns: [] }
+  }, ["gender"]);
+  assert.equal(config.layout.detailPhotoMode, "performance");
 });
 
 test("project documents keep rows, mapping state, and dashboard config together", () => {

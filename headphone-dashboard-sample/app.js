@@ -44,10 +44,15 @@ function defaultLayout() {
     photoSize: 120,
     photoPositionX: 50,
     photoPositionY: 50,
+    detailPhotoMode: "performance",
     version: 5,
     schema: "",
     columns: []
   };
+}
+
+function sanitizeDetailPhotoMode(mode) {
+  return mode === "capture" ? "capture" : "performance";
 }
 
 function loadLayout() {
@@ -60,6 +65,7 @@ function loadLayout() {
       photoSize: Number(saved.photoSize) || 120,
       photoPositionX: Number.isFinite(Number(saved.photoPositionX)) ? Number(saved.photoPositionX) : 50,
       photoPositionY: Number.isFinite(Number(saved.photoPositionY)) ? Number(saved.photoPositionY) : 50,
+      detailPhotoMode: sanitizeDetailPhotoMode(saved.detailPhotoMode),
       version: Number(saved.version) || 1,
       schema: saved.schema || "",
       columns: saved.columns
@@ -86,6 +92,8 @@ const state = {
   detailPhotoObserver: null,
   mappingObjectUrls: [],
   thumbnailUrls: {},
+  detailPreviewUrls: {},
+  detailPreviewPromises: {},
   mappingViews: [],
   includeBareEarPhotos: false,
   bareEarConfig: { splitByEar: false, genericCount: 1, leftCount: 1, rightCount: 1 },
@@ -145,6 +153,7 @@ const els = Object.fromEntries([
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "photoPositionXControl", "photoPositionXValue", "photoPositionYControl", "photoPositionYValue",
+  "detailPhotoModeControl", "detailPhotoModeValue",
   "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
@@ -598,6 +607,8 @@ function applyLayoutVariables() {
   els.photoPositionXValue.value = `${state.layout.photoPositionX ?? 50}%`;
   els.photoPositionYControl.value = state.layout.photoPositionY ?? 50;
   els.photoPositionYValue.value = `${state.layout.photoPositionY ?? 50}%`;
+  els.detailPhotoModeControl.value = sanitizeDetailPhotoMode(state.layout.detailPhotoMode);
+  els.detailPhotoModeValue.value = state.layout.detailPhotoMode === "capture" ? "原图" : "预览";
   syncVisiblePhotoPositionControls();
 }
 
@@ -1605,6 +1616,15 @@ function clearMappingObjectUrls() {
     if (String(url).startsWith("blob:")) URL.revokeObjectURL(url);
   });
   state.thumbnailUrls = {};
+  clearDetailPreviewUrls();
+}
+
+function clearDetailPreviewUrls() {
+  Object.values(state.detailPreviewUrls).forEach(url => {
+    if (String(url).startsWith("blob:")) URL.revokeObjectURL(url);
+  });
+  state.detailPreviewUrls = {};
+  state.detailPreviewPromises = {};
 }
 
 function imageLoad(url) {
@@ -1616,7 +1636,7 @@ function imageLoad(url) {
   });
 }
 
-async function createThumbnailUrl(sourceUrl, maxSize = 128) {
+async function createThumbnailUrl(sourceUrl, maxSize = 128, quality = 0.72) {
   const image = await imageLoad(sourceUrl);
   const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
   const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
@@ -1629,7 +1649,7 @@ async function createThumbnailUrl(sourceUrl, maxSize = 128) {
   return new Promise(resolve => {
     canvas.toBlob(blob => {
       resolve(blob ? URL.createObjectURL(blob) : sourceUrl);
-    }, "image/jpeg", 0.72);
+    }, "image/jpeg", quality);
   });
 }
 
@@ -1793,17 +1813,65 @@ function detailPhotoPlaceholder() {
   return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23f2eeee'/%3E%3C/svg%3E";
 }
 
-function loadDetailPhoto(image) {
-  if (!image?.dataset?.src) return;
-  image.src = image.dataset.src;
+function detailPhotoMode() {
+  return sanitizeDetailPhotoMode(state.layout.detailPhotoMode);
+}
+
+function detailPhotoPreviewUrl(source) {
+  if (!source) return Promise.resolve(source);
+  if (detailPhotoMode() === "capture") return Promise.resolve(source);
+  if (state.detailPreviewUrls[source]) return Promise.resolve(state.detailPreviewUrls[source]);
+  if (!state.detailPreviewPromises[source]) {
+    state.detailPreviewPromises[source] = createThumbnailUrl(source, 1200, 0.86)
+      .then(url => {
+        state.detailPreviewUrls[source] = url;
+        delete state.detailPreviewPromises[source];
+        return url;
+      })
+      .catch(() => {
+        state.detailPreviewUrls[source] = source;
+        delete state.detailPreviewPromises[source];
+        return source;
+      });
+  }
+  return state.detailPreviewPromises[source];
+}
+
+async function loadDetailPhoto(image) {
+  const source = image?.dataset?.src;
+  if (!source || image.dataset.loadingSrc === source) return;
+  image.dataset.loadingSrc = source;
+  const mode = detailPhotoMode();
+  const displaySrc = mode === "capture" ? source : await detailPhotoPreviewUrl(source);
+  if (image.dataset.src !== source && image.dataset.loadedSrc !== source) return;
+  image.src = displaySrc;
+  image.dataset.loadedSrc = source;
+  image.dataset.loadedMode = mode;
   image.removeAttribute("data-src");
   image.classList.remove("detail-photo-lazy");
+  delete image.dataset.loadingSrc;
+}
+
+function unloadDetailPhoto(image) {
+  if (detailPhotoMode() !== "performance") return;
+  const source = image?.dataset?.loadedSrc;
+  if (!source) return;
+  image.src = detailPhotoPlaceholder();
+  image.dataset.src = source;
+  image.classList.add("detail-photo-lazy");
+  delete image.dataset.loadedSrc;
+  delete image.dataset.loadedMode;
+  delete image.dataset.loadingSrc;
 }
 
 function observeDetailPhotos() {
   state.detailPhotoObserver?.disconnect?.();
-  const images = [...els.detailBody.querySelectorAll("img.detail-photo-lazy[data-src]")];
+  const images = [...els.detailBody.querySelectorAll("img.detail-photo-lazy[data-src], img[data-loaded-src]")];
   if (!images.length) return;
+  if (detailPhotoMode() === "capture") {
+    images.forEach(loadDetailPhoto);
+    return;
+  }
   if (!("IntersectionObserver" in window)) {
     images.forEach(loadDetailPhoto);
     return;
@@ -1811,13 +1879,12 @@ function observeDetailPhotos() {
   const detailWrap = document.querySelector(".detail-table-wrap");
   state.detailPhotoObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      loadDetailPhoto(entry.target);
-      state.detailPhotoObserver.unobserve(entry.target);
+      if (entry.isIntersecting) loadDetailPhoto(entry.target);
+      else unloadDetailPhoto(entry.target);
     });
   }, {
     root: detailWrap || null,
-    rootMargin: "360px 0px",
+    rootMargin: "520px 0px",
     threshold: 0.01
   });
   images.forEach(image => state.detailPhotoObserver.observe(image));
@@ -2534,6 +2601,12 @@ function bindEvents() {
   els.photoPositionYControl.addEventListener("input", () => {
     state.layout.photoPositionY = Number(els.photoPositionYControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
+  });
+  els.detailPhotoModeControl.addEventListener("change", () => {
+    state.layout.detailPhotoMode = sanitizeDetailPhotoMode(els.detailPhotoModeControl.value);
+    applyLayoutVariables(); saveLayout();
+    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    markProjectDirty();
   });
   els.exportConfigButton.addEventListener("click", exportDashboardConfig);
   els.importConfigInput.addEventListener("change", event => {
