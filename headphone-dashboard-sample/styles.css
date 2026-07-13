@@ -517,10 +517,12 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .pressure-guide p { margin-bottom: 10px; }
 .pressure-guide strong { color: var(--accent-dark); }
 .ear-photo { width: var(--photo-size); height: var(--photo-size); object-fit: cover; object-position: var(--user-photo-position-x, var(--photo-position-x, 50%)) var(--user-photo-position-y, var(--photo-position-y, 50%)); border: 2px solid #fff; outline: 1px solid #dbc8c8; box-shadow: 0 3px 10px rgba(67,30,32,.14); }
+.photo-cell-layout { display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 6px; align-items: start; }
 .photo-gallery { display: grid; grid-template-columns: repeat(var(--photo-count, 3), minmax(0, 1fr)); align-items: start; gap: 3px; }
-.user-view-select { width: 100%; margin-bottom: 5px; padding: 3px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid #d8c5c5; font-size: 8px; }
-.photo-position-controls { display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px; align-items: end; margin-bottom: 5px; padding: 5px; background: #fff8f3; border: 1px solid #ead6d6; }
-.photo-position-controls label { display: grid; gap: 2px; color: var(--muted); font-size: 8px; }
+.photo-cell-controls { display: grid; gap: 5px; min-width: 0; }
+.user-view-select { width: 100%; padding: 4px 3px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid #d8c5c5; font-size: 8px; }
+.photo-position-controls { display: grid; grid-template-columns: 1fr; gap: 5px; align-items: end; padding: 5px; background: #fff8f3; border: 1px solid #ead6d6; }
+.photo-position-controls label { display: grid; gap: 2px; color: var(--muted); font-size: 8px; text-align: left; }
 .photo-position-controls input { width: 100%; }
 .photo-position-controls output { color: var(--accent-dark); font-size: 8px; font-weight: 800; }
 .photo-position-reset { align-self: stretch; padding: 2px 5px; color: var(--accent-dark); background: #fff; border: 1px solid var(--line-strong); border-radius: 3px; font-size: 8px; font-weight: 800; }
@@ -558,19 +560,30 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
   z-index: 8;
   top: calc(100% + 8px);
   right: 0;
-  width: min(680px, calc(100vw - 60px));
+  width: min(760px, calc(100vw - 60px));
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: 0 20px 55px rgba(23,32,29,.22);
 }
-.display-settings { display: grid; grid-template-columns: 1fr 1fr repeat(3, auto); gap: 10px; align-items: end; }
-.display-settings label { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 11px; font-weight: 800; }
+.display-settings { display: grid; grid-template-columns: repeat(2, minmax(250px, 1fr)); gap: 10px 14px; align-items: end; }
+.display-settings label:not(.config-import-button) {
+  display: grid;
+  grid-template-columns: 94px minmax(120px, 1fr) 42px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 9px;
+  background: #fff8f3;
+  border: 1px solid #ead6d6;
+  font-size: 11px;
+  font-weight: 800;
+}
 .display-settings input, .display-settings select { min-width: 90px; }
 .display-settings select { padding: 6px; border: 1px solid var(--line); background: #fff; font-size: 12px; }
 .display-settings output { min-width: 38px; color: var(--accent-dark); }
 .compact-button { padding: 7px 10px; color: #fff; background: var(--accent); font-size: 11px; transition: background .18s ease; }
 .compact-button:hover { background: var(--accent-dark); }
+.display-settings .compact-button, .display-settings .config-import-button { justify-self: stretch; text-align: center; }
 .display-settings .config-import-button { display: inline-block; padding: 7px 10px; color: #fff; background: var(--accent); font-size: 11px; font-weight: 800; cursor: pointer; }
 .display-settings .config-import-button input { display: none; }
 .column-config-heading { display: flex; justify-content: space-between; gap: 12px; margin: 16px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 11px; }
@@ -628,4 +641,5 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
   .layout-config { margin-left: 0; }
   .layout-config-panel { left: 0; right: auto; width: calc(100vw - 58px); }
   .display-settings, .column-config-list { grid-template-columns: 1fr; }
+  .display-settings label:not(.config-import-button) { grid-template-columns: 90px minmax(100px, 1fr) 42px; }
 }

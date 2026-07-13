@@ -1433,15 +1433,19 @@ function photoGalleryCell(column, userRows) {
     `<option value="${option.value}" ${state.userViews[user] === option.value ? "selected" : ""}>${option.label}</option>`
   ).join("");
   return `<td class="photo-cell" rowspan="${userRows.length}">
-    <select class="user-view-select" data-user="${user}" aria-label="${user}照片视角">
-      <option value="">跟随全局</option>${options}
-    </select>
-    <div class="photo-position-controls" data-user="${attrEscape(user)}">
-      <label>水平<input class="user-photo-position" data-axis="x" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.x}"><output>${position.x}%</output></label>
-      <label>垂直<input class="user-photo-position" data-axis="y" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.y}"><output>${position.y}%</output></label>
-      <button type="button" class="photo-position-reset" data-user="${attrEscape(user)}" ${customPosition ? "" : "disabled"}>跟随全局</button>
+    <div class="photo-cell-layout">
+      <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customPosition ? `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;` : ""}">${items || "—"}</div>
+      <aside class="photo-cell-controls" aria-label="${attrEscape(user)}照片显示控制">
+        <select class="user-view-select" data-user="${user}" aria-label="${user}照片视角">
+          <option value="">跟随全局</option>${options}
+        </select>
+        <div class="photo-position-controls" data-user="${attrEscape(user)}">
+          <label>水平<input class="user-photo-position" data-axis="x" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.x}"><output>${position.x}%</output></label>
+          <label>垂直<input class="user-photo-position" data-axis="y" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.y}"><output>${position.y}%</output></label>
+          <button type="button" class="photo-position-reset" data-user="${attrEscape(user)}" ${customPosition ? "" : "disabled"}>跟随全局</button>
+        </div>
+      </aside>
     </div>
-    <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customPosition ? `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;` : ""}">${items || "—"}</div>
   </td>`;
 }
 
@@ -1526,7 +1530,7 @@ function renderDetails(rows, groups) {
     ), 0)
   ));
   const columnWidths = visibleColumns.map(column =>
-    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10)) : column.width
+    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10) + 118) : column.width
   );
   const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
   els.detailColgroup.innerHTML = visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
