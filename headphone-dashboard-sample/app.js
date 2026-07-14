@@ -663,6 +663,7 @@ function applyLayoutVariables() {
   document.documentElement.style.setProperty("--photo-size", `${state.layout.photoSize}px`);
   document.documentElement.style.setProperty("--photo-position-x", `${state.layout.photoPositionX ?? 50}%`);
   document.documentElement.style.setProperty("--photo-position-y", `${state.layout.photoPositionY ?? 50}%`);
+  document.body.classList.toggle("capture-mode", sanitizeDetailPhotoMode(state.layout.detailPhotoMode) === "capture");
   els.fontSizeControl.value = state.layout.fontSize;
   els.fontSizeValue.value = `${state.layout.fontSize}px`;
   els.photoSizeControl.value = state.layout.photoSize;
@@ -954,6 +955,15 @@ function buildSchema() {
     photo: true,
     derived: true
   });
+  dynamicColumns.push({
+    id: "__user_note",
+    label: "备注",
+    width: 150,
+    visible: true,
+    userLevel: true,
+    photo: false,
+    derived: true
+  });
   dynamicColumns.splice(Math.max(0, dynamicColumns.findIndex(column => column.id === state.userIdField) + 1), 0, {
     id: "__user_profile",
     label: "组间变量",
@@ -964,7 +974,7 @@ function buildSchema() {
     derived: true
   });
   dynamicColumns.forEach(column => {
-    if (column.userLevel && !column.photo && column.id !== state.userIdField && column.id !== "__user_profile") column.visible = false;
+    if (column.userLevel && !column.photo && column.id !== state.userIdField && column.id !== "__user_profile" && column.id !== "__user_note") column.visible = false;
     if (fieldRole(column.id) === "pressure") column.visible = false;
   });
   const schema = state.headers.join("|||");
@@ -976,7 +986,7 @@ function buildSchema() {
   combined.forEach(column => {
     if (fieldRole(column.id) === "pressure") column.visible = false;
   });
-  state.layout.columns = [...combined.filter(column => !column.photo), ...combined.filter(column => column.photo)];
+  state.layout.columns = combined;
   state.layout.version = 5;
   state.layout.schema = schema;
   saveLayout();
@@ -1644,6 +1654,7 @@ function renderDeviceHeaderMenu(column) {
 }
 
 function renderDetailHeaderCell(column, rows) {
+  if (column.id === "__user_note") return `<th class="user-note-head">${column.label}</th>`;
   if (column.derived || column.photo) return `<th>${column.label}</th>`;
   if (column.id === state.userIdField) return renderUserHeaderMenu(column);
   if (column.id === deviceField()) return renderDeviceHeaderMenu(column);
@@ -1685,27 +1696,27 @@ function renderDetails(rows, groups) {
       }).length : userRows.filter(row => row[column.id]).length
     ), 0)
   ));
+  const photoControlWidth = detailPhotoMode() === "capture" ? 0 : 118;
   const columnWidths = visibleColumns.map(column =>
-    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10) + 118) : column.width
+    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10) + photoControlWidth) : column.width
   );
   const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
   els.detailColgroup.innerHTML = `<col class="user-sort-col" style="width:32px">` +
-    visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("") +
-    `<col class="user-note-col" style="width:150px">`;
-  els.detailHead.innerHTML = `<tr><th class="user-sort-head" title="拖动用户排序">排序</th>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}<th class="user-note-head">备注</th></tr>`;
+    visibleColumns.map((column, index) => `<col class="${column.id === "__user_note" ? "user-note-col" : ""}" style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
+  els.detailHead.innerHTML = `<tr><th class="user-sort-head" title="拖动用户排序">排序</th>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}</tr>`;
   const noUsersSelected = Array.isArray(state.userFilter) && state.userFilter.length === 0;
-  const detailColumnCount = visibleColumns.length + 2;
+  const detailColumnCount = visibleColumns.length + 1;
   els.detailBody.innerHTML = noUsersSelected ? `<tr><td colspan="${detailColumnCount}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
     visibleRows.length ? groupByUser(visibleRows).map(userRows =>
     userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}" data-detail-user="${attrEscape(userRows[0][state.userIdField])}">
       ${rowIndex === 0 ? `<td class="user-sort-cell" rowspan="${userRows.length}"><button type="button" class="user-sort-handle" draggable="true" data-user="${attrEscape(userRows[0][state.userIdField])}" aria-label="拖动${attrEscape(userRows[0][state.userIdField])}排序">⋮⋮</button></td>` : ""}
       ${visibleColumns.map(column => {
         if (column.photo) return rowIndex === 0 ? photoGalleryCell(column, userRows) : "";
+        if (column.id === "__user_note") return rowIndex === 0 ? userNoteCell(userRows[0][state.userIdField], userRows.length) : "";
         if (column.userLevel && rowIndex > 0) return "";
         const cell = detailCell(column, row);
         return column.userLevel ? cell.replace("<td", `<td rowspan="${userRows.length}"`) : cell;
       }).join("")}
-      ${rowIndex === 0 ? userNoteCell(userRows[0][state.userIdField], userRows.length) : ""}
     </tr>`).join("")
   ).join("") : `<tr><td colspan="${detailColumnCount}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
   observeDetailPhotos();

@@ -560,6 +560,8 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .pressure-guide strong { color: var(--accent-dark); }
 .ear-photo { width: var(--photo-size); height: var(--photo-size); object-fit: cover; object-position: var(--user-photo-position-x, var(--photo-position-x, 50%)) var(--user-photo-position-y, var(--photo-position-y, 50%)); border: 2px solid #fff; outline: 1px solid #dbc8c8; box-shadow: 0 3px 10px rgba(67,30,32,.14); }
 .photo-cell-layout { display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 6px; align-items: start; }
+body.capture-mode .photo-cell-layout { grid-template-columns: minmax(0, 1fr); }
+body.capture-mode .photo-cell-controls { display: none; }
 .photo-gallery { display: grid; grid-template-columns: repeat(var(--photo-count, 3), minmax(0, 1fr)); align-items: start; gap: 3px; }
 .photo-cell-controls { display: grid; gap: 5px; min-width: 0; }
 .user-view-select { width: 100%; padding: 4px 3px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid #d8c5c5; font-size: 8px; }
