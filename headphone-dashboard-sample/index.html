@@ -17,43 +17,56 @@
     </div>
   </header>
 
-  <nav class="page-nav">
-    <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
-    <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
-    <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
-  </nav>
+  <div class="app-shell">
+    <aside class="project-sidebar">
+      <section class="project-panel">
+        <p class="panel-kicker">PROJECTS</p>
+        <h2>项目</h2>
+        <div id="projectTabs" class="project-tabs" aria-label="已打开项目"></div>
+        <button id="newProjectTabButton" class="outline-button" type="button">新建空项目标签</button>
+      </section>
+
+      <section class="project-panel">
+        <p class="panel-kicker">PROJECT FILE</p>
+        <label class="mapping-input">
+          <span>项目 JSON 路径</span>
+          <input id="projectPathInput" name="projectPath" type="text" autocomplete="off" placeholder="例如：projects/project-a.json">
+          <small>项目保存 CSV、照片映射、布局、备注和用户排序。</small>
+        </label>
+        <div class="project-actions">
+          <button id="loadProjectButton" class="outline-button" type="button">加载项目</button>
+          <button id="saveProjectConfigButton" class="outline-button" type="button">保存当前配置</button>
+          <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
+        </div>
+        <div id="projectStatus" class="project-status" aria-live="polite">未加载项目文件</div>
+      </section>
+
+      <section class="project-panel">
+        <details class="protocol-panel">
+          <summary class="protocol-heading">
+            <strong>项目规则</strong>
+            <span>模板与校验</span>
+          </summary>
+          <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
+          <label class="protocol-import">
+            加载模板 JSON
+            <input id="protocolTemplateInput" type="file" accept=".json,application/json">
+          </label>
+          <div id="protocolStatus" class="protocol-status" aria-live="polite">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
+        </details>
+      </section>
+    </aside>
+
+    <div class="app-workspace">
+      <nav class="page-nav">
+        <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
+        <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
+        <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
+      </nav>
 
   <main id="mappingPage" class="app-page active">
     <section class="mapping-layout">
       <section class="mapping-setup">
-        <section class="mapping-card project-panel">
-          <p class="panel-kicker">PROJECT</p>
-          <h2>项目文件</h2>
-          <label class="mapping-input">
-            <span>项目 JSON 路径</span>
-            <input id="projectPathInput" name="projectPath" type="text" autocomplete="off" placeholder="例如：/Users/name/research/project-a.json…">
-            <small>每个项目保存为一个 JSON 文件。不同标签页可加载不同项目。</small>
-          </label>
-          <div class="project-actions">
-            <button id="loadProjectButton" class="outline-button" type="button">加载项目</button>
-            <button id="saveProjectConfigButton" class="outline-button" type="button">保存当前配置</button>
-            <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
-          </div>
-          <div id="projectStatus" class="project-status" aria-live="polite">未加载项目文件</div>
-          <details class="protocol-panel">
-            <summary class="protocol-heading">
-              <strong>项目规则（可选）</strong>
-              <span>模板与校验</span>
-            </summary>
-            <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
-            <label class="protocol-import">
-              加载模板 JSON
-              <input id="protocolTemplateInput" type="file" accept=".json,application/json">
-            </label>
-            <div id="protocolStatus" class="protocol-status" aria-live="polite">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
-          </details>
-        </section>
-
         <section class="mapping-card mapping-builder">
           <p class="panel-kicker">PHOTO INDEX BUILDER</p>
           <h2>照片自动映射</h2>
@@ -394,6 +407,8 @@
       </section>
     </section>
   </main>
+    </div>
+  </div>
 
   <template id="emptyTemplate">
     <div class="empty-state">当前筛选条件下没有数据。</div>

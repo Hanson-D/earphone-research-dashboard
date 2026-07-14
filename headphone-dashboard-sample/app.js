@@ -134,6 +134,8 @@ const state = {
   projectRevision: null,
   projectTitle: "",
   projectDirty: false,
+  projectTabs: [],
+  activeProjectTabId: "",
   protocolTemplate: null,
   protocolValidation: null,
   pressureDeviceFilter: "",
@@ -168,6 +170,7 @@ const els = Object.fromEntries([
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
+  "projectTabs", "newProjectTabButton",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
   "pressurePage", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
   "pressureAggregation", "pressureSummary", "pressureHeatmaps", "pressureRanking",
@@ -428,6 +431,14 @@ function mappingConfigSnapshot() {
 function setProjectPath(path) {
   state.projectPath = path || "";
   els.projectPathInput.value = state.projectPath;
+  const activeTab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
+  if (activeTab && state.projectPath && activeTab.id !== state.projectPath && !state.projectTabs.some(item => item.id === state.projectPath)) {
+    activeTab.id = state.projectPath;
+    activeTab.path = state.projectPath;
+    activeTab.title = projectTabTitle(state.projectPath);
+    state.activeProjectTabId = activeTab.id;
+    renderProjectTabs();
+  }
   if (state.serverProjectId) return;
   if (!state.projectPath) return;
   const url = new URL(window.location.href);
@@ -439,6 +450,233 @@ function defaultProjectPath() {
   return "projects/我的耳机项目.json";
 }
 
+function cloneStateData(value) {
+  try {
+    return structuredClone(value);
+  } catch {
+    return JSON.parse(JSON.stringify(value));
+  }
+}
+
+function projectTabTitle(path = state.projectPath) {
+  const value = String(path || "").trim();
+  if (!value) return "未命名项目";
+  return value.split(/[\\/]/).filter(Boolean).pop() || value;
+}
+
+function currentPageName() {
+  return document.querySelector(".page-tab.active")?.dataset.page || "mapping";
+}
+
+function currentProjectTabSnapshot() {
+  return {
+    rows: cloneStateData(state.rows),
+    mappingRows: cloneStateData(state.mappingRows),
+    mappedRows: cloneStateData(state.mappedRows),
+    mappingFiles: cloneStateData(state.mappingFiles),
+    mappingViews: cloneStateData(state.mappingViews),
+    mappingReviews: cloneStateData(state.mappingReviews),
+    mappingPhotoFields: cloneStateData(state.mappingPhotoFields),
+    photoMappingOverrides: cloneStateData(state.photoMappingOverrides),
+    viewLabels: cloneStateData(state.viewLabels),
+    globalView: state.globalView,
+    userViews: cloneStateData(state.userViews),
+    selectedGroup: state.selectedGroup,
+    primaryDimension: state.primaryDimension,
+    secondaryDimension: state.secondaryDimension,
+    metric: state.metric,
+    yAxisMode: state.yAxisMode,
+    showErrorBars: state.showErrorBars,
+    pressureWorst: state.pressureWorst,
+    userPhotoPositions: cloneStateData(state.userPhotoPositions),
+    userFilter: cloneStateData(state.userFilter),
+    deviceOrderMode: state.deviceOrderMode,
+    userOrder: cloneStateData(state.userOrder),
+    userNotes: cloneStateData(state.userNotes),
+    search: state.search,
+    columnFilters: cloneStateData(state.columnFilters),
+    fieldRoleOverrides: cloneStateData(state.fieldRoleOverrides),
+    layout: cloneStateData(state.layout),
+    projectPath: state.projectPath,
+    projectTitle: state.projectTitle,
+    projectDirty: state.projectDirty,
+    protocolTemplate: cloneStateData(state.protocolTemplate),
+    protocolValidation: cloneStateData(state.protocolValidation),
+    projectRevision: state.projectRevision,
+    photoRoot: els.photoRootInput.value,
+    mappingMode: els.mappingMode.value,
+    mappingUserField: els.mappingUserField.value,
+    mappingEarField: els.mappingEarField.value,
+    mappingDeviceField: els.mappingDeviceField.value,
+    viewNames: els.viewNamesInput.value,
+    includeBareEarPhotos: state.includeBareEarPhotos,
+    bareEarConfig: cloneStateData(state.bareEarConfig),
+    singleEarMode: state.singleEarMode,
+    page: currentPageName()
+  };
+}
+
+function saveActiveProjectTabSnapshot() {
+  const tab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
+  if (!tab) return;
+  tab.path = state.projectPath || tab.path;
+  tab.title = projectTabTitle(tab.path);
+  tab.dirty = state.projectDirty;
+  tab.snapshot = currentProjectTabSnapshot();
+}
+
+function upsertProjectTab(path = state.projectPath, options = {}) {
+  const id = path || `untitled:${Date.now()}`;
+  let tab = state.projectTabs.find(item => item.id === id);
+  if (!tab) {
+    tab = { id, path, title: options.title || projectTabTitle(path), dirty: false, snapshot: null };
+    state.projectTabs.push(tab);
+  }
+  tab.path = path || tab.path;
+  tab.title = options.title || projectTabTitle(tab.path);
+  tab.dirty = state.projectDirty;
+  tab.snapshot = currentProjectTabSnapshot();
+  state.activeProjectTabId = tab.id;
+  renderProjectTabs();
+  return tab;
+}
+
+function renderProjectTabs() {
+  if (!els.projectTabs) return;
+  els.projectTabs.innerHTML = state.projectTabs.map(tab => `
+    <button class="project-tab-item ${tab.id === state.activeProjectTabId ? "active" : ""}" type="button" data-tab-id="${attrEscape(tab.id)}" title="${attrEscape(tab.path || tab.title)}">
+      <span class="project-tab-title">${attrEscape(tab.title)}${tab.dirty ? " *" : ""}</span>
+      <span class="project-tab-close" data-close-tab="${attrEscape(tab.id)}" aria-label="关闭项目标签">×</span>
+    </button>
+  `).join("") || `<div class="project-empty">暂无打开项目</div>`;
+}
+
+function restoreProjectTabSnapshot(snapshot) {
+  if (!snapshot) return;
+  state.rows = cloneStateData(snapshot.rows || []);
+  state.mappingRows = cloneStateData(snapshot.mappingRows || []);
+  state.mappedRows = cloneStateData(snapshot.mappedRows || []);
+  state.mappingFiles = cloneStateData(snapshot.mappingFiles || []);
+  state.mappingViews = cloneStateData(snapshot.mappingViews || []);
+  state.mappingReviews = cloneStateData(snapshot.mappingReviews || []);
+  state.mappingPhotoFields = cloneStateData(snapshot.mappingPhotoFields || []);
+  state.photoMappingOverrides = cloneStateData(snapshot.photoMappingOverrides || {});
+  state.viewLabels = cloneStateData(snapshot.viewLabels || {});
+  state.globalView = snapshot.globalView || "";
+  state.userViews = cloneStateData(snapshot.userViews || {});
+  state.selectedGroup = snapshot.selectedGroup || null;
+  state.primaryDimension = snapshot.primaryDimension || state.primaryDimension;
+  state.secondaryDimension = snapshot.secondaryDimension || "";
+  state.metric = snapshot.metric || "";
+  state.yAxisMode = snapshot.yAxisMode || "adaptive";
+  state.showErrorBars = snapshot.showErrorBars !== false;
+  state.pressureWorst = snapshot.pressureWorst || "low";
+  state.userPhotoPositions = cloneStateData(snapshot.userPhotoPositions || {});
+  state.userFilter = cloneStateData(snapshot.userFilter || null);
+  state.deviceOrderMode = snapshot.deviceOrderMode || "source";
+  state.userOrder = cloneStateData(snapshot.userOrder || []);
+  state.userNotes = cloneStateData(snapshot.userNotes || {});
+  state.search = snapshot.search || "";
+  state.columnFilters = cloneStateData(snapshot.columnFilters || {});
+  state.fieldRoleOverrides = cloneStateData(snapshot.fieldRoleOverrides || {});
+  state.layout = cloneStateData(snapshot.layout || defaultLayout());
+  state.projectPath = snapshot.projectPath || "";
+  state.projectTitle = snapshot.projectTitle || "";
+  state.projectDirty = Boolean(snapshot.projectDirty);
+  state.protocolTemplate = cloneStateData(snapshot.protocolTemplate || null);
+  state.protocolValidation = cloneStateData(snapshot.protocolValidation || null);
+  state.projectRevision = snapshot.projectRevision || null;
+  els.photoRootInput.value = snapshot.photoRoot || "";
+  els.mappingMode.value = snapshot.mappingMode || "sequence";
+  state.includeBareEarPhotos = Boolean(snapshot.includeBareEarPhotos);
+  state.bareEarConfig = sanitizeBareEarConfig(snapshot.bareEarConfig);
+  state.singleEarMode = Boolean(snapshot.singleEarMode);
+  els.includeBareEarPhotos.checked = state.includeBareEarPhotos;
+  els.singleEarMode.checked = state.singleEarMode;
+  applyBareEarConfigToControls();
+  buildSchema();
+  initializeMappingFields();
+  if ([...els.mappingUserField.options].some(option => option.value === snapshot.mappingUserField)) els.mappingUserField.value = snapshot.mappingUserField;
+  if ([...els.mappingEarField.options].some(option => option.value === snapshot.mappingEarField)) els.mappingEarField.value = snapshot.mappingEarField;
+  if ([...els.mappingDeviceField.options].some(option => option.value === snapshot.mappingDeviceField)) els.mappingDeviceField.value = snapshot.mappingDeviceField;
+  els.viewNamesInput.value = snapshot.viewNames || state.mappingViews.join(",") || els.viewNamesInput.value;
+  renderMappingMode();
+  rebuildPhotoPathIndex(state.mappingFiles);
+  applyLayoutVariables();
+  initializeControls();
+  renderFieldRoleConfig();
+  renderColumnConfig();
+  renderProtocolStatus();
+  validateProtocolRows();
+  render();
+  if (state.mappingReviews.length) {
+    renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
+    els.applyMappingButton.disabled = !state.mappedRows.length;
+    els.downloadMappedCsvButton.disabled = !state.mappedRows.length;
+    els.downloadPhotoAuditButton.disabled = !state.mappingPhotoFields.length;
+  } else {
+    resetMappingOutputs();
+  }
+  setProjectPath(state.projectPath);
+  setProjectStatus(state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件");
+  switchPage(snapshot.page || "mapping");
+  els.dataSourceLabel.textContent = state.projectPath ? "项目数据" : "示例数据";
+}
+
+function activateProjectTab(tabId) {
+  if (tabId === state.activeProjectTabId) return;
+  saveActiveProjectTabSnapshot();
+  const tab = state.projectTabs.find(item => item.id === tabId);
+  if (!tab) return;
+  state.activeProjectTabId = tab.id;
+  restoreProjectTabSnapshot(tab.snapshot);
+  renderProjectTabs();
+}
+
+function closeProjectTab(tabId) {
+  const index = state.projectTabs.findIndex(item => item.id === tabId);
+  if (index < 0) return;
+  const tab = state.projectTabs[index];
+  if (tab.dirty && !confirm(`项目「${tab.title}」有未保存更改，仍要关闭吗？`)) return;
+  state.projectTabs.splice(index, 1);
+  if (state.activeProjectTabId === tabId) {
+    const next = state.projectTabs[Math.max(0, index - 1)] || state.projectTabs[0];
+    state.activeProjectTabId = next?.id || "";
+    if (next) restoreProjectTabSnapshot(next.snapshot);
+  }
+  renderProjectTabs();
+}
+
+function createNewProjectTab() {
+  saveActiveProjectTabSnapshot();
+  state.rows = [];
+  state.mappingRows = [];
+  state.mappedRows = [];
+  state.mappingFiles = [];
+  state.mappingViews = [];
+  state.mappingReviews = [];
+  state.mappingPhotoFields = [];
+  state.photoMappingOverrides = {};
+  state.projectPath = "";
+  state.projectTitle = "";
+  state.projectDirty = false;
+  state.protocolTemplate = null;
+  state.protocolValidation = null;
+  els.photoRootInput.value = "";
+  els.projectPathInput.value = defaultProjectPath();
+  buildSchema();
+  initializeMappingFields();
+  initializeControls();
+  renderFieldRoleConfig();
+  renderColumnConfig();
+  resetMappingOutputs();
+  renderProtocolStatus();
+  render();
+  upsertProjectTab(`untitled:${Date.now()}`, { title: "未命名项目" });
+  setProjectStatus("新建项目标签");
+  switchPage("mapping");
+}
+
 function setProjectStatus(message, dirty = state.projectDirty) {
   els.projectStatus.textContent = dirty ? `${message} · 有未保存更改` : message;
 }
@@ -447,11 +685,25 @@ function markProjectDirty() {
   state.projectDirty = true;
   const label = state.serverProjectId ? `服务器项目：${state.projectTitle || state.serverProjectId} · rev ${state.projectRevision || "?"}` :
     state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件";
+  const tab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
+  if (tab) {
+    tab.dirty = true;
+    tab.snapshot = currentProjectTabSnapshot();
+    renderProjectTabs();
+  }
   setProjectStatus(label);
 }
 
 function markProjectSaved(message) {
   state.projectDirty = false;
+  const tab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
+  if (tab) {
+    tab.path = state.projectPath || tab.path;
+    tab.title = projectTabTitle(tab.path);
+    tab.dirty = false;
+    tab.snapshot = currentProjectTabSnapshot();
+    renderProjectTabs();
+  }
   setProjectStatus(message, false);
 }
 
@@ -535,6 +787,7 @@ async function loadProject(path) {
     await loadServerProject();
     return;
   }
+  saveActiveProjectTabSnapshot();
   const projectPath = path || els.projectPathInput.value.trim();
   if (!projectPath) throw new Error("请先填写项目 JSON 路径。");
   const response = await fetch(`/api/load-project?path=${encodeURIComponent(projectPath)}`);
@@ -580,12 +833,14 @@ async function loadProject(path) {
     }
   }
   markProjectSaved(`已加载：${result.path}`);
+  upsertProjectTab(result.path);
   els.dataSourceLabel.textContent = "项目数据";
   switchPage("dashboard");
 }
 
 async function loadServerProject() {
   if (!state.serverProjectId) throw new Error("缺少服务器项目 ID。");
+  saveActiveProjectTabSnapshot();
   const response = await fetch(`/api/server/projects/${encodeURIComponent(state.serverProjectId)}`);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "服务器项目加载失败。");
@@ -626,6 +881,7 @@ async function loadServerProject() {
   els.projectPathInput.readOnly = true;
   els.projectPathInput.value = state.serverProjectId;
   markProjectSaved(`已加载服务器项目：${state.projectTitle} · rev ${state.projectRevision}`);
+  upsertProjectTab(state.serverProjectId, { title: state.projectTitle || state.serverProjectId });
   els.dataSourceLabel.textContent = "服务器项目";
   switchPage("dashboard");
 }
@@ -2481,6 +2737,17 @@ function applyMappedRows() {
 
 function bindEvents() {
   document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
+  els.projectTabs.addEventListener("click", event => {
+    const close = event.target.closest("[data-close-tab]");
+    if (close) {
+      event.stopPropagation();
+      closeProjectTab(close.dataset.closeTab || "");
+      return;
+    }
+    const tab = event.target.closest(".project-tab-item");
+    if (tab) activateProjectTab(tab.dataset.tabId || "");
+  });
+  els.newProjectTabButton.addEventListener("click", createNewProjectTab);
   els.loadProjectButton.addEventListener("click", async () => {
     els.loadProjectButton.disabled = true;
     setProjectStatus("正在加载项目…");
@@ -3038,6 +3305,7 @@ async function start() {
   renderPhotoSourceMode();
   renderProtocolStatus();
   render();
+  upsertProjectTab("sample", { title: "示例数据" });
   if (state.serverProjectId) {
     els.projectPathInput.value = state.serverProjectId;
     els.projectPathInput.readOnly = true;
