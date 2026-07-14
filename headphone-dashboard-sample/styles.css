@@ -249,10 +249,16 @@ select[multiple] { min-height: 84px; }
 .mapping-bare-row > strong { grid-column: 1 / -1; color: var(--accent-dark); font-size: 10px; }
 .mapping-bare-slot { margin: 0; text-align: center; }
 .mapping-device-row { contain: layout paint; display: grid; grid-template-columns: 150px repeat(auto-fit, minmax(86px, 1fr)); gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.mapping-device-row-ear-groups { grid-template-columns: 150px minmax(0, 1fr); align-items: start; }
 .mapping-device-row:last-child { border-bottom: 0; }
 .mapping-device-row figure { margin: 0; text-align: center; }
 .mapping-device-meta { display: grid; gap: 6px; align-self: center; }
 .mapping-device-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.mapping-ear-swap { justify-self: start; }
+.mapping-ear-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mapping-ear-group { min-width: 0; padding: 6px; background: #fff8f3; border: 1px solid #ead6d6; }
+.mapping-ear-group > strong { display: block; margin-bottom: 5px; color: var(--accent-dark); font-size: 10px; }
+.mapping-ear-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(82px, 1fr)); gap: 6px; }
 .mini-button {
   padding: 3px 6px;
   color: var(--accent-dark);
@@ -623,6 +629,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 @media (max-width: 1100px) {
   .mapping-setup, .mapping-form-grid { grid-template-columns: 1fr; }
   .mapping-review-columns { grid-template-columns: 1fr; }
+  .mapping-ear-groups { grid-template-columns: 1fr; }
   .hero-grid { grid-template-columns: 1fr; }
   .pressure-layout { grid-template-columns: 1fr; }
   .control-panel { position: static; }

@@ -242,6 +242,28 @@ test("sequence single-ear mode strips ear side from capture views", () => {
   assert.equal(result.mapped[0].photo_侧面, "/photos/side.jpg");
 });
 
+test("sequence photo mapping can split left and right ears without csv ear field", () => {
+  const rows = [{ user_id: "U001", device_name: "A" }];
+  const files = [
+    { user_folder: "U001", name: "1.jpg", relative_path: "U001/1.jpg", absolute_path: "/photos/left-front.jpg" },
+    { user_folder: "U001", name: "2.jpg", relative_path: "U001/2.jpg", absolute_path: "/photos/left-side.jpg" },
+    { user_folder: "U001", name: "3.jpg", relative_path: "U001/3.jpg", absolute_path: "/photos/right-front.jpg" },
+    { user_folder: "U001", name: "4.jpg", relative_path: "U001/4.jpg", absolute_path: "/photos/right-side.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面", "侧面"],
+    expectedEars: ["左耳", "右耳"],
+    photoEarMode: true
+  });
+
+  assert.deepEqual(result.photoFields, ["photo_左耳_正面", "photo_左耳_侧面", "photo_右耳_正面", "photo_右耳_侧面"]);
+  assert.equal(result.photoViews[0].label, "左耳 · 正面");
+  assert.equal(result.mapped[0].photo_左耳_正面, "U001/1.jpg");
+  assert.equal(result.mapped[0].photo_右耳_侧面, "U001/4.jpg");
+});
+
 test("sequence photo mapping can reserve a generic bare ear photo", () => {
   const rows = [
     { user_id: "U001", device_name: "A" },

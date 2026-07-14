@@ -2,6 +2,7 @@ const DEFAULT_CSV = "headphone_sample.csv";
 const Core = globalThis.DashboardCore;
 const initialParams = new URL(window.location.href).searchParams;
 const initialServerProjectId = initialParams.get("projectId") || "";
+const PHOTO_EAR_MODE_VALUE = "__photo_ear__";
 
 function storageScope() {
   return initialServerProjectId ? `server:${initialServerProjectId}` : "local";
@@ -1692,7 +1693,8 @@ function initializeMappingFields() {
   fillSelect(els.mappingUserField, headers, false, fieldLabels);
   fillSelect(els.mappingEarField, headers, true, fieldLabels);
   fillSelect(els.mappingDeviceField, headers, true, fieldLabels);
-  if (els.mappingEarField.options[0]) els.mappingEarField.options[0].textContent = "不配置（照片仍识别左右耳）";
+  if (els.mappingEarField.options[0]) els.mappingEarField.options[0].textContent = "不配置（不分左右耳评分）";
+  els.mappingEarField.insertAdjacentHTML("beforeend", `<option value="${PHOTO_EAR_MODE_VALUE}">CSV未写耳侧，但照片分左右耳识别</option>`);
   if (els.mappingDeviceField.options[0]) els.mappingDeviceField.options[0].textContent = "不配置（按单设备）";
   els.mappingUserField.value = headers.find(field => /^(name|姓名|user_name|用户姓名)$/i.test(field)) ||
     headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) || headers[0] || "";
@@ -1702,15 +1704,31 @@ function initializeMappingFields() {
   renderMappingMode();
 }
 
+function photoEarModeEnabled() {
+  return els.mappingEarField.value === PHOTO_EAR_MODE_VALUE;
+}
+
+function mappingEarFieldValue() {
+  return photoEarModeEnabled() ? "" : els.mappingEarField.value;
+}
+
+function mappingExpectedEars() {
+  const templateEars = protocolExpectedEars();
+  return photoEarModeEnabled() && !state.singleEarMode ? (templateEars.length ? templateEars : ["左耳", "右耳"]) : templateEars;
+}
+
 function renderMappingMode() {
   const folderMode = els.mappingMode.value === "folders";
+  const photoEarMode = photoEarModeEnabled();
   els.mappingEarFieldWrap.hidden = false;
   els.viewNamesInputWrap.hidden = folderMode;
   els.bareEarToggleWrap.hidden = folderMode;
-  els.viewNamesInput.placeholder = folderMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
+  els.viewNamesInput.placeholder = folderMode || photoEarMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
   els.mappingModeNote.innerHTML = folderMode ?
     `<strong>当前规则：子文件夹识别</strong><span>不需要填写拍摄顺序。系统会从照片目录自动识别方向；若未配置耳侧且每个用户/设备只有一侧照片，会自动按单耳模式生成视角列。</span>` :
-    `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。单耳模式会去掉视角名里的左/右耳，只生成正面、侧面等视角列。</span>`;
+    photoEarMode ?
+      `<strong>当前规则：按文件名顺序 + 照片分左右耳</strong><span>CSV 不需要耳侧列。请只填写方向顺序，例如正面、侧面；系统会自动生成左耳和右耳两组照片列。</span>` :
+      `<strong>当前规则：按文件名顺序</strong><span>需要填写拍摄顺序。单耳模式会去掉视角名里的左/右耳，只生成正面、侧面等视角列。</span>`;
   renderBareEarConfigControls();
 }
 
@@ -1871,10 +1889,11 @@ function buildPhotoMapping() {
   const bareEarConfig = includeBareEar ? { enabled: true, ...state.bareEarConfig } : { enabled: false };
   const singleEarMode = state.singleEarMode;
   const userField = els.mappingUserField.value;
-  const earField = els.mappingEarField.value;
+  const earField = mappingEarFieldValue();
+  const photoEarMode = photoEarModeEnabled();
   const deviceField = els.mappingDeviceField.value;
   const templateViews = protocolPhotoViews();
-  const expectedEars = protocolExpectedEars();
+  const expectedEars = mappingExpectedEars();
   const inferredFolderViews = mode === "folders" ? Core.inferFolderViews(state.mappingRows, state.mappingFiles, {
     userField,
     earField,
@@ -1893,6 +1912,7 @@ function buildPhotoMapping() {
     deviceField,
     views,
     expectedEars,
+    photoEarMode,
     includeBareEar,
     bareEarConfig,
     singleEarMode,
@@ -1907,6 +1927,7 @@ function buildPhotoMapping() {
     earField,
     views,
     expectedEars,
+    photoEarMode,
     singleEarMode,
     files: state.mappingFiles
   });
@@ -2072,9 +2093,54 @@ function renderBareSlotFigure(review, slot) {
   </figure>`;
 }
 
+function photoFieldEar(field) {
+  const label = state.viewLabels[field] || field;
+  if (/左耳/.test(label) || /^photo_左耳_/.test(field)) return "左耳";
+  if (/右耳/.test(label) || /^photo_右耳_/.test(field)) return "右耳";
+  return "";
+}
+
+function photoFieldViewName(field) {
+  const label = state.viewLabels[field] || field;
+  return label.replace(/^(左耳|右耳)\s*[·_ -]?\s*/, "").replace(/^photo_(左耳|右耳)_/, "");
+}
+
+function renderMappingPhotoSlot(review, entry, field, deviceField) {
+  const path = state.mappedRows[entry.rowIndex][field];
+  const src = path ? photoUrl(path) : "";
+  const thumbSrc = path ? photoThumbUrl(path) : "";
+  const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
+  return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="device" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
+    ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
+    <figcaption>${photoFieldViewName(field)}</figcaption>
+    <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
+      ${photoSelectOptions(els.mappingMode.value === "folders" ? state.mappingFiles : review.files, path)}
+    </select>
+  </figure>`;
+}
+
+function renderDevicePhotoFields(review, entry, deviceField, fields) {
+  const sequencePhotoEarMode = els.mappingMode.value === "sequence" && photoEarModeEnabled();
+  if (!sequencePhotoEarMode) {
+    return fields.map(field => renderMappingPhotoSlot(review, entry, field, deviceField)).join("");
+  }
+  const groups = ["左耳", "右耳"].map(ear => ({
+    ear,
+    fields: fields.filter(field => photoFieldEar(field) === ear)
+  })).filter(group => group.fields.length);
+  const ungrouped = fields.filter(field => !photoFieldEar(field));
+  return `<div class="mapping-ear-groups">
+    ${groups.map(group => `<section class="mapping-ear-group" data-ear="${group.ear}">
+      <strong>${group.ear}</strong>
+      <div class="mapping-ear-slots">${group.fields.map(field => renderMappingPhotoSlot(review, entry, field, deviceField)).join("")}</div>
+    </section>`).join("")}
+    ${ungrouped.length ? `<section class="mapping-ear-group"><strong>未分耳侧</strong><div class="mapping-ear-slots">${ungrouped.map(field => renderMappingPhotoSlot(review, entry, field, deviceField)).join("")}</div></section>` : ""}
+  </div>`;
+}
+
 function renderMappingReviewCard(review, deviceField, photoFields) {
-  const selectFiles = els.mappingMode.value === "folders" ? state.mappingFiles : null;
   const sequenceMode = els.mappingMode.value === "sequence";
+  const sequencePhotoEarMode = sequenceMode && photoEarModeEnabled();
   const bareFields = photoFields.filter(field => field.startsWith("bare_ear_photo"));
   const devicePhotoFields = photoFields.filter(field => !field.startsWith("bare_ear_photo"));
   const hasBare = bareFields.length && review.bareSlots?.length;
@@ -2098,27 +2164,16 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
     <div class="${hasBare ? "mapping-review-columns" : ""}" style="${hasBare ? `--bare-panel-width:${180 * bareColumns}px` : ""}">
     ${bareHtml}
     <div class="mapping-device-list">${review.entries.map((entry, entryIndex) => `
-      <div class="mapping-device-row">
+      <div class="mapping-device-row ${sequencePhotoEarMode ? "mapping-device-row-ear-groups" : ""}">
         <div class="mapping-device-meta">
           <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
           ${sequenceMode && review.entries.length > 1 ? `<div class="mapping-device-actions">
             <button type="button" class="mini-button mapping-device-move" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-direction="-1" ${entryIndex === 0 ? "disabled" : ""}>上移整组</button>
             <button type="button" class="mini-button mapping-device-move" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-direction="1" ${entryIndex === review.entries.length - 1 ? "disabled" : ""}>下移整组</button>
           </div>` : ""}
+          ${sequencePhotoEarMode ? `<button type="button" class="mini-button mapping-ear-swap" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}">左右耳互换</button>` : ""}
         </div>
-        ${devicePhotoFields.map(field => {
-          const path = state.mappedRows[entry.rowIndex][field];
-          const src = path ? photoUrl(path) : "";
-          const thumbSrc = path ? photoThumbUrl(path) : "";
-          const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
-          return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="device" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
-            ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
-            <figcaption>${state.viewLabels[field]}</figcaption>
-            <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
-              ${photoSelectOptions(selectFiles || review.files, path)}
-            </select>
-          </figure>`;
-        }).join("")}
+        ${renderDevicePhotoFields(review, entry, deviceField, devicePhotoFields)}
       </div>
     `).join("")}</div>
     </div>
@@ -2185,6 +2240,26 @@ function moveMappingDeviceGroup(user, rowIndex, direction) {
     ...fields.map(field => ({ rowIndex, field })),
     ...fields.map(field => ({ rowIndex: targetEntry.rowIndex, field }))
   ]);
+  renderMappingReviewUser(user);
+  markProjectDirty();
+  return true;
+}
+
+function swapMappingEarGroups(user, rowIndex) {
+  const fields = state.mappingPhotoFields.filter(field => !field.startsWith("bare_ear_photo"));
+  const leftFields = fields.filter(field => photoFieldEar(field) === "左耳");
+  const rightFields = fields.filter(field => photoFieldEar(field) === "右耳");
+  if (!leftFields.length || !rightFields.length) return false;
+  const rightByView = new Map(rightFields.map(field => [photoFieldViewName(field), field]));
+  leftFields.forEach(leftField => {
+    const rightField = rightByView.get(photoFieldViewName(leftField));
+    if (!rightField) return;
+    const row = state.mappedRows[rowIndex];
+    const leftValue = row[leftField] || "";
+    row[leftField] = row[rightField] || "";
+    row[rightField] = leftValue;
+    applyPhotoSlotOverrides([{ rowIndex, field: leftField }, { rowIndex, field: rightField }]);
+  });
   renderMappingReviewUser(user);
   markProjectDirty();
   return true;
@@ -2495,7 +2570,16 @@ function bindEvents() {
     state.singleEarMode = els.singleEarMode.checked;
     state.photoMappingOverrides = {};
     resetMappingOutputs();
+    renderMappingMode();
     markProjectDirty();
+  });
+  [els.mappingUserField, els.mappingEarField, els.mappingDeviceField, els.viewNamesInput].forEach(control => {
+    control.addEventListener("change", () => {
+      state.photoMappingOverrides = {};
+      resetMappingOutputs();
+      renderMappingMode();
+      markProjectDirty();
+    });
   });
   els.mappingPreview.addEventListener("change", event => {
     if (event.target.classList.contains("bare-ear-label-input")) {
@@ -2511,9 +2595,15 @@ function bindEvents() {
     markProjectDirty();
   });
   els.mappingPreview.addEventListener("click", event => {
-    const button = event.target.closest(".mapping-device-move");
-    if (!button) return;
-    moveMappingDeviceGroup(button.dataset.user || "", Number(button.dataset.rowIndex), Number(button.dataset.direction));
+    const moveButton = event.target.closest(".mapping-device-move");
+    if (moveButton) {
+      moveMappingDeviceGroup(moveButton.dataset.user || "", Number(moveButton.dataset.rowIndex), Number(moveButton.dataset.direction));
+      return;
+    }
+    const earSwapButton = event.target.closest(".mapping-ear-swap");
+    if (earSwapButton) {
+      swapMappingEarGroups(earSwapButton.dataset.user || "", Number(earSwapButton.dataset.rowIndex));
+    }
   });
   els.mappingPreview.addEventListener("dragstart", event => {
     const slot = mappingSlotFromElement(event.target);

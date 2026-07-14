@@ -345,7 +345,7 @@
   }
 
   function viewDescriptors(rows = [], options = {}) {
-    const { mode = "sequence", earField, views = [], files = [], expectedEars = [] } = options;
+    const { mode = "sequence", earField, views = [], files = [], expectedEars = [], photoEarMode = false } = options;
     if (resolveSingleEarMode(rows, files, options).enabled) {
       const items = singleEarViewItems(views);
       const fields = photoFieldNames(items.map(item => item.label));
@@ -355,9 +355,12 @@
         label: item.view
       }));
     }
-    const ears = mode === "folders" ? combinedEarValues(rows, earField, files, expectedEars) : (earField ? combinedEarValues(rows, earField, files, expectedEars) : []);
+    const configuredPhotoEars = expectedEars.length ? expectedEars : ["左耳", "右耳"];
+    const ears = photoEarMode ? configuredPhotoEars :
+      mode === "folders" ? combinedEarValues(rows, earField, files, expectedEars) :
+      (earField ? combinedEarValues(rows, earField, files, expectedEars) : []);
     const hasEarInViews = ears.length && views.some(view => ears.some(ear => folderPartMatches(view, ear)));
-    const items = mode === "folders" && ears.length && !hasEarInViews ?
+    const items = (mode === "folders" || photoEarMode) && ears.length && !hasEarInViews ?
       ears.flatMap(ear => views.map(view => ({ ear, view, label: `${ear}_${view}` }))) :
       views.map(view => {
         const ear = ears.find(item => folderPartMatches(view, item)) || "";
@@ -417,10 +420,11 @@
   }
 
   function bareEarDescriptorsForEntries(entries = [], options = {}) {
-    const { earField } = options;
+    const { earField, photoEarMode = false } = options;
     const configured = configuredBareEarDescriptors(options);
     if (configured.length) {
-      if (!earField || options.singleEarMode) return configured.map(item => ({ ...item, ear: "" }));
+      if ((!earField && !photoEarMode) || options.singleEarMode) return configured.map(item => ({ ...item, ear: "" }));
+      if (!earField && photoEarMode) return configured;
       const presentEars = new Set();
       entries.forEach(entry => {
         const raw = entry.row?.[earField] || "";
@@ -430,7 +434,10 @@
       });
       return configured.filter(item => !item.ear || presentEars.has(normalizeToken(item.ear)));
     }
-    if (!earField || options.singleEarMode) return [{ ear: "", field: bareEarFieldName(), label: "空耳" }];
+    if ((!earField && !photoEarMode) || options.singleEarMode) return [{ ear: "", field: bareEarFieldName(), label: "空耳" }];
+    if (!earField && photoEarMode) {
+      return ["左耳", "右耳"].map(ear => ({ ear, field: bareEarFieldName(ear), label: `${ear} · 空耳` }));
+    }
     const ears = [];
     const seen = new Set();
     entries.forEach(entry => {
