@@ -1028,6 +1028,9 @@
       config.userFilter.map(String).filter(user => !validUsers.size || validUsers.has(user)) : null;
     const userOrder = Array.isArray(config.userOrder) ?
       config.userOrder.map(String).filter(user => !validUsers.size || validUsers.has(user)) : [];
+    const userNotes = Object.fromEntries(Object.entries(config.userNotes || {})
+      .map(([user, note]) => [String(user), String(note || "")])
+      .filter(([user, note]) => (!validUsers.size || validUsers.has(user)) && note));
     const deviceOrderMode = ["source", "asc", "desc"].includes(config.deviceOrderMode) ? config.deviceOrderMode : "";
     const keepField = field => headerSet.has(field) ? field : "";
     return {
@@ -1042,6 +1045,7 @@
       userPhotoPositions,
       userFilter,
       userOrder,
+      userNotes,
       deviceOrderMode
     };
   }

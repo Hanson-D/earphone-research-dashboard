@@ -885,6 +885,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
     pressureWorst: "high",
     userFilter: ["U001"],
     userOrder: ["U002", "U001"],
+    userNotes: { U001: "重点样本", U003: "不在当前数据" },
     deviceOrderMode: "asc"
   }, ["gender", "comfort_score"]);
   assert.deepEqual(config.fieldRoleOverrides, { gender: "user" });
@@ -896,6 +897,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.pressureWorst, "high");
   assert.deepEqual(config.userFilter, ["U001"]);
   assert.deepEqual(config.userOrder, ["U002", "U001"]);
+  assert.deepEqual(config.userNotes, { U001: "重点样本", U003: "不在当前数据" });
   assert.equal(config.deviceOrderMode, "asc");
 });
 

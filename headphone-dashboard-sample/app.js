@@ -118,6 +118,7 @@ const state = {
   userFilter: null,
   deviceOrderMode: "source",
   userOrder: [],
+  userNotes: {},
   search: "",
   columnFilters: {},
   headers: [],
@@ -328,7 +329,8 @@ function dashboardConfigSnapshot() {
     userPhotoPositions: state.userPhotoPositions,
     userFilter: state.userFilter,
     deviceOrderMode: state.deviceOrderMode,
-    userOrder: state.userOrder
+    userOrder: state.userOrder,
+    userNotes: state.userNotes
   };
 }
 
@@ -647,6 +649,7 @@ function applyDashboardConfig(config) {
   state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
   state.deviceOrderMode = clean.deviceOrderMode || "source";
   state.userOrder = Array.isArray(clean.userOrder) ? clean.userOrder : [];
+  state.userNotes = clean.userNotes || {};
   state.selectedGroup = null;
   buildSchema();
   initializeControls();
@@ -1518,6 +1521,13 @@ function moveUserOrder(draggedUser, targetUser) {
   return true;
 }
 
+function userNoteCell(user, rowSpan) {
+  const note = state.userNotes[user] || "";
+  return `<td class="user-note-cell" rowspan="${rowSpan}">
+    <textarea class="user-note-input" data-user="${attrEscape(user)}" placeholder="添加备注…">${attrEscape(note)}</textarea>
+  </td>`;
+}
+
 function sortUserDeviceRows(userRows = []) {
   const field = deviceField();
   if (!field || state.deviceOrderMode === "source") return userRows;
@@ -1680,10 +1690,11 @@ function renderDetails(rows, groups) {
   );
   const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
   els.detailColgroup.innerHTML = `<col class="user-sort-col" style="width:32px">` +
-    visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
-  els.detailHead.innerHTML = `<tr><th class="user-sort-head" title="拖动用户排序">排序</th>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}</tr>`;
+    visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("") +
+    `<col class="user-note-col" style="width:150px">`;
+  els.detailHead.innerHTML = `<tr><th class="user-sort-head" title="拖动用户排序">排序</th>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}<th class="user-note-head">备注</th></tr>`;
   const noUsersSelected = Array.isArray(state.userFilter) && state.userFilter.length === 0;
-  const detailColumnCount = visibleColumns.length + 1;
+  const detailColumnCount = visibleColumns.length + 2;
   els.detailBody.innerHTML = noUsersSelected ? `<tr><td colspan="${detailColumnCount}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
     visibleRows.length ? groupByUser(visibleRows).map(userRows =>
     userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}" data-detail-user="${attrEscape(userRows[0][state.userIdField])}">
@@ -1694,6 +1705,7 @@ function renderDetails(rows, groups) {
         const cell = detailCell(column, row);
         return column.userLevel ? cell.replace("<td", `<td rowspan="${userRows.length}"`) : cell;
       }).join("")}
+      ${rowIndex === 0 ? userNoteCell(userRows[0][state.userIdField], userRows.length) : ""}
     </tr>`).join("")
   ).join("") : `<tr><td colspan="${detailColumnCount}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
   observeDetailPhotos();
@@ -2826,10 +2838,25 @@ function bindEvents() {
     markProjectDirty();
   });
   els.detailBody.addEventListener("input", event => {
+    if (event.target.classList.contains("user-note-input")) {
+      const user = event.target.dataset.user || "";
+      const value = event.target.value.trim();
+      if (value) state.userNotes[user] = value;
+      else delete state.userNotes[user];
+      return;
+    }
     if (!event.target.classList.contains("user-photo-position")) return;
     updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
   });
   els.detailBody.addEventListener("change", event => {
+    if (event.target.classList.contains("user-note-input")) {
+      const user = event.target.dataset.user || "";
+      const value = event.target.value.trim();
+      if (value) state.userNotes[user] = value;
+      else delete state.userNotes[user];
+      markProjectDirty();
+      return;
+    }
     if (!event.target.classList.contains("user-photo-position")) return;
     updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
     markProjectDirty();
