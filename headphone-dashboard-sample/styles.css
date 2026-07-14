@@ -700,7 +700,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .preference-detail-group h3 { margin: 0; color: var(--accent-dark); font-size: 14px; }
 .preference-detail-group header span { color: var(--muted); font-size: 11px; }
 .preference-table-wrap { overflow-x: auto; }
-.preference-table { min-width: 920px; font-size: 11px; }
+.preference-table { width: 100%; min-width: 760px; table-layout: fixed; font-size: var(--preference-font-size, 11px); }
 .preference-table th, .preference-table td { padding: 7px 8px; vertical-align: top; }
 .preference-score { font-family: Georgia, serif; font-size: 18px; font-weight: 800; }
 .preference-score.good { color: var(--accent); }
@@ -708,8 +708,57 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .preference-diff { display: inline-block; min-width: 46px; padding: 3px 6px; background: var(--accent-pale); border: 1px solid #ead6d6; text-align: center; font-weight: 900; }
 .preference-photo-strip { display: grid; grid-template-columns: repeat(2, minmax(72px, 1fr)); gap: 5px; }
 .preference-photo-strip figure { margin: 0; text-align: center; }
-.preference-photo-strip img { width: 72px; height: 72px; object-fit: cover; object-position: var(--photo-position-x, 50%) var(--photo-position-y, 50%); border: 1px solid var(--line); }
+.preference-photo-strip img, .preference-photo-strip .missing-photo { width: var(--preference-photo-size, 72px); height: var(--preference-photo-size, 72px); object-fit: cover; object-position: var(--photo-position-x, 50%) var(--photo-position-y, 50%); border: 1px solid var(--line); }
 .preference-photo-strip figcaption { margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.preference-global-config, .preference-table-config { position: relative; margin-left: auto; }
+.preference-global-config summary, .preference-table-config summary {
+  padding: 6px 9px;
+  color: var(--accent-dark);
+  background: #fff8f3;
+  border: 1px solid #d8c5c5;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  list-style: none;
+}
+.preference-global-config summary::-webkit-details-marker,
+.preference-table-config summary::-webkit-details-marker { display: none; }
+.preference-config-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 8px;
+  width: min(430px, calc(100vw - 60px));
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+}
+.preference-config-panel > label {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+.preference-config-panel input[type="number"] { min-width: 58px; padding: 4px; border: 1px solid var(--line); }
+.preference-column-toggles { display: grid; grid-template-columns: 1fr; gap: 5px; max-height: 230px; overflow: auto; }
+.preference-column-toggles label {
+  display: grid;
+  grid-template-columns: 18px minmax(80px, 1fr) 64px;
+  gap: 6px;
+  align-items: center;
+  padding: 5px;
+  background: #fff8f3;
+  border: 1px solid #ead6d6;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
 .ear-photo { width: var(--photo-size); height: var(--photo-size); object-fit: cover; object-position: var(--user-photo-position-x, var(--photo-position-x, 50%)) var(--user-photo-position-y, var(--photo-position-y, 50%)); border: 2px solid #fff; outline: 1px solid #dbc8c8; box-shadow: 0 3px 10px rgba(67,30,32,.14); }
 .photo-cell-layout { display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 6px; align-items: start; }
 body.capture-mode .photo-cell-layout { grid-template-columns: minmax(0, 1fr); }

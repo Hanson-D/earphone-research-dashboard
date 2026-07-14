@@ -888,6 +888,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
     comparisonDeviceA: "样机A",
     comparisonDeviceB: "样机B",
     comparisonThreshold: "1.5",
+    comparisonGroupLayouts: { aBetter: { fontSize: 12, columns: { photos: { visible: false, width: 120 } } } },
     userFilter: ["U001"],
     userOrder: ["U002", "U001"],
     userNotes: { U001: "重点样本", U003: "不在当前数据" },
@@ -905,6 +906,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.comparisonDeviceA, "样机A");
   assert.equal(config.comparisonDeviceB, "样机B");
   assert.equal(config.comparisonThreshold, 1.5);
+  assert.equal(config.comparisonGroupLayouts.aBetter.fontSize, 12);
   assert.deepEqual(config.userFilter, ["U001"]);
   assert.deepEqual(config.userOrder, ["U002", "U001"]);
   assert.deepEqual(config.userNotes, { U001: "重点样本", U003: "不在当前数据" });

@@ -147,7 +147,8 @@ const state = {
   comparisonAutoDevices: true,
   comparisonDeviceA: "",
   comparisonDeviceB: "",
-  comparisonThreshold: 1
+  comparisonThreshold: 1,
+  comparisonGroupLayouts: {}
 };
 
 let draggedColumnId = "";
@@ -181,8 +182,20 @@ const els = Object.fromEntries([
   "pressureAggregation", "pressureSummary", "pressureHeatmaps", "pressureRanking",
   "comparisonPage", "comparisonMetricSelect", "comparisonAutoDevices", "comparisonDeviceA", "comparisonDeviceB",
   "comparisonThreshold", "comparisonTitle", "comparisonSummary", "comparisonDeviceRanking", "comparisonGroupCards", "comparisonDetails",
+  "comparisonGlobalFontSize", "comparisonGlobalPhotoSize", "comparisonGlobalColumns", "comparisonApplyAllTables",
   "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
+
+const comparisonTableColumns = [
+  { id: "user", label: "用户", width: 80 },
+  { id: "scoreA", label: "设备A分数", width: 90 },
+  { id: "scoreB", label: "设备B分数", width: 90 },
+  { id: "diff", label: "A-B", width: 70 },
+  { id: "profile", label: "组间变量", width: 220 },
+  { id: "pressure", label: "挤压摘要", width: 210 },
+  { id: "photos", label: "照片", width: 180 },
+  { id: "note", label: "备注", width: 130 }
+];
 
 function saveLayout() {
   localStorage.setItem(storageKey("headphoneDashboardLayout"), JSON.stringify(state.layout));
@@ -341,6 +354,7 @@ function dashboardConfigSnapshot() {
     comparisonDeviceA: state.comparisonDeviceA,
     comparisonDeviceB: state.comparisonDeviceB,
     comparisonThreshold: state.comparisonThreshold,
+    comparisonGroupLayouts: state.comparisonGroupLayouts,
     userPhotoPositions: state.userPhotoPositions,
     userFilter: state.userFilter,
     deviceOrderMode: state.deviceOrderMode,
@@ -507,6 +521,7 @@ function currentProjectTabSnapshot() {
     comparisonDeviceA: state.comparisonDeviceA,
     comparisonDeviceB: state.comparisonDeviceB,
     comparisonThreshold: state.comparisonThreshold,
+    comparisonGroupLayouts: cloneStateData(state.comparisonGroupLayouts),
     userPhotoPositions: cloneStateData(state.userPhotoPositions),
     userFilter: cloneStateData(state.userFilter),
     deviceOrderMode: state.deviceOrderMode,
@@ -602,6 +617,7 @@ function restoreProjectTabSnapshot(snapshot) {
   state.comparisonDeviceA = snapshot.comparisonDeviceA || "";
   state.comparisonDeviceB = snapshot.comparisonDeviceB || "";
   state.comparisonThreshold = Number.isFinite(Number(snapshot.comparisonThreshold)) ? Number(snapshot.comparisonThreshold) : 1;
+  state.comparisonGroupLayouts = cloneStateData(snapshot.comparisonGroupLayouts || {});
   state.userPhotoPositions = cloneStateData(snapshot.userPhotoPositions || {});
   state.userFilter = cloneStateData(snapshot.userFilter || null);
   state.deviceOrderMode = snapshot.deviceOrderMode || "source";
@@ -956,6 +972,7 @@ function applyDashboardConfig(config) {
   if (clean.comparisonDeviceA) state.comparisonDeviceA = clean.comparisonDeviceA;
   if (clean.comparisonDeviceB) state.comparisonDeviceB = clean.comparisonDeviceB;
   if (Number.isFinite(Number(clean.comparisonThreshold))) state.comparisonThreshold = Number(clean.comparisonThreshold);
+  state.comparisonGroupLayouts = clean.comparisonGroupLayouts || {};
   state.userPhotoPositions = clean.userPhotoPositions || {};
   state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
   state.deviceOrderMode = clean.deviceOrderMode || "source";
@@ -1336,6 +1353,7 @@ function initializeControls() {
   els.pressureWorstSelect.value = state.pressureWorst;
   refreshPressureControls();
   refreshComparisonControls();
+  renderComparisonGlobalColumns();
   renderViewControls();
 }
 
@@ -1830,47 +1848,119 @@ function comparisonPhotoStrip(item, result) {
   }).join("")}</div>`;
 }
 
+function defaultComparisonGroupLayout() {
+  return {
+    fontSize: 11,
+    photoSize: 72,
+    columns: Object.fromEntries(comparisonTableColumns.map(column => [column.id, { visible: true, width: column.width }]))
+  };
+}
+
+function comparisonGroupLayout(groupKey) {
+  const defaults = defaultComparisonGroupLayout();
+  const saved = state.comparisonGroupLayouts[groupKey] || {};
+  const columns = { ...defaults.columns };
+  Object.entries(saved.columns || {}).forEach(([id, value]) => {
+    if (!columns[id]) return;
+    columns[id] = {
+      visible: typeof value.visible === "boolean" ? value.visible : columns[id].visible,
+      width: Math.max(50, Math.min(500, Number(value.width) || columns[id].width))
+    };
+  });
+  return {
+    fontSize: Math.max(9, Math.min(18, Number(saved.fontSize) || defaults.fontSize)),
+    photoSize: Math.max(50, Math.min(180, Number(saved.photoSize) || defaults.photoSize)),
+    columns
+  };
+}
+
+function comparisonTableSettings(groupKey, layout) {
+  return `<details class="preference-table-config">
+    <summary>表格设置</summary>
+    <div class="preference-config-panel">
+      <label>字号<input class="comparison-table-font" data-group-key="${attrEscape(groupKey)}" type="number" min="9" max="18" step="1" value="${layout.fontSize}"></label>
+      <label>照片<input class="comparison-table-photo" data-group-key="${attrEscape(groupKey)}" type="number" min="50" max="180" step="10" value="${layout.photoSize}"></label>
+      <div class="preference-column-toggles">
+        ${comparisonTableColumns.map(column => {
+          const columnLayout = layout.columns[column.id];
+          return `<label>
+            <input class="comparison-column-visible" data-group-key="${attrEscape(groupKey)}" data-column-id="${column.id}" type="checkbox" ${columnLayout.visible ? "checked" : ""}>
+            ${column.label}
+            <input class="comparison-column-width" data-group-key="${attrEscape(groupKey)}" data-column-id="${column.id}" type="number" min="50" max="500" step="10" value="${columnLayout.width}">
+          </label>`;
+        }).join("")}
+      </div>
+    </div>
+  </details>`;
+}
+
+function renderComparisonGlobalColumns() {
+  if (!els.comparisonGlobalColumns) return;
+  const defaults = defaultComparisonGroupLayout();
+  els.comparisonGlobalFontSize.value = defaults.fontSize;
+  els.comparisonGlobalPhotoSize.value = defaults.photoSize;
+  els.comparisonGlobalColumns.innerHTML = comparisonTableColumns.map(column => `
+    <label>
+      <input class="comparison-global-column-visible" data-column-id="${column.id}" type="checkbox" checked>
+      ${column.label}
+      <input class="comparison-global-column-width" data-column-id="${column.id}" type="number" min="50" max="500" step="10" value="${column.width}">
+    </label>
+  `).join("");
+}
+
+function comparisonCell(columnId, item, result) {
+  const preferredA = item.diff != null && item.diff > 0;
+  const preferredB = item.diff != null && item.diff < 0;
+  if (columnId === "user") return `<td><strong>${attrEscape(item.user)}</strong></td>`;
+  if (columnId === "scoreA") return `<td>${comparisonScore(item.scoreA, preferredA)}</td>`;
+  if (columnId === "scoreB") return `<td>${comparisonScore(item.scoreB, preferredB)}</td>`;
+  if (columnId === "diff") return `<td><span class="preference-diff">${item.diff == null ? "—" : item.diff.toFixed(1)}</span></td>`;
+  if (columnId === "profile") return `<td>${comparisonProfile(item.rows)}</td>`;
+  if (columnId === "pressure") return `<td>${comparisonPressure(item.rows)}</td>`;
+  if (columnId === "photos") return `<td>${comparisonPhotoStrip(item, result)}</td>`;
+  if (columnId === "note") return `<td>${attrEscape(state.userNotes[item.user] || "") || "—"}</td>`;
+  return "<td>—</td>";
+}
+
 function renderComparisonDetails(result) {
   const metricLabel = fieldLabels[state.comparisonMetric] || state.comparisonMetric || "指标";
   els.comparisonDetails.innerHTML = result.groups.map(group => `
-    <section class="preference-detail-group">
+    ${(() => {
+      const layout = comparisonGroupLayout(group.key);
+      const visibleColumns = comparisonTableColumns.filter(column => layout.columns[column.id]?.visible);
+      if (!visibleColumns.length) visibleColumns.push(comparisonTableColumns[0]);
+      const totalWidth = visibleColumns.reduce((sum, column) => sum + (layout.columns[column.id]?.width || column.width), 0) || 1;
+      return `<section class="preference-detail-group" data-group-key="${attrEscape(group.key)}" style="--preference-font-size:${layout.fontSize}px;--preference-photo-size:${layout.photoSize}px;">
       <header>
         <h3>${attrEscape(group.label)}</h3>
         <span>${group.n} 位用户 · ${group.meanDiff == null ? "差值 —" : `平均差值 ${group.meanDiff.toFixed(1)}`}</span>
+        ${comparisonTableSettings(group.key, layout)}
       </header>
       <div class="preference-table-wrap">
         <table class="preference-table">
+          <colgroup>
+            ${visibleColumns.map(column => `<col style="width:${(layout.columns[column.id].width / totalWidth * 100).toFixed(2)}%">`).join("")}
+          </colgroup>
           <thead>
             <tr>
-              <th>用户</th>
-              <th>${attrEscape(result.deviceA || "设备 A")} ${attrEscape(metricLabel)}</th>
-              <th>${attrEscape(result.deviceB || "设备 B")} ${attrEscape(metricLabel)}</th>
-              <th>A-B</th>
-              <th>组间变量</th>
-              <th>挤压摘要</th>
-              <th>照片</th>
-              <th>备注</th>
+              ${visibleColumns.map(column => {
+                if (column.id === "scoreA") return `<th>${attrEscape(result.deviceA || "设备 A")} ${attrEscape(metricLabel)}</th>`;
+                if (column.id === "scoreB") return `<th>${attrEscape(result.deviceB || "设备 B")} ${attrEscape(metricLabel)}</th>`;
+                return `<th>${column.label}</th>`;
+              }).join("")}
             </tr>
           </thead>
           <tbody>
             ${group.users.length ? group.users.map(item => {
-              const preferredA = item.diff != null && item.diff > 0;
-              const preferredB = item.diff != null && item.diff < 0;
               return `<tr>
-                <td><strong>${attrEscape(item.user)}</strong></td>
-                <td>${comparisonScore(item.scoreA, preferredA)}</td>
-                <td>${comparisonScore(item.scoreB, preferredB)}</td>
-                <td><span class="preference-diff">${item.diff == null ? "—" : item.diff.toFixed(1)}</span></td>
-                <td>${comparisonProfile(item.rows)}</td>
-                <td>${comparisonPressure(item.rows)}</td>
-                <td>${comparisonPhotoStrip(item, result)}</td>
-                <td>${attrEscape(state.userNotes[item.user] || "") || "—"}</td>
+                ${visibleColumns.map(column => comparisonCell(column.id, item, result)).join("")}
               </tr>`;
-            }).join("") : `<tr><td colspan="8"><div class="empty-state">该分组暂无用户。</div></td></tr>`}
+            }).join("") : `<tr><td colspan="${Math.max(1, visibleColumns.length)}"><div class="empty-state">该分组暂无用户。</div></td></tr>`}
           </tbody>
         </table>
       </div>
-    </section>
+    </section>`;
+    })()}
   `).join("");
 }
 
@@ -3317,6 +3407,45 @@ function bindEvents() {
   });
   els.comparisonThreshold.addEventListener("change", () => {
     state.comparisonThreshold = Math.max(0, Number(els.comparisonThreshold.value) || 0);
+    renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonDetails.addEventListener("change", event => {
+    const groupKey = event.target.dataset.groupKey;
+    if (!groupKey) return;
+    const layout = comparisonGroupLayout(groupKey);
+    if (event.target.classList.contains("comparison-table-font")) {
+      layout.fontSize = Math.max(9, Math.min(18, Number(event.target.value) || layout.fontSize));
+    } else if (event.target.classList.contains("comparison-table-photo")) {
+      layout.photoSize = Math.max(50, Math.min(180, Number(event.target.value) || layout.photoSize));
+    } else if (event.target.classList.contains("comparison-column-visible")) {
+      const columnId = event.target.dataset.columnId;
+      if (layout.columns[columnId]) layout.columns[columnId].visible = event.target.checked;
+    } else if (event.target.classList.contains("comparison-column-width")) {
+      const columnId = event.target.dataset.columnId;
+      if (layout.columns[columnId]) layout.columns[columnId].width = Math.max(50, Math.min(500, Number(event.target.value) || layout.columns[columnId].width));
+    } else {
+      return;
+    }
+    state.comparisonGroupLayouts[groupKey] = layout;
+    renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonApplyAllTables.addEventListener("click", () => {
+    const layout = defaultComparisonGroupLayout();
+    layout.fontSize = Math.max(9, Math.min(18, Number(els.comparisonGlobalFontSize.value) || layout.fontSize));
+    layout.photoSize = Math.max(50, Math.min(180, Number(els.comparisonGlobalPhotoSize.value) || layout.photoSize));
+    els.comparisonGlobalColumns.querySelectorAll(".comparison-global-column-visible").forEach(input => {
+      const columnId = input.dataset.columnId;
+      if (layout.columns[columnId]) layout.columns[columnId].visible = input.checked;
+    });
+    els.comparisonGlobalColumns.querySelectorAll(".comparison-global-column-width").forEach(input => {
+      const columnId = input.dataset.columnId;
+      if (layout.columns[columnId]) layout.columns[columnId].width = Math.max(50, Math.min(500, Number(input.value) || layout.columns[columnId].width));
+    });
+    ["aBetter", "bBetter", "close", "incomplete"].forEach(key => {
+      state.comparisonGroupLayouts[key] = cloneStateData(layout);
+    });
     renderComparisonPreference();
     markProjectDirty();
   });

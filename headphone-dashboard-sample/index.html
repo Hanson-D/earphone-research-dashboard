@@ -467,6 +467,15 @@
               <p class="panel-kicker">GROUP DETAILS</p>
               <h2>胜负分组详情</h2>
             </div>
+            <details class="preference-global-config">
+              <summary>全部小表设置</summary>
+              <div class="preference-config-panel">
+                <label>字号<input id="comparisonGlobalFontSize" type="number" min="9" max="18" step="1" value="11"></label>
+                <label>照片<input id="comparisonGlobalPhotoSize" type="number" min="50" max="180" step="10" value="72"></label>
+                <div id="comparisonGlobalColumns" class="preference-column-toggles"></div>
+                <button id="comparisonApplyAllTables" type="button" class="compact-button">应用到全部小表</button>
+              </div>
+            </details>
           </div>
           <div id="comparisonDetails" class="preference-details"></div>
         </article>

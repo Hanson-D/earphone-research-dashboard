@@ -1136,6 +1136,10 @@
     const deviceOrderMode = ["source", "asc", "desc"].includes(config.deviceOrderMode) ? config.deviceOrderMode : "";
     const keepField = field => headerSet.has(field) ? field : "";
     const comparisonThreshold = Number(config.comparisonThreshold);
+    const comparisonGroupLayouts = config.comparisonGroupLayouts && typeof config.comparisonGroupLayouts === "object" ?
+      Object.fromEntries(Object.entries(config.comparisonGroupLayouts)
+        .filter(([, value]) => value && typeof value === "object")
+        .map(([key, value]) => [String(key), value])) : {};
     return {
       layout,
       fieldRoleOverrides,
@@ -1150,6 +1154,7 @@
       comparisonDeviceA: String(config.comparisonDeviceA || ""),
       comparisonDeviceB: String(config.comparisonDeviceB || ""),
       comparisonThreshold: Number.isFinite(comparisonThreshold) ? Math.max(0, comparisonThreshold) : undefined,
+      comparisonGroupLayouts,
       userPhotoPositions,
       userFilter,
       userOrder,
