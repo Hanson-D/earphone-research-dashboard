@@ -21,17 +21,18 @@
     <aside class="project-sidebar">
       <section class="project-panel">
         <p class="panel-kicker">PROJECTS</p>
-        <h2>项目</h2>
+        <h2>打开的项目</h2>
         <div id="projectTabs" class="project-tabs" aria-label="已打开项目"></div>
         <button id="newProjectTabButton" class="outline-button" type="button">新建空项目标签</button>
       </section>
 
       <section class="project-panel">
-        <p class="panel-kicker">PROJECT FILE</p>
+        <p class="panel-kicker">PROJECT CONFIG</p>
+        <h2>项目配置</h2>
         <label class="mapping-input">
-          <span>项目 JSON 路径</span>
+          <span>项目文件路径</span>
           <input id="projectPathInput" name="projectPath" type="text" autocomplete="off" placeholder="例如：projects/project-a.json">
-          <small>项目保存 CSV、照片映射、布局、备注和用户排序。</small>
+          <small>这是当前项目 JSON 的保存/加载位置；不是照片根目录。项目会保存 CSV、照片映射、布局、备注和用户排序。</small>
         </label>
         <div class="project-actions">
           <button id="loadProjectButton" class="outline-button" type="button">加载项目</button>
@@ -39,21 +40,6 @@
           <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
         </div>
         <div id="projectStatus" class="project-status" aria-live="polite">未加载项目文件</div>
-      </section>
-
-      <section class="project-panel">
-        <details class="protocol-panel">
-          <summary class="protocol-heading">
-            <strong>项目规则</strong>
-            <span>模板与校验</span>
-          </summary>
-          <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
-          <label class="protocol-import">
-            加载模板 JSON
-            <input id="protocolTemplateInput" type="file" accept=".json,application/json">
-          </label>
-          <div id="protocolStatus" class="protocol-status" aria-live="polite">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
-        </details>
       </section>
     </aside>
 
@@ -206,6 +192,19 @@
           <p>用于控制哪些列是组间变量、评分指标、挤压程度、照片或忽略列；挤压方向由上方“挤压分数方向”控制。</p>
           <div id="fieldRoleList" class="field-role-list"></div>
           <button id="resetFieldRolesButton" type="button" class="compact-button">恢复自动识别</button>
+        </details>
+
+        <details class="protocol-panel control-protocol-panel">
+          <summary class="protocol-heading">
+            <strong>项目规则模板</strong>
+            <span>字段与照片校验</span>
+          </summary>
+          <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
+          <label class="protocol-import">
+            加载模板 JSON
+            <input id="protocolTemplateInput" type="file" accept=".json,application/json">
+          </label>
+          <div id="protocolStatus" class="protocol-status" aria-live="polite">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
         </details>
       </aside>
 

@@ -910,6 +910,7 @@ test("dashboard config import defaults invalid detail photo mode to performance"
 
 test("project documents keep rows, mapping state, and dashboard config together", () => {
   const project = core.buildProjectDocument({
+    title: "佩戴舒适性 A 轮",
     rows: [{ user_id: "U001", comfort_score: "8" }],
     mappingRows: [{ user_id: "U001" }],
     photoRoot: "/photos",
@@ -925,6 +926,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
     }
   });
   assert.equal(project.version, 1);
+  assert.equal(project.title, "佩戴舒适性 A 轮");
   assert.equal(project.photoRoot, "/photos");
   assert.equal(project.mappingMode, "folders");
   assert.equal(project.mappingFields.earField, "ear_side");
@@ -937,6 +939,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
     rows: "bad",
     dashboardConfig: { fieldRoleOverrides: { old: "metric", comfort_score: "metric" }, metric: "comfort_score" }
   });
+  assert.equal(clean.title, "佩戴舒适性 A 轮");
   assert.deepEqual(clean.rows, []);
   assert.deepEqual(clean.dashboardConfig.fieldRoleOverrides, {});
 });

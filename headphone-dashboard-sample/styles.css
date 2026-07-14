@@ -75,7 +75,7 @@ summary:focus-visible,
 .project-tabs { display: grid; gap: 6px; margin-bottom: 10px; }
 .project-tab-item {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
   padding: 8px;
@@ -86,7 +86,24 @@ summary:focus-visible,
   text-align: left;
 }
 .project-tab-item.active { color: #fff; background: var(--accent); border-color: var(--accent-dark); }
-.project-tab-title { overflow: hidden; font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.project-tab-title {
+  min-width: 0;
+  width: 100%;
+  padding: 4px 5px;
+  color: inherit;
+  background: rgba(255,255,255,.72);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.project-tab-item.active .project-tab-title { background: rgba(255,255,255,.16); }
+.project-tab-title:focus {
+  color: var(--ink);
+  background: #fff;
+  border-color: var(--accent-dark);
+}
+.project-tab-dirty { font-size: 13px; font-weight: 900; line-height: 1; }
 .project-tab-close {
   width: 22px;
   height: 22px;
@@ -231,20 +248,30 @@ select[multiple] { min-height: 84px; }
 .field-role-row small { display: block; overflow: hidden; color: var(--muted); font-size: 8px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .field-role-row select { padding: 4px 5px; font-size: 10px; }
 
-.mapping-layout { display: grid; gap: 18px; }
-.mapping-setup { display: grid; grid-template-columns: minmax(320px, .8fr) minmax(560px, 1.2fr); gap: 18px; align-items: start; }
+.mapping-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.mapping-setup {
+  position: sticky;
+  top: 16px;
+  min-width: 0;
+}
 .mapping-card, .mapping-results {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 4px;
   box-shadow: var(--shadow);
 }
-.mapping-card { padding: 22px; border-top: 4px solid var(--accent); }
+.mapping-card { padding: 18px; border-top: 4px solid var(--accent); }
 .project-panel { margin: 0; }
 .project-panel h2 { margin-bottom: 12px; }
 .project-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .protocol-panel { margin-top: 14px; padding: 12px; background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); }
+.control-protocol-panel { margin-top: 14px; }
 .protocol-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--accent-dark); font-size: 11px; cursor: pointer; }
 .protocol-heading::-webkit-details-marker { display: none; }
 .text-button { padding: 0; color: var(--accent); background: transparent; border: 0; font-size: 10px; font-weight: 800; cursor: pointer; }
@@ -253,8 +280,8 @@ select[multiple] { min-height: 84px; }
 .protocol-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .protocol-status strong { color: var(--accent-dark); }
 .protocol-status ul { margin: 6px 0 0; padding-left: 16px; }
-.mapping-intro { margin: 8px 0 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
-.mapping-form-grid { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr) minmax(210px, 1fr); gap: 12px; align-items: start; }
+.mapping-intro { margin: 8px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.mapping-form-grid { display: grid; grid-template-columns: 1fr; gap: 0; align-items: start; }
 .mapping-input, .mapping-fields label { display: block; margin-bottom: 16px; color: var(--ink); font-size: 11px; font-weight: 800; }
 .mapping-input span { display: block; margin-bottom: 6px; }
 .mapping-input input { width: 100%; padding: 9px 10px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
@@ -267,11 +294,11 @@ select[multiple] { min-height: 84px; }
 .mapping-mode-note { margin: -4px 0 14px; padding: 10px 11px; color: var(--sage-dark); background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); font-size: 10px; line-height: 1.55; }
 .mapping-mode-note strong { display: block; margin-bottom: 3px; color: var(--accent-dark); font-size: 11px; }
 .mapping-mode-note span { display: block; }
-.mapping-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.mapping-fields { display: grid; grid-template-columns: 1fr; gap: 0; }
 .mapping-fields select { margin-top: 6px; }
 .bare-ear-config {
   display: grid;
-  grid-template-columns: minmax(140px, .7fr) repeat(2, minmax(110px, .45fr));
+  grid-template-columns: 1fr;
   gap: 8px;
   align-items: end;
   padding: 9px 10px;
@@ -281,8 +308,8 @@ select[multiple] { min-height: 84px; }
 }
 .bare-ear-config input[type="number"] { width: 100%; margin-top: 5px; }
 .bare-ear-config small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; line-height: 1.45; }
-#bareEarSideCounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; grid-column: span 2; }
-.mapping-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+#bareEarSideCounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; grid-column: auto; }
+.mapping-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
 .mapping-summary { color: var(--muted); font-size: 11px; }
 .mapping-review-help { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .mapping-preview { max-height: none; overflow: visible; padding: 14px; }
@@ -726,7 +753,9 @@ body.capture-mode .photo-cell-controls { display: none; }
 @media (max-width: 1100px) {
   .app-shell { grid-template-columns: 1fr; }
   .project-sidebar { position: static; grid-template-columns: 1fr; border-right: 0; border-bottom: 1px solid var(--line-strong); }
-  .mapping-setup, .mapping-form-grid { grid-template-columns: 1fr; }
+  .mapping-layout { grid-template-columns: 1fr; }
+  .mapping-setup { position: static; }
+  .mapping-form-grid { grid-template-columns: 1fr; }
   .mapping-review-columns { grid-template-columns: 1fr; }
   .mapping-ear-groups { grid-template-columns: 1fr; }
   .hero-grid { grid-template-columns: 1fr; }

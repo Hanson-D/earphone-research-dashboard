@@ -1053,6 +1053,7 @@
   function buildProjectDocument(state = {}) {
     return {
       version: 1,
+      title: String(state.title || ""),
       savedAt: new Date().toISOString(),
       rows: Array.isArray(state.rows) ? state.rows : [],
       mappingRows: Array.isArray(state.mappingRows) ? state.mappingRows : [],
@@ -1071,6 +1072,7 @@
     const headers = Object.keys(rows[0] || {});
     return {
       version: Number(project.version) || 1,
+      title: String(project.title || ""),
       savedAt: project.savedAt || "",
       rows,
       mappingRows: Array.isArray(project.mappingRows) ? project.mappingRows : rows.map(row => ({ ...row })),

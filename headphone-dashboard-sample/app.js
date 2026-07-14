@@ -393,6 +393,7 @@ function normalizeOverridesForSave(overrides = {}) {
 
 function projectDocumentSnapshot() {
   return Core.buildProjectDocument({
+    title: state.projectTitle || projectTabTitle(state.projectPath || els.projectPathInput.value),
     rows: normalizeRowsForSave(state.rows),
     mappingRows: normalizeRowsForSave(state.mappingRows),
     photoRoot: els.photoRootInput.value.trim(),
@@ -429,13 +430,14 @@ function mappingConfigSnapshot() {
 }
 
 function setProjectPath(path) {
+  const previousPath = state.projectPath;
   state.projectPath = path || "";
   els.projectPathInput.value = state.projectPath;
   const activeTab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
   if (activeTab && state.projectPath && activeTab.id !== state.projectPath && !state.projectTabs.some(item => item.id === state.projectPath)) {
     activeTab.id = state.projectPath;
     activeTab.path = state.projectPath;
-    activeTab.title = projectTabTitle(state.projectPath);
+    if (!activeTab.customTitle && (!activeTab.title || activeTab.title === projectTabTitle(previousPath))) activeTab.title = projectTabTitle(state.projectPath);
     state.activeProjectTabId = activeTab.id;
     renderProjectTabs();
   }
@@ -520,7 +522,7 @@ function saveActiveProjectTabSnapshot() {
   const tab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
   if (!tab) return;
   tab.path = state.projectPath || tab.path;
-  tab.title = projectTabTitle(tab.path);
+  tab.title = state.projectTitle || tab.title || projectTabTitle(tab.path);
   tab.dirty = state.projectDirty;
   tab.snapshot = currentProjectTabSnapshot();
 }
@@ -529,13 +531,19 @@ function upsertProjectTab(path = state.projectPath, options = {}) {
   const id = path || `untitled:${Date.now()}`;
   let tab = state.projectTabs.find(item => item.id === id);
   if (!tab) {
-    tab = { id, path, title: options.title || projectTabTitle(path), dirty: false, snapshot: null };
+    tab = { id, path, title: options.title || projectTabTitle(path), customTitle: Boolean(options.title), dirty: false, snapshot: null };
     state.projectTabs.push(tab);
   }
   tab.path = path || tab.path;
-  tab.title = options.title || projectTabTitle(tab.path);
+  if (options.title) {
+    tab.title = options.title;
+    tab.customTitle = true;
+  } else if (!tab.title) {
+    tab.title = projectTabTitle(tab.path);
+  }
   tab.dirty = state.projectDirty;
   tab.snapshot = currentProjectTabSnapshot();
+  state.projectTitle = tab.title;
   state.activeProjectTabId = tab.id;
   renderProjectTabs();
   return tab;
@@ -544,10 +552,11 @@ function upsertProjectTab(path = state.projectPath, options = {}) {
 function renderProjectTabs() {
   if (!els.projectTabs) return;
   els.projectTabs.innerHTML = state.projectTabs.map(tab => `
-    <button class="project-tab-item ${tab.id === state.activeProjectTabId ? "active" : ""}" type="button" data-tab-id="${attrEscape(tab.id)}" title="${attrEscape(tab.path || tab.title)}">
-      <span class="project-tab-title">${attrEscape(tab.title)}${tab.dirty ? " *" : ""}</span>
-      <span class="project-tab-close" data-close-tab="${attrEscape(tab.id)}" aria-label="关闭项目标签">×</span>
-    </button>
+    <div class="project-tab-item ${tab.id === state.activeProjectTabId ? "active" : ""}" role="button" tabindex="0" data-tab-id="${attrEscape(tab.id)}" title="${attrEscape(tab.path || tab.title)}">
+      <input class="project-tab-title" data-tab-name="${attrEscape(tab.id)}" value="${attrEscape(tab.title)}" aria-label="项目标签名称">
+      <span class="project-tab-dirty" aria-hidden="true">${tab.dirty ? "*" : ""}</span>
+      <button class="project-tab-close" type="button" data-close-tab="${attrEscape(tab.id)}" aria-label="关闭项目标签">×</button>
+    </div>
   `).join("") || `<div class="project-empty">暂无打开项目</div>`;
 }
 
@@ -677,6 +686,23 @@ function createNewProjectTab() {
   switchPage("mapping");
 }
 
+function renameProjectTab(tabId, title, options = {}) {
+  const tab = state.projectTabs.find(item => item.id === tabId);
+  if (!tab) return;
+  const cleanTitle = String(title || "").trim() || projectTabTitle(tab.path);
+  tab.title = cleanTitle;
+  tab.customTitle = true;
+  if (tab.id === state.activeProjectTabId) {
+    state.projectTitle = cleanTitle;
+    if (options.persist) {
+      state.projectDirty = true;
+      tab.dirty = true;
+      tab.snapshot = currentProjectTabSnapshot();
+      setProjectStatus(state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件");
+    }
+  }
+}
+
 function setProjectStatus(message, dirty = state.projectDirty) {
   els.projectStatus.textContent = dirty ? `${message} · 有未保存更改` : message;
 }
@@ -699,7 +725,7 @@ function markProjectSaved(message) {
   const tab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
   if (tab) {
     tab.path = state.projectPath || tab.path;
-    tab.title = projectTabTitle(tab.path);
+    tab.title = state.projectTitle || tab.title || projectTabTitle(tab.path);
     tab.dirty = false;
     tab.snapshot = currentProjectTabSnapshot();
     renderProjectTabs();
@@ -772,6 +798,7 @@ async function saveCurrentProjectConfig() {
   const mappingConfig = mappingConfigSnapshot();
   await writeProject(path, {
     ...project,
+    title: state.projectTitle || project.title || projectTabTitle(path),
     savedAt: new Date().toISOString(),
     photoRoot: mappingConfig.photoRoot,
     mappingMode: mappingConfig.mappingMode,
@@ -795,6 +822,7 @@ async function loadProject(path) {
   if (!response.ok) throw new Error(result.error || "项目加载失败。");
   const project = Core.sanitizeProjectDocument(result.project);
   setProjectPath(result.path);
+  state.projectTitle = project.title || projectTabTitle(result.path);
   state.rows = project.rows.map(row => ({ ...row }));
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
@@ -833,7 +861,7 @@ async function loadProject(path) {
     }
   }
   markProjectSaved(`已加载：${result.path}`);
-  upsertProjectTab(result.path);
+  upsertProjectTab(result.path, { title: state.projectTitle });
   els.dataSourceLabel.textContent = "项目数据";
   switchPage("dashboard");
 }
@@ -846,7 +874,7 @@ async function loadServerProject() {
   if (!response.ok) throw new Error(result.error || "服务器项目加载失败。");
   const project = Core.sanitizeProjectDocument(result.project);
   state.projectRevision = result.revision;
-  state.projectTitle = result.title || state.serverProjectId;
+  state.projectTitle = result.title || project.title || state.serverProjectId;
   state.rows = project.rows.map(row => ({ ...row }));
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
@@ -2738,6 +2766,7 @@ function applyMappedRows() {
 function bindEvents() {
   document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
   els.projectTabs.addEventListener("click", event => {
+    if (event.target.closest(".project-tab-title")) return;
     const close = event.target.closest("[data-close-tab]");
     if (close) {
       event.stopPropagation();
@@ -2746,6 +2775,25 @@ function bindEvents() {
     }
     const tab = event.target.closest(".project-tab-item");
     if (tab) activateProjectTab(tab.dataset.tabId || "");
+  });
+  els.projectTabs.addEventListener("keydown", event => {
+    if (event.target.closest(".project-tab-title")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const tab = event.target.closest(".project-tab-item");
+    if (!tab) return;
+    event.preventDefault();
+    activateProjectTab(tab.dataset.tabId || "");
+  });
+  els.projectTabs.addEventListener("input", event => {
+    const input = event.target.closest(".project-tab-title");
+    if (!input) return;
+    renameProjectTab(input.dataset.tabName || "", input.value);
+  });
+  els.projectTabs.addEventListener("change", event => {
+    const input = event.target.closest(".project-tab-title");
+    if (!input) return;
+    renameProjectTab(input.dataset.tabName || "", input.value, { persist: true });
+    renderProjectTabs();
   });
   els.newProjectTabButton.addEventListener("click", createNewProjectTab);
   els.loadProjectButton.addEventListener("click", async () => {
