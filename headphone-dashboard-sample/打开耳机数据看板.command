@@ -4,6 +4,7 @@ set -u
 
 cd "$(dirname "$0")"
 
+export HOST="${HOST:-0.0.0.0}"
 if [[ -z "${PORT:-}" ]]; then
   PORT=""
   for candidate in {7362..7461}; do
@@ -35,6 +36,7 @@ fi
 
 echo "正在启动耳机数据看板..."
 echo "浏览器会自动打开：$URL"
+echo "同一局域网其他设备可访问：http://你的电脑IP:${PORT}"
 echo "使用期间请不要关闭这个窗口；关闭窗口会停止本地看板服务。"
 echo
 

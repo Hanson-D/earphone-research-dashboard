@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0\.."
 
 if "%PORT%"=="" (
-  for /f %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$listener=$null; foreach($p in 7362..7461){ try { $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), $p); $listener.Start(); $listener.Stop(); Write-Output $p; exit 0 } catch { if($listener){ try { $listener.Stop() } catch {} } } }; exit 1"') do set "PORT=%%P"
+  for /f %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$listener=$null; foreach($p in 7362..7461){ try { $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $p); $listener.Start(); $listener.Stop(); Write-Output $p; exit 0 } catch { if($listener){ try { $listener.Stop() } catch {} } } }; exit 1"') do set "PORT=%%P"
 )
 
 if "%PORT%"=="" (

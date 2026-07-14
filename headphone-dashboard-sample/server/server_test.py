@@ -36,6 +36,9 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(candidates[-1], 7461)
         self.assertEqual(len(candidates), 100)
 
+    def test_default_host_allows_lan_access(self):
+        self.assertEqual(server.DEFAULT_HOST, "0.0.0.0")
+
     def test_photo_upload_relative_paths_are_constrained(self):
         self.assertEqual(server.safe_relative_photo_path("U001/front.jpg").as_posix(), "U001/front.jpg")
         with self.assertRaises(ValueError):

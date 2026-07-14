@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 if "%PORT%"=="" (
-  for /f %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$listener=$null; foreach($p in 7362..7461){ try { $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), $p); $listener.Start(); $listener.Stop(); Write-Output $p; exit 0 } catch { if($listener){ try { $listener.Stop() } catch {} } } }; exit 1"') do set "PORT=%%P"
+  for /f %%P in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$listener=$null; foreach($p in 7362..7461){ try { $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $p); $listener.Start(); $listener.Stop(); Write-Output $p; exit 0 } catch { if($listener){ try { $listener.Stop() } catch {} } } }; exit 1"') do set "PORT=%%P"
 )
 
 if "%PORT%"=="" (
@@ -15,6 +15,7 @@ if "%PORT%"=="" (
 )
 
 set "URL=http://127.0.0.1:%PORT%"
+if "%HOST%"=="" set "HOST=0.0.0.0"
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 '%URL%' | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
 if not errorlevel 1 (
@@ -42,6 +43,7 @@ exit /b 1
 :run_server
 echo Starting Earphone Research Dashboard...
 echo Browser will open: %URL%
+echo Other devices on the same LAN can open: http://YOUR_COMPUTER_IP:%PORT%
 echo Keep this window open while using the dashboard.
 echo.
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1; Start-Process '%URL%'"

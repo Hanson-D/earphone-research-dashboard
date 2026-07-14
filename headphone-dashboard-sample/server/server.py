@@ -14,6 +14,7 @@ ALLOWED_ROOTS = set()
 PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 DEFAULT_PORT = 7362
 PORT_SEARCH_LIMIT = 100
+DEFAULT_HOST = "0.0.0.0"
 
 
 def project_root():
@@ -433,7 +434,7 @@ if __name__ == "__main__":
     os.chdir(Path(__file__).resolve().parents[1])
     explicit_port = "PORT" in os.environ and os.environ.get("PORT", "").strip() != ""
     port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = os.environ.get("HOST", DEFAULT_HOST)
     try:
         server, port = create_server(host, port, allow_fallback=not explicit_port)
     except PermissionError as error:
@@ -450,7 +451,14 @@ if __name__ == "__main__":
             print(f"已尝试 {DEFAULT_PORT}-{DEFAULT_PORT + PORT_SEARCH_LIMIT - 1}，没有找到可用端口。")
         print(f"原始错误：{error}")
         raise SystemExit(1)
-    print(f"Dashboard: http://{host}:{port}")
-    print(f"Server entry: http://{host}:{port}/server/server.html")
+    local_base = f"http://127.0.0.1:{port}"
+    if host in ("0.0.0.0", "::"):
+        print(f"Dashboard local: {local_base}")
+        print(f"Server entry local: {local_base}/server/server.html")
+        print(f"LAN access: http://YOUR_COMPUTER_IP:{port}")
+        print(f"LAN server entry: http://YOUR_COMPUTER_IP:{port}/server/server.html")
+    else:
+        print(f"Dashboard: http://{host}:{port}")
+        print(f"Server entry: http://{host}:{port}/server/server.html")
     print("Press Ctrl+C to stop.")
     server.serve_forever()

@@ -32,7 +32,7 @@ function Get-FreePort {
   foreach ($port in $PreferredPort..($PreferredPort + $Limit - 1)) {
     $listener = $null
     try {
-      $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse("127.0.0.1"), $port)
+      $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $port)
       $listener.Start()
       return $port
     } catch {
@@ -165,6 +165,7 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
 }
 
 $env:PORT = [string]$port
+$env:HOST = "0.0.0.0"
 $process = Start-Process -FilePath $pythonCommand `
   -ArgumentList $pythonArgs `
   -WorkingDirectory $appPath `
