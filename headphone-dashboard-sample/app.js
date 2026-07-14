@@ -198,6 +198,14 @@ const comparisonTableColumns = [
   { id: "note", label: "备注", width: 130 }
 ];
 
+const comparisonVerdictColumn = {
+  id: "__comparison_verdict",
+  label: "胜负",
+  width: 95,
+  userLevel: true,
+  custom: true
+};
+
 function saveLayout() {
   localStorage.setItem(storageKey("headphoneDashboardLayout"), JSON.stringify(state.layout));
 }
@@ -1535,8 +1543,8 @@ function resetUserPhotoPosition(user) {
   });
 }
 
-function selectedUsersFromHeader() {
-  return [...els.detailHead.querySelectorAll(".user-filter-checkbox:checked")].map(input => input.value);
+function selectedUsersFromHeader(root = els.detailHead) {
+  return [...root.querySelectorAll(".user-filter-checkbox:checked")].map(input => input.value);
 }
 
 function filteredRows() {
@@ -2009,40 +2017,27 @@ function comparisonCell(columnId, item, result, deviceRow, rowIndex, rowSpan) {
 }
 
 function renderComparisonDetails(result) {
-  const metricLabel = fieldLabels[state.comparisonMetric] || state.comparisonMetric || "指标";
   els.comparisonDetails.innerHTML = result.groups.map(group => `
     ${(() => {
-      const layout = comparisonGroupLayout(group.key);
-      const visibleColumns = comparisonTableColumns.filter(column => layout.columns[column.id]?.visible);
-      if (!visibleColumns.length) visibleColumns.push(comparisonTableColumns[0]);
-      const totalWidth = visibleColumns.reduce((sum, column) => sum + (layout.columns[column.id]?.width || column.width), 0) || 1;
-      return `<section class="preference-detail-group" data-group-key="${attrEscape(group.key)}" style="--preference-font-size:${layout.fontSize}px;--preference-photo-size:${layout.photoSize}px;--photo-size:${layout.photoSize}px;">
+      const verdictByUser = new Map(group.users.map(item => [String(item.user), {
+        verdict: comparisonVerdict(item, result),
+        diff: item.diff,
+        groupKey: group.key
+      }]));
+      const table = buildDetailTableParts(group.rows, group.rows, {
+        extraColumns: [comparisonVerdictColumn],
+        verdictByUser
+      });
+      return `<section class="preference-detail-group" data-group-key="${attrEscape(group.key)}">
       <header>
         <h3>${attrEscape(group.label)}</h3>
         <span>${group.n} 位用户 · ${group.meanDiff == null ? "差值 —" : `平均差值 ${group.meanDiff.toFixed(1)}`}</span>
-        ${comparisonTableSettings(group.key, layout)}
       </header>
-      <div class="preference-table-wrap">
-        <table class="preference-table">
-          <colgroup>
-            ${visibleColumns.map(column => `<col style="width:${(layout.columns[column.id].width / totalWidth * 100).toFixed(2)}%">`).join("")}
-          </colgroup>
-          <thead>
-            <tr>
-              ${visibleColumns.map(column => {
-                if (column.id === "score") return `<th>${attrEscape(metricLabel)}</th>`;
-                return `<th>${column.label}</th>`;
-              }).join("")}
-            </tr>
-          </thead>
-          <tbody>
-            ${group.users.length ? group.users.map(item => {
-              const deviceRows = comparisonDeviceRows(item, result);
-              return deviceRows.map((deviceRow, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}">
-                ${visibleColumns.map(column => comparisonCell(column.id, item, result, deviceRow, rowIndex, deviceRows.length)).join("")}
-              </tr>`).join("");
-            }).join("") : `<tr><td colspan="${Math.max(1, visibleColumns.length)}"><div class="empty-state">该分组暂无用户。</div></td></tr>`}
-          </tbody>
+      <div class="detail-table-wrap preference-detail-table-wrap">
+        <table class="detail-table preference-detail-table">
+          <colgroup>${table.colgroup}</colgroup>
+          <thead>${table.head}</thead>
+          <tbody>${table.body}</tbody>
         </table>
       </div>
     </section>`;
@@ -2309,6 +2304,7 @@ function renderDeviceHeaderMenu(column) {
 }
 
 function renderDetailHeaderCell(column, rows) {
+  if (column.id === "__comparison_verdict") return `<th>${escapeHtml(column.label)}</th>`;
   if (column.id === "__user_note") return `<th class="user-note-head">${escapeHtml(column.label)}</th>`;
   if (column.derived || column.photo) return `<th>${escapeHtml(column.label)}</th>`;
   if (column.id === state.userIdField) return renderUserHeaderMenu(column);
@@ -2316,6 +2312,63 @@ function renderDetailHeaderCell(column, rows) {
   const values = [...new Set(rows.map(row => row[column.id]).filter(value => value !== ""))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
   const options = values.length <= 80 ? values.map(value => `<option value="${attrEscape(value)}" ${state.columnFilters[column.id] === String(value) ? "selected" : ""}>${attrEscape(value)}</option>`).join("") : "";
   return `<th><span>${escapeHtml(column.label)}</span><select class="header-filter" data-field="${attrEscape(column.id)}" aria-label="${attrEscape(column.label)}筛选"><option value="">全部</option>${options}</select></th>`;
+}
+
+function comparisonVerdictDetailCell(column, userRows, verdictByUser) {
+  const user = String(userRows[0]?.[state.userIdField] || "");
+  const meta = verdictByUser?.get(user);
+  const verdict = meta?.verdict || "—";
+  return `<td class="comparison-verdict-cell" rowspan="${userRows.length}">
+    <span class="preference-verdict ${attrEscape(meta?.groupKey || "")}">${escapeHtml(verdict)}</span>
+    ${meta?.diff == null ? "" : `<small>A-B ${meta.diff.toFixed(1)}</small>`}
+  </td>`;
+}
+
+function renderCustomDetailCell(column, userRows, rowIndex, context = {}) {
+  if (column.id === "__comparison_verdict") {
+    return rowIndex === 0 ? comparisonVerdictDetailCell(column, userRows, context.verdictByUser) : "";
+  }
+  return rowIndex === 0 ? `<td rowspan="${userRows.length}">—</td>` : "";
+}
+
+function buildDetailTableParts(visibleRows, sourceRows, options = {}) {
+  const extraColumns = options.extraColumns || [];
+  const visibleColumns = state.layout.columns.filter(column => column.visible);
+  const tableColumns = [...extraColumns, ...visibleColumns];
+  const maxPhotos = Math.max(1, ...groupByUser(visibleRows).map(userRows =>
+    Math.max(...visibleColumns.filter(column => column.photo).map(column =>
+      column.id === "__photo_view" ? userRows.filter(row => {
+        const selectedValue = state.userViews[userRows[0][state.userIdField]] || state.globalView || photoViewOptions(userRows)[0]?.value;
+        return rowMatchesPhotoView(row, parsePhotoViewValue(selectedValue)) || state.photoFields.some(field => row[field]);
+      }).length : userRows.filter(row => row[column.id]).length
+    ), 0)
+  ));
+  const photoControlWidth = detailPhotoMode() === "capture" ? 0 : 118;
+  const columnWidths = tableColumns.map(column =>
+    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10) + photoControlWidth) : column.width
+  );
+  const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
+  const showSort = options.showSort !== false;
+  const colgroup = `${showSort ? '<col class="user-sort-col" style="width:32px">' : ""}` +
+    tableColumns.map((column, index) => `<col class="${column.id === "__user_note" ? "user-note-col" : ""}" style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
+  const head = `<tr>${showSort ? '<th class="user-sort-head" title="拖动用户排序">排序</th>' : ""}${tableColumns.map(column => renderDetailHeaderCell(column, sourceRows)).join("")}</tr>`;
+  const noUsersSelected = Array.isArray(state.userFilter) && state.userFilter.length === 0;
+  const detailColumnCount = tableColumns.length + (showSort ? 1 : 0);
+  const body = noUsersSelected ? `<tr><td colspan="${detailColumnCount}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
+    visibleRows.length ? groupByUser(visibleRows).map(userRows =>
+    userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}" data-detail-user="${attrEscape(userRows[0][state.userIdField])}">
+      ${showSort && rowIndex === 0 ? `<td class="user-sort-cell" rowspan="${userRows.length}"><button type="button" class="user-sort-handle" draggable="true" data-user="${attrEscape(userRows[0][state.userIdField])}" aria-label="拖动${attrEscape(userRows[0][state.userIdField])}排序">⋮⋮</button></td>` : ""}
+      ${tableColumns.map(column => {
+        if (column.custom) return renderCustomDetailCell(column, userRows, rowIndex, options);
+        if (column.photo) return rowIndex === 0 ? photoGalleryCell(column, userRows) : "";
+        if (column.id === "__user_note") return rowIndex === 0 ? userNoteCell(userRows[0][state.userIdField], userRows.length) : "";
+        if (column.userLevel && rowIndex > 0) return "";
+        const cell = detailCell(column, row);
+        return column.userLevel ? cell.replace("<td", `<td rowspan="${userRows.length}"`) : cell;
+      }).join("")}
+    </tr>`).join("")
+  ).join("") : `<tr><td colspan="${detailColumnCount}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
+  return { colgroup, head, body, visibleColumns: tableColumns, detailColumnCount };
 }
 
 function renderDetails(rows, groups) {
@@ -2342,38 +2395,10 @@ function renderDetails(rows, groups) {
   els.groupStats.innerHTML = stats.map(([label, value]) => `<div class="group-stat">${label}<strong>${value}</strong></div>`).join("");
   els.detailCount.textContent = `显示 ${visibleRows.length} / ${baseRows.length} 条记录`;
   syncUserOrder();
-  const visibleColumns = state.layout.columns.filter(column => column.visible);
-  const maxPhotos = Math.max(1, ...groupByUser(visibleRows).map(userRows =>
-    Math.max(...visibleColumns.filter(column => column.photo).map(column =>
-      column.id === "__photo_view" ? userRows.filter(row => {
-        const selectedValue = state.userViews[userRows[0][state.userIdField]] || state.globalView || photoViewOptions(userRows)[0]?.value;
-        return rowMatchesPhotoView(row, parsePhotoViewValue(selectedValue)) || state.photoFields.some(field => row[field]);
-      }).length : userRows.filter(row => row[column.id]).length
-    ), 0)
-  ));
-  const photoControlWidth = detailPhotoMode() === "capture" ? 0 : 118;
-  const columnWidths = visibleColumns.map(column =>
-    column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10) + photoControlWidth) : column.width
-  );
-  const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
-  els.detailColgroup.innerHTML = `<col class="user-sort-col" style="width:32px">` +
-    visibleColumns.map((column, index) => `<col class="${column.id === "__user_note" ? "user-note-col" : ""}" style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
-  els.detailHead.innerHTML = `<tr><th class="user-sort-head" title="拖动用户排序">排序</th>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}</tr>`;
-  const noUsersSelected = Array.isArray(state.userFilter) && state.userFilter.length === 0;
-  const detailColumnCount = visibleColumns.length + 1;
-  els.detailBody.innerHTML = noUsersSelected ? `<tr><td colspan="${detailColumnCount}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
-    visibleRows.length ? groupByUser(visibleRows).map(userRows =>
-    userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}" data-detail-user="${attrEscape(userRows[0][state.userIdField])}">
-      ${rowIndex === 0 ? `<td class="user-sort-cell" rowspan="${userRows.length}"><button type="button" class="user-sort-handle" draggable="true" data-user="${attrEscape(userRows[0][state.userIdField])}" aria-label="拖动${attrEscape(userRows[0][state.userIdField])}排序">⋮⋮</button></td>` : ""}
-      ${visibleColumns.map(column => {
-        if (column.photo) return rowIndex === 0 ? photoGalleryCell(column, userRows) : "";
-        if (column.id === "__user_note") return rowIndex === 0 ? userNoteCell(userRows[0][state.userIdField], userRows.length) : "";
-        if (column.userLevel && rowIndex > 0) return "";
-        const cell = detailCell(column, row);
-        return column.userLevel ? cell.replace("<td", `<td rowspan="${userRows.length}"`) : cell;
-      }).join("")}
-    </tr>`).join("")
-  ).join("") : `<tr><td colspan="${detailColumnCount}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
+  const table = buildDetailTableParts(visibleRows, rows);
+  els.detailColgroup.innerHTML = table.colgroup;
+  els.detailHead.innerHTML = table.head;
+  els.detailBody.innerHTML = table.body;
   observeDetailPhotos();
 }
 
@@ -3130,6 +3155,76 @@ function applyMappedRows() {
   markProjectDirty();
 }
 
+function handleDetailHeaderChange(event) {
+  if (event.target.classList.contains("device-order-select")) {
+    state.deviceOrderMode = event.target.value;
+    render();
+    markProjectDirty();
+    return true;
+  }
+  if (!event.target.classList.contains("header-filter")) return false;
+  state.columnFilters[event.target.dataset.field] = event.target.value;
+  state.selectedGroup = null;
+  render();
+  return true;
+}
+
+function handleDetailHeaderClick(event) {
+  if (event.target.classList.contains("user-filter-all")) {
+    state.userFilter = null;
+    state.selectedGroup = null;
+    render();
+    markProjectDirty();
+    return true;
+  }
+  if (event.target.classList.contains("user-filter-none")) {
+    state.userFilter = [];
+    state.selectedGroup = null;
+    render();
+    markProjectDirty();
+    return true;
+  }
+  return false;
+}
+
+function bindUserSortDrag(container) {
+  container.addEventListener("dragstart", event => {
+    const handle = event.target.closest(".user-sort-handle");
+    if (!handle) return;
+    draggedDetailUser = handle.dataset.user || "";
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedDetailUser);
+    handle.closest("tr")?.classList.add("user-sort-dragging");
+  });
+  container.addEventListener("dragover", event => {
+    if (!draggedDetailUser) return;
+    const row = event.target.closest("tr[data-detail-user]");
+    if (!row || row.dataset.detailUser === draggedDetailUser) return;
+    event.preventDefault();
+    row.classList.add("user-sort-drop-target");
+  });
+  container.addEventListener("dragleave", event => {
+    event.target.closest("tr[data-detail-user]")?.classList.remove("user-sort-drop-target");
+  });
+  container.addEventListener("drop", event => {
+    if (!draggedDetailUser) return;
+    const row = event.target.closest("tr[data-detail-user]");
+    container.querySelectorAll(".user-sort-drop-target").forEach(item => item.classList.remove("user-sort-drop-target"));
+    if (!row || row.dataset.detailUser === draggedDetailUser) return;
+    event.preventDefault();
+    if (moveUserOrder(draggedDetailUser, row.dataset.detailUser)) {
+      render();
+      markProjectDirty();
+    }
+  });
+  container.addEventListener("dragend", () => {
+    draggedDetailUser = "";
+    container.querySelectorAll(".user-sort-dragging, .user-sort-drop-target").forEach(row =>
+      row.classList.remove("user-sort-dragging", "user-sort-drop-target")
+    );
+  });
+}
+
 function bindEvents() {
   document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
   els.projectTabs.addEventListener("click", event => {
@@ -3446,7 +3541,7 @@ function bindEvents() {
   els.showErrorBars.addEventListener("change", () => { state.showErrorBars = els.showErrorBars.checked; renderChart(groupedRows(filteredRows())); markProjectDirty(); });
   els.pressureWorstSelect.addEventListener("change", () => {
     state.pressureWorst = els.pressureWorstSelect.value === "high" ? "high" : "low";
-    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    render();
     renderPressureMechanism();
     markProjectDirty();
   });
@@ -3510,11 +3605,19 @@ function bindEvents() {
     updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
   });
   els.comparisonDetails.addEventListener("change", event => {
+    if (event.target.classList.contains("user-filter-checkbox")) {
+      state.userFilter = selectedUsersFromHeader(event.target.closest(".user-filter-menu") || event.currentTarget);
+      state.selectedGroup = null;
+      render();
+      markProjectDirty();
+      return;
+    }
+    if (handleDetailHeaderChange(event)) return;
     if (event.target.classList.contains("user-view-select")) {
       const user = event.target.dataset.user;
       if (event.target.value) state.userViews[user] = event.target.value;
       else delete state.userViews[user];
-      renderComparisonPreference();
+      render();
       markProjectDirty();
       return;
     }
@@ -3552,11 +3655,13 @@ function bindEvents() {
     markProjectDirty();
   });
   els.comparisonDetails.addEventListener("click", event => {
+    if (handleDetailHeaderClick(event)) return;
     const button = event.target.closest(".photo-position-reset");
     if (!button) return;
     resetUserPhotoPosition(button.dataset.user || "");
     markProjectDirty();
   });
+  bindUserSortDrag(els.comparisonDetails);
   els.comparisonApplyAllTables.addEventListener("click", () => {
     const layout = defaultComparisonGroupLayout();
     layout.fontSize = Math.max(9, Math.min(18, Number(els.comparisonGlobalFontSize.value) || layout.fontSize));
@@ -3585,31 +3690,10 @@ function bindEvents() {
       markProjectDirty();
       return;
     }
-    if (event.target.classList.contains("device-order-select")) {
-      state.deviceOrderMode = event.target.value;
-      renderDetails(filteredRows(), groupedRows(filteredRows()));
-      markProjectDirty();
-      return;
-    }
-    if (!event.target.classList.contains("header-filter")) return;
-    state.columnFilters[event.target.dataset.field] = event.target.value;
-    state.selectedGroup = null;
-    render();
+    handleDetailHeaderChange(event);
   });
   els.detailHead.addEventListener("click", event => {
-    if (event.target.classList.contains("user-filter-all")) {
-      state.userFilter = null;
-      state.selectedGroup = null;
-      render();
-      markProjectDirty();
-      return;
-    }
-    if (event.target.classList.contains("user-filter-none")) {
-      state.userFilter = [];
-      state.selectedGroup = null;
-      render();
-      markProjectDirty();
-    }
+    handleDetailHeaderClick(event);
   });
   els.clearColumnFilters.addEventListener("click", () => {
     state.columnFilters = {};
@@ -3620,14 +3704,14 @@ function bindEvents() {
   });
   els.globalViewSelect.addEventListener("change", () => {
     state.globalView = els.globalViewSelect.value;
-    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    render();
     markProjectDirty();
   });
   els.resetViewsButton.addEventListener("click", () => {
     state.globalView = photoViewOptions()[0]?.value || "";
     state.userViews = {};
     renderViewControls();
-    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    render();
     markProjectDirty();
   });
   els.detailBody.addEventListener("change", event => {
@@ -3635,7 +3719,7 @@ function bindEvents() {
     const user = event.target.dataset.user;
     if (event.target.value) state.userViews[user] = event.target.value;
     else delete state.userViews[user];
-    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    render();
     markProjectDirty();
   });
   els.detailBody.addEventListener("input", event => {
@@ -3668,41 +3752,7 @@ function bindEvents() {
     resetUserPhotoPosition(button.dataset.user || "");
     markProjectDirty();
   });
-  els.detailBody.addEventListener("dragstart", event => {
-    const handle = event.target.closest(".user-sort-handle");
-    if (!handle) return;
-    draggedDetailUser = handle.dataset.user || "";
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", draggedDetailUser);
-    handle.closest("tr")?.classList.add("user-sort-dragging");
-  });
-  els.detailBody.addEventListener("dragover", event => {
-    if (!draggedDetailUser) return;
-    const row = event.target.closest("tr[data-detail-user]");
-    if (!row || row.dataset.detailUser === draggedDetailUser) return;
-    event.preventDefault();
-    row.classList.add("user-sort-drop-target");
-  });
-  els.detailBody.addEventListener("dragleave", event => {
-    event.target.closest("tr[data-detail-user]")?.classList.remove("user-sort-drop-target");
-  });
-  els.detailBody.addEventListener("drop", event => {
-    if (!draggedDetailUser) return;
-    const row = event.target.closest("tr[data-detail-user]");
-    els.detailBody.querySelectorAll(".user-sort-drop-target").forEach(item => item.classList.remove("user-sort-drop-target"));
-    if (!row || row.dataset.detailUser === draggedDetailUser) return;
-    event.preventDefault();
-    if (moveUserOrder(draggedDetailUser, row.dataset.detailUser)) {
-      renderDetails(filteredRows(), groupedRows(filteredRows()));
-      markProjectDirty();
-    }
-  });
-  els.detailBody.addEventListener("dragend", () => {
-    draggedDetailUser = "";
-    els.detailBody.querySelectorAll(".user-sort-dragging, .user-sort-drop-target").forEach(row =>
-      row.classList.remove("user-sort-dragging", "user-sort-drop-target")
-    );
-  });
+  bindUserSortDrag(els.detailBody);
   els.fontSizeControl.addEventListener("input", () => {
     state.layout.fontSize = Number(els.fontSizeControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
@@ -3722,7 +3772,7 @@ function bindEvents() {
   els.detailPhotoModeControl.addEventListener("change", () => {
     state.layout.detailPhotoMode = sanitizeDetailPhotoMode(els.detailPhotoModeControl.value);
     applyLayoutVariables(); saveLayout();
-    renderDetails(filteredRows(), groupedRows(filteredRows()));
+    render();
     markProjectDirty();
   });
   els.exportConfigButton.addEventListener("click", exportDashboardConfig);
