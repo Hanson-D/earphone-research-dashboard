@@ -272,9 +272,18 @@ select[multiple] { min-height: 84px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .protocol-panel { margin-top: 14px; padding: 12px; background: #fbf4ee; border: 1px solid #ecd8cc; border-left: 3px solid var(--accent); }
 .control-protocol-panel { margin-top: 14px; }
+.subtle-protocol-panel {
+  padding: 9px 10px;
+  background: transparent;
+  border-color: var(--line);
+  border-left-color: var(--line-strong);
+  box-shadow: none;
+}
 .protocol-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--accent-dark); font-size: 11px; cursor: pointer; }
+.subtle-protocol-panel .protocol-heading { color: var(--muted); }
 .protocol-heading::-webkit-details-marker { display: none; }
 .text-button { padding: 0; color: var(--accent); background: transparent; border: 0; font-size: 10px; font-weight: 800; cursor: pointer; }
+.protocol-help { margin: 9px 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .protocol-import { display: block; margin-top: 9px; color: var(--ink); font-size: 10px; font-weight: 800; }
 .protocol-import input { display: block; width: 100%; margin-top: 5px; font-size: 10px; }
 .protocol-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.55; }

@@ -194,14 +194,15 @@
           <button id="resetFieldRolesButton" type="button" class="compact-button">恢复自动识别</button>
         </details>
 
-        <details class="protocol-panel control-protocol-panel">
+        <details class="protocol-panel control-protocol-panel subtle-protocol-panel">
           <summary class="protocol-heading">
-            <strong>项目规则模板</strong>
-            <span>字段与照片校验</span>
+            <strong>高级：项目校验规则</strong>
+            <span>可选</span>
           </summary>
+          <p class="protocol-help">用于固定字段角色、预期照片视角和数据质量检查；不加载也不影响 CSV 与照片映射。</p>
           <button id="clearProtocolButton" class="text-button" type="button">清除模板</button>
           <label class="protocol-import">
-            加载模板 JSON
+            导入校验规则 JSON
             <input id="protocolTemplateInput" type="file" accept=".json,application/json">
           </label>
           <div id="protocolStatus" class="protocol-status" aria-live="polite">未加载模板，现有 CSV 和照片映射流程不受影响。</div>
