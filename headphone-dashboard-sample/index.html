@@ -65,43 +65,34 @@
           <p class="mapping-intro">从 CSV 与照片目录生成可直接用于看板的照片字段；可按拍摄顺序映射，也可按子文件夹自动识别。</p>
         </div>
 
-        <section class="mapping-step">
-          <div class="mapping-step-heading">
-            <span>01</span>
-            <div>
-              <h3>导入数据源</h3>
-              <p>先选择原始 CSV 和照片根文件夹，系统会读取记录与图片索引。</p>
+        <div class="mapping-steps-grid">
+          <section class="mapping-step">
+            <div class="mapping-step-heading">
+              <span>01</span>
+              <div>
+                <h3>导入 CSV</h3>
+                <p>选择原始 CSV，系统会读取用户、设备、评分和可选字段。</p>
+              </div>
             </div>
-          </div>
-          <div class="mapping-form-grid">
             <label class="mapping-input">
               <span>选择原始 CSV</span>
               <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
             </label>
+          </section>
+
+          <section class="mapping-step">
+            <div class="mapping-step-heading">
+              <span>02</span>
+              <div>
+                <h3>照片根目录与规则</h3>
+                <p>选择照片根文件夹，并决定按拍照顺序还是按子文件夹识别。</p>
+              </div>
+            </div>
             <label id="photoRootInputWrap" class="mapping-input">
               <span>选择照片根文件夹</span>
               <input id="photoFolderChooser" type="file" webkitdirectory directory multiple accept="image/*">
               <small id="photoFolderStatus">选择包含用户照片子文件夹的根目录；系统会读取文件夹结构和照片顺序。</small>
             </label>
-          </div>
-          <details class="advanced-path-input mapping-advanced">
-            <summary>高级：手动输入照片路径</summary>
-            <label class="mapping-input">
-              <span>照片根目录路径</span>
-              <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
-            </label>
-          </details>
-        </section>
-
-        <section class="mapping-step">
-          <div class="mapping-step-heading">
-            <span>02</span>
-            <div>
-              <h3>选择匹配规则</h3>
-              <p>默认按照片顺序匹配；目录命名规范时可切换为子文件夹识别。</p>
-            </div>
-          </div>
-          <div class="mapping-form-grid">
             <label class="mapping-input">
               <span>照片匹配方式</span>
               <select id="mappingMode">
@@ -110,63 +101,75 @@
               </select>
               <small>子文件夹逻辑不要求层级顺序固定；用户和方向必须能识别，左右耳与设备可从目录识别或不配置。</small>
             </label>
-          </div>
-          <div id="mappingModeNote" class="mapping-mode-note"></div>
-
-          <details class="mapping-advanced">
-            <summary>高级匹配设置</summary>
-            <div class="mapping-advanced-panel">
-              <label id="bareEarToggleWrap" class="check-control mapping-check-control">
-                <input id="includeBareEarPhotos" type="checkbox">
-                包含空耳照片
+            <div id="mappingModeNote" class="mapping-mode-note"></div>
+            <details class="advanced-path-input mapping-advanced">
+              <summary>高级：手动输入照片路径</summary>
+              <label class="mapping-input">
+                <span>照片根目录路径</span>
+                <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
               </label>
-              <div id="bareEarConfigPanel" class="bare-ear-config" hidden>
-                <label class="check-control">
-                  <input id="bareEarSplitByEar" type="checkbox">
-                  空耳区分左右耳
+            </details>
+          </section>
+
+          <section class="mapping-step">
+            <div class="mapping-step-heading">
+              <span>03</span>
+              <div>
+                <h3>字段与拍照顺序</h3>
+                <p>指定用户、耳侧、设备字段；顺序逻辑必须填写拍照视角顺序。</p>
+              </div>
+            </div>
+
+            <div class="mapping-fields">
+              <label>姓名/用户字段<select id="mappingUserField"></select></label>
+              <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
+              <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
+            </div>
+
+            <label id="viewNamesInputWrap" class="mapping-input mapping-required-input">
+              <span>按拍摄顺序填写视角名称 <b>必填</b></span>
+              <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…" required>
+              <small>顺序逻辑必须填写。请按同一用户内照片排序写视角名称；如果 CSV 没有左右耳字段但照片分左右耳，可在左右耳字段选择“CSV里没写，但照片分左右耳识别”。</small>
+            </label>
+
+            <details class="mapping-advanced">
+              <summary>高级匹配设置</summary>
+              <div class="mapping-advanced-panel">
+                <label id="bareEarToggleWrap" class="check-control mapping-check-control">
+                  <input id="includeBareEarPhotos" type="checkbox">
+                  包含空耳照片
                 </label>
-                <div id="bareEarGenericCountWrap">
-                  <label>空耳张数<input id="bareEarGenericCount" type="number" min="1" max="12" value="1"></label>
+                <div id="bareEarConfigPanel" class="bare-ear-config" hidden>
+                  <label class="check-control">
+                    <input id="bareEarSplitByEar" type="checkbox">
+                    空耳区分左右耳
+                  </label>
+                  <div id="bareEarGenericCountWrap">
+                    <label>空耳张数<input id="bareEarGenericCount" type="number" min="1" max="12" value="1"></label>
+                  </div>
+                  <div id="bareEarSideCounts" hidden>
+                    <label>左耳空耳张数<input id="bareEarLeftCount" type="number" min="0" max="12" value="1"></label>
+                    <label>右耳空耳张数<input id="bareEarRightCount" type="number" min="0" max="12" value="1"></label>
+                    <small>顺序逻辑按“先拍完一侧，再拍另一侧”解析：左耳全部空耳照片在前，右耳全部空耳照片在后。</small>
+                  </div>
                 </div>
-                <div id="bareEarSideCounts" hidden>
-                  <label>左耳空耳张数<input id="bareEarLeftCount" type="number" min="0" max="12" value="1"></label>
-                  <label>右耳空耳张数<input id="bareEarRightCount" type="number" min="0" max="12" value="1"></label>
-                  <small>顺序逻辑按“先拍完一侧，再拍另一侧”解析：左耳全部空耳照片在前，右耳全部空耳照片在后。</small>
-                </div>
+                <label id="singleEarToggleWrap" class="check-control mapping-check-control">
+                  <input id="singleEarMode" type="checkbox">
+                  单耳模式（照片列只按视角生成）
+                </label>
               </div>
-              <label id="singleEarToggleWrap" class="check-control mapping-check-control">
-                <input id="singleEarMode" type="checkbox">
-                单耳模式（照片列只按视角生成）
-              </label>
-              <div class="mapping-fields">
-                <label>姓名/用户字段<select id="mappingUserField"></select></label>
-                <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
-                <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
-              </div>
-              <label id="viewNamesInputWrap" class="mapping-input">
-                <span>按拍摄顺序填写视角名称</span>
-                <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…">
-                <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
-              </label>
-            </div>
-          </details>
-        </section>
+            </details>
 
-        <section class="mapping-step mapping-run-step">
-          <div class="mapping-step-heading">
-            <span>03</span>
-            <div>
-              <h3>生成并应用映射</h3>
-              <p>生成后先在下方检查缩略图，再应用到数据看板或下载审查文件。</p>
+            <div class="mapping-run-step">
+              <button id="runMappingButton" class="primary-button">生成照片映射</button>
+              <div class="mapping-actions">
+                <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
+                <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
+                <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
+              </div>
             </div>
-          </div>
-          <button id="runMappingButton" class="primary-button">生成照片映射</button>
-          <div class="mapping-actions">
-            <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
-            <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
-            <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
-          </div>
-        </section>
+          </section>
+        </div>
 
       </section>
 

@@ -98,6 +98,25 @@ def list_server_projects():
     return projects
 
 
+def list_local_project_files():
+    root = project_root()
+    if not root.is_dir():
+        return []
+    projects = []
+    for path in sorted(root.glob("*.json")):
+        try:
+            project = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        projects.append({
+            "path": str(path.resolve()),
+            "title": project.get("title") or path.stem,
+            "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
+            "updatedAt": __import__("datetime").datetime.fromtimestamp(path.stat().st_mtime, __import__("datetime").timezone.utc).isoformat(),
+        })
+    return projects
+
+
 def save_server_project(project_id, project, expected_revision=None, title=None, create=False):
     if not isinstance(project, dict):
         raise TypeError("项目内容必须是 JSON 对象。")
@@ -313,6 +332,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/server/projects":
             self.send_json({"projects": list_server_projects()})
+            return
+        if parsed.path == "/api/list-projects":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地项目列表接口。"}, 403)
+                return
+            self.send_json({"projects": list_local_project_files()})
             return
         if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
             self.serve_server_project_photo(parsed)

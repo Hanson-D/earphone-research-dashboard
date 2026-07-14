@@ -1056,7 +1056,7 @@
     const buckets = {
       aBetter: { key: "aBetter", label: `${selectedA || "设备 A"} 更好`, users: [] },
       bBetter: { key: "bBetter", label: `${selectedB || "设备 B"} 更好`, users: [] },
-      close: { key: "close", label: "接近无差异", users: [] },
+      close: { key: "close", label: "无明显差异", users: [] },
       incomplete: { key: "incomplete", label: "数据不完整", users: [] }
     };
 
@@ -1076,9 +1076,9 @@
       };
       if (scoreA == null || scoreB == null) {
         buckets.incomplete.users.push(item);
-      } else if (item.diff >= cleanThreshold) {
+      } else if (item.diff > cleanThreshold) {
         buckets.aBetter.users.push(item);
-      } else if (item.diff <= -cleanThreshold) {
+      } else if (item.diff < -cleanThreshold) {
         buckets.bBetter.users.push(item);
       } else {
         buckets.close.users.push(item);

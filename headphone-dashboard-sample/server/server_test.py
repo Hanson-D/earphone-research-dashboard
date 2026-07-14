@@ -62,6 +62,20 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(revision, 1)
         self.assertEqual(project["_server"]["id"], "study-01")
 
+    def test_list_local_project_files_includes_non_id_filenames(self):
+        root = Path(self.tmp.name)
+        (root / "我的项目.json").write_text(json.dumps({
+            "title": "中文项目",
+            "rows": [{"user_id": "U001"}, {"user_id": "U002"}],
+        }), encoding="utf-8")
+        (root / "bad.json").write_text("{bad", encoding="utf-8")
+
+        projects = server.list_local_project_files()
+        self.assertEqual(len(projects), 1)
+        self.assertEqual(projects[0]["title"], "中文项目")
+        self.assertEqual(projects[0]["rows"], 2)
+        self.assertTrue(projects[0]["path"].endswith("我的项目.json"))
+
     def test_save_requires_matching_revision(self):
         server.save_server_project("study-01", {"version": 1, "rows": []}, create=True)
         ok = server.save_server_project("study-01", {"version": 1, "rows": []}, expected_revision=1)

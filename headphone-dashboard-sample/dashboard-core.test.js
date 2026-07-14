@@ -964,7 +964,11 @@ test("compareDevicesWithinUsers ranks devices and groups paired user differences
     { user_id: "U2", device_name: "B", satisfaction_score: "8" },
     { user_id: "U3", device_name: "A", satisfaction_score: "7" },
     { user_id: "U3", device_name: "B", satisfaction_score: "7.5" },
-    { user_id: "U4", device_name: "A", satisfaction_score: "8" }
+    { user_id: "U4", device_name: "A", satisfaction_score: "8" },
+    { user_id: "U5", device_name: "A", satisfaction_score: "8" },
+    { user_id: "U5", device_name: "B", satisfaction_score: "7" },
+    { user_id: "U6", device_name: "A", satisfaction_score: "7" },
+    { user_id: "U6", device_name: "B", satisfaction_score: "7" }
   ];
   const result = core.compareDevicesWithinUsers(rows, {
     userField: "user_id",
@@ -980,10 +984,21 @@ test("compareDevicesWithinUsers ranks devices and groups paired user differences
   assert.deepEqual(Object.fromEntries(result.groups.map(group => [group.key, group.n])), {
     aBetter: 1,
     bBetter: 1,
-    close: 1,
+    close: 3,
     incomplete: 1
   });
   assert.equal(result.groups.find(group => group.key === "aBetter").users[0].user, "U1");
   assert.equal(result.groups.find(group => group.key === "bBetter").users[0].user, "U2");
   assert.equal(result.groups.find(group => group.key === "close").users[0].diff, -0.5);
+
+  const zeroThreshold = core.compareDevicesWithinUsers(rows, {
+    userField: "user_id",
+    deviceField: "device_name",
+    metric: "satisfaction_score",
+    deviceA: "A",
+    deviceB: "B",
+    threshold: 0
+  });
+  assert.equal(zeroThreshold.groups.find(group => group.key === "close").users.some(item => item.user === "U3"), false);
+  assert.equal(zeroThreshold.groups.find(group => group.key === "close").users.some(item => item.user === "U6"), true);
 });

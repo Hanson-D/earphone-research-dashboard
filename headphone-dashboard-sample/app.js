@@ -188,8 +188,9 @@ const els = Object.fromEntries([
 
 const comparisonTableColumns = [
   { id: "user", label: "用户", width: 80 },
-  { id: "scoreA", label: "设备A分数", width: 90 },
-  { id: "scoreB", label: "设备B分数", width: 90 },
+  { id: "verdict", label: "胜负", width: 95 },
+  { id: "device", label: "设备", width: 110 },
+  { id: "score", label: "指标分数", width: 90 },
   { id: "diff", label: "A-B", width: 70 },
   { id: "profile", label: "组间变量", width: 220 },
   { id: "pressure", label: "挤压摘要", width: 210 },
@@ -890,6 +891,7 @@ async function loadProject(path) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "项目加载失败。");
   const project = Core.sanitizeProjectDocument(result.project);
+  state.activeProjectTabId = "";
   setProjectPath(result.path);
   state.projectTitle = project.title || projectTabTitle(result.path);
   state.rows = project.rows.map(row => ({ ...row }));
@@ -933,6 +935,39 @@ async function loadProject(path) {
   upsertProjectTab(result.path, { title: state.projectTitle });
   els.dataSourceLabel.textContent = "项目数据";
   switchPage("dashboard");
+}
+
+async function autoLoadProjectsFolder() {
+  if (state.serverProjectId || window.location.protocol === "file:") return false;
+  try {
+    const response = await fetch("/api/list-projects");
+    if (!response.ok) return false;
+    const result = await response.json();
+    const projects = Array.isArray(result.projects) ? result.projects : [];
+    if (!projects.length) return false;
+    let loaded = 0;
+    const errors = [];
+    for (const project of projects) {
+      if (!project.path) continue;
+      try {
+        await loadProject(project.path);
+        loaded += 1;
+      } catch (error) {
+        errors.push(`${project.title || project.path}：${error.message}`);
+      }
+    }
+    if (loaded) {
+      setProjectStatus(errors.length ?
+        `已自动加载 ${loaded} 个项目，${errors.length} 个失败。` :
+        `已自动加载 projects 文件夹中的 ${loaded} 个项目。`, false);
+      showProjectRecoveryActions(errors.length > 0);
+      return true;
+    }
+    if (errors.length) setProjectStatus(`projects 自动加载失败：${errors.join("；")}`);
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 async function loadServerProject() {
@@ -1468,34 +1503,36 @@ function updateUserPhotoPosition(user, axis, value) {
   const current = userPhotoPosition(user);
   const next = { ...current, [axis]: clampPercent(value, current[axis]) };
   state.userPhotoPositions[user] = next;
-  const gallery = els.detailBody.querySelector(`[data-photo-user="${CSS.escape(user)}"]`);
-  if (gallery) {
+  document.querySelectorAll(`[data-photo-user="${CSS.escape(user)}"]`).forEach(gallery => {
     gallery.style.setProperty("--user-photo-position-x", `${next.x}%`);
     gallery.style.setProperty("--user-photo-position-y", `${next.y}%`);
-  }
-  const controls = els.detailBody.querySelector(`.photo-position-controls[data-user="${CSS.escape(user)}"]`);
-  controls?.querySelectorAll(".user-photo-position").forEach(input => {
-    const position = input.dataset.axis === "x" ? next.x : next.y;
-    input.value = position;
-    input.nextElementSibling.value = `${position}%`;
   });
-  controls?.querySelector(".photo-position-reset")?.removeAttribute("disabled");
+  document.querySelectorAll(`.photo-position-controls[data-user="${CSS.escape(user)}"]`).forEach(controls => {
+    controls.querySelectorAll(".user-photo-position").forEach(input => {
+      const position = input.dataset.axis === "x" ? next.x : next.y;
+      input.value = position;
+      input.nextElementSibling.value = `${position}%`;
+    });
+    controls.querySelector(".photo-position-reset")?.removeAttribute("disabled");
+  });
 }
 
 function resetUserPhotoPosition(user) {
   if (!user) return;
   delete state.userPhotoPositions[user];
-  const gallery = els.detailBody.querySelector(`[data-photo-user="${CSS.escape(user)}"]`);
-  gallery?.style.removeProperty("--user-photo-position-x");
-  gallery?.style.removeProperty("--user-photo-position-y");
-  const globalPosition = userPhotoPosition(user);
-  const controls = els.detailBody.querySelector(`.photo-position-controls[data-user="${CSS.escape(user)}"]`);
-  controls?.querySelectorAll(".user-photo-position").forEach(input => {
-    const position = input.dataset.axis === "x" ? globalPosition.x : globalPosition.y;
-    input.value = position;
-    input.nextElementSibling.value = `${position}%`;
+  document.querySelectorAll(`[data-photo-user="${CSS.escape(user)}"]`).forEach(gallery => {
+    gallery.style.removeProperty("--user-photo-position-x");
+    gallery.style.removeProperty("--user-photo-position-y");
   });
-  controls?.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
+  const globalPosition = userPhotoPosition(user);
+  document.querySelectorAll(`.photo-position-controls[data-user="${CSS.escape(user)}"]`).forEach(controls => {
+    controls.querySelectorAll(".user-photo-position").forEach(input => {
+      const position = input.dataset.axis === "x" ? globalPosition.x : globalPosition.y;
+      input.value = position;
+      input.nextElementSibling.value = `${position}%`;
+    });
+    controls.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
+  });
 }
 
 function selectedUsersFromHeader() {
@@ -1939,17 +1976,35 @@ function renderComparisonGlobalColumns() {
   `).join("");
 }
 
-function comparisonCell(columnId, item, result) {
+function comparisonVerdict(item, result) {
+  if (item.scoreA == null || item.scoreB == null) return "数据不完整";
+  if (item.diff > result.threshold) return "A设备好";
+  if (item.diff < -result.threshold) return "B设备好";
+  return "无明显差异";
+}
+
+function comparisonDeviceRows(item, result) {
+  const buildRows = (rows, device, side) => rows.length ? rows.map(row => ({ row, device, side, missing: false })) : [{ row: null, device, side, missing: true }];
+  return [
+    ...buildRows(item.rowsA || [], result.deviceA || "设备 A", "A"),
+    ...buildRows(item.rowsB || [], result.deviceB || "设备 B", "B")
+  ];
+}
+
+function comparisonCell(columnId, item, result, deviceRow, rowIndex, rowSpan) {
   const preferredA = item.diff != null && item.diff > 0;
   const preferredB = item.diff != null && item.diff < 0;
-  if (columnId === "user") return `<td><strong>${escapeHtml(item.user)}</strong></td>`;
-  if (columnId === "scoreA") return `<td>${comparisonScore(item.scoreA, preferredA)}</td>`;
-  if (columnId === "scoreB") return `<td>${comparisonScore(item.scoreB, preferredB)}</td>`;
-  if (columnId === "diff") return `<td><span class="preference-diff">${item.diff == null ? "—" : item.diff.toFixed(1)}</span></td>`;
-  if (columnId === "profile") return `<td>${comparisonProfile(item.rows)}</td>`;
-  if (columnId === "pressure") return `<td>${comparisonPressure(item.rows)}</td>`;
-  if (columnId === "photos") return `<td>${comparisonPhotoStrip(item, result)}</td>`;
-  if (columnId === "note") return `<td>${escapeHtml(state.userNotes[item.user] || "") || "—"}</td>`;
+  const row = deviceRow.row || {};
+  const score = deviceRow.side === "A" ? row[state.comparisonMetric] ?? item.scoreA : row[state.comparisonMetric] ?? item.scoreB;
+  if (columnId === "user") return rowIndex === 0 ? `<td rowspan="${rowSpan}"><strong>${escapeHtml(item.user)}</strong></td>` : "";
+  if (columnId === "verdict") return rowIndex === 0 ? `<td rowspan="${rowSpan}"><span class="preference-verdict ${attrEscape(result.groups.find(group => group.users.includes(item))?.key || "")}">${escapeHtml(comparisonVerdict(item, result))}</span></td>` : "";
+  if (columnId === "device") return `<td><strong>${escapeHtml(deviceRow.device || "—")}</strong>${deviceRow.missing ? '<small class="preference-missing-row">缺少该设备数据</small>' : ""}</td>`;
+  if (columnId === "score") return `<td>${comparisonScore(score, deviceRow.side === "A" ? preferredA : preferredB)}</td>`;
+  if (columnId === "diff") return rowIndex === 0 ? `<td rowspan="${rowSpan}"><span class="preference-diff">${item.diff == null ? "—" : item.diff.toFixed(1)}</span></td>` : "";
+  if (columnId === "profile") return rowIndex === 0 ? `<td rowspan="${rowSpan}">${comparisonProfile(item.rows)}</td>` : "";
+  if (columnId === "pressure") return `<td>${deviceRow.missing ? "—" : comparisonPressure([row])}</td>`;
+  if (columnId === "photos") return rowIndex === 0 ? `<td class="photo-cell preference-photo-cell" rowspan="${rowSpan}">${item.rows.length ? photoGalleryContent({ label: "照片" }, item.rows) : "—"}</td>` : "";
+  if (columnId === "note") return rowIndex === 0 ? userNoteCell(item.user, rowSpan) : "";
   return "<td>—</td>";
 }
 
@@ -1961,7 +2016,7 @@ function renderComparisonDetails(result) {
       const visibleColumns = comparisonTableColumns.filter(column => layout.columns[column.id]?.visible);
       if (!visibleColumns.length) visibleColumns.push(comparisonTableColumns[0]);
       const totalWidth = visibleColumns.reduce((sum, column) => sum + (layout.columns[column.id]?.width || column.width), 0) || 1;
-      return `<section class="preference-detail-group" data-group-key="${attrEscape(group.key)}" style="--preference-font-size:${layout.fontSize}px;--preference-photo-size:${layout.photoSize}px;">
+      return `<section class="preference-detail-group" data-group-key="${attrEscape(group.key)}" style="--preference-font-size:${layout.fontSize}px;--preference-photo-size:${layout.photoSize}px;--photo-size:${layout.photoSize}px;">
       <header>
         <h3>${attrEscape(group.label)}</h3>
         <span>${group.n} 位用户 · ${group.meanDiff == null ? "差值 —" : `平均差值 ${group.meanDiff.toFixed(1)}`}</span>
@@ -1975,17 +2030,17 @@ function renderComparisonDetails(result) {
           <thead>
             <tr>
               ${visibleColumns.map(column => {
-                if (column.id === "scoreA") return `<th>${attrEscape(result.deviceA || "设备 A")} ${attrEscape(metricLabel)}</th>`;
-                if (column.id === "scoreB") return `<th>${attrEscape(result.deviceB || "设备 B")} ${attrEscape(metricLabel)}</th>`;
+                if (column.id === "score") return `<th>${attrEscape(metricLabel)}</th>`;
                 return `<th>${column.label}</th>`;
               }).join("")}
             </tr>
           </thead>
           <tbody>
             ${group.users.length ? group.users.map(item => {
-              return `<tr>
-                ${visibleColumns.map(column => comparisonCell(column.id, item, result)).join("")}
-              </tr>`;
+              const deviceRows = comparisonDeviceRows(item, result);
+              return deviceRows.map((deviceRow, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}">
+                ${visibleColumns.map(column => comparisonCell(column.id, item, result, deviceRow, rowIndex, deviceRows.length)).join("")}
+              </tr>`).join("");
             }).join("") : `<tr><td colspan="${Math.max(1, visibleColumns.length)}"><div class="empty-state">该分组暂无用户。</div></td></tr>`}
           </tbody>
         </table>
@@ -1993,6 +2048,7 @@ function renderComparisonDetails(result) {
     </section>`;
     })()}
   `).join("");
+  observeDetailPhotos();
 }
 
 function renderComparisonPreference() {
@@ -2172,7 +2228,7 @@ function detailCell(column, row) {
   return `<td class="${classes}">${field === state.userIdField ? `<strong>${escapeHtml(value)}</strong>` : escapeHtml(value) || "—"}</td>`;
 }
 
-function photoGalleryCell(column, userRows) {
+function photoGalleryContent(column, userRows) {
   const user = userRows[0][state.userIdField];
   const deviceField = state.headers.includes("device_name") ? "device_name" :
     state.headers.find(field => /device|condition|设备|条件/i.test(field));
@@ -2194,8 +2250,7 @@ function photoGalleryCell(column, userRows) {
   const options = userOptions.map(option =>
     `<option value="${attrEscape(option.value)}" ${state.userViews[user] === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`
   ).join("");
-  return `<td class="photo-cell" rowspan="${userRows.length}">
-    <div class="photo-cell-layout">
+  return `<div class="photo-cell-layout">
       <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customPosition ? `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;` : ""}">${items || "—"}</div>
       <aside class="photo-cell-controls" aria-label="${attrEscape(user)}照片显示控制">
         <select class="user-view-select" data-user="${attrEscape(user)}" aria-label="${attrEscape(user)}照片视角">
@@ -2207,8 +2262,11 @@ function photoGalleryCell(column, userRows) {
           <button type="button" class="photo-position-reset" data-user="${attrEscape(user)}" ${customPosition ? "" : "disabled"}>跟随全局</button>
         </div>
       </aside>
-    </div>
-  </td>`;
+    </div>`;
+}
+
+function photoGalleryCell(column, userRows) {
+  return `<td class="photo-cell" rowspan="${userRows.length}">${photoGalleryContent(column, userRows)}</td>`;
 }
 
 function detailRows(allFilteredRows, groups) {
@@ -2380,6 +2438,7 @@ function renderMappingMode() {
   const photoEarMode = photoEarModeEnabled();
   els.mappingEarFieldWrap.hidden = false;
   els.viewNamesInputWrap.hidden = folderMode;
+  els.viewNamesInput.required = !folderMode;
   els.bareEarToggleWrap.hidden = folderMode;
   els.viewNamesInput.placeholder = folderMode || photoEarMode ? "例如：正面,侧面,后侧" : "例如：左耳正面,左耳侧面,右耳正面,右耳侧面";
   els.mappingModeNote.innerHTML = folderMode ?
@@ -2672,7 +2731,8 @@ function unloadDetailPhoto(image) {
 
 function observeDetailPhotos() {
   state.detailPhotoObserver?.disconnect?.();
-  const images = [...els.detailBody.querySelectorAll("img.detail-photo-lazy[data-src], img[data-loaded-src]")];
+  const roots = [els.detailBody, els.comparisonDetails].filter(Boolean);
+  const images = roots.flatMap(root => [...root.querySelectorAll("img.detail-photo-lazy[data-src], img[data-loaded-src]")]);
   if (!images.length) return;
   if (detailPhotoMode() === "capture") {
     images.forEach(loadDetailPhoto);
@@ -2682,14 +2742,12 @@ function observeDetailPhotos() {
     images.forEach(loadDetailPhoto);
     return;
   }
-  const detailWrap = document.querySelector(".detail-table-wrap");
   state.detailPhotoObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (entry.isIntersecting) loadDetailPhoto(entry.target);
       else unloadDetailPhoto(entry.target);
     });
   }, {
-    root: detailWrap || null,
     rootMargin: "520px 0px",
     threshold: 0.01
   });
@@ -3440,7 +3498,39 @@ function bindEvents() {
     renderComparisonPreference();
     markProjectDirty();
   });
+  els.comparisonDetails.addEventListener("input", event => {
+    if (event.target.classList.contains("user-note-input")) {
+      const user = event.target.dataset.user || "";
+      const value = event.target.value.trim();
+      if (value) state.userNotes[user] = value;
+      else delete state.userNotes[user];
+      return;
+    }
+    if (!event.target.classList.contains("user-photo-position")) return;
+    updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+  });
   els.comparisonDetails.addEventListener("change", event => {
+    if (event.target.classList.contains("user-view-select")) {
+      const user = event.target.dataset.user;
+      if (event.target.value) state.userViews[user] = event.target.value;
+      else delete state.userViews[user];
+      renderComparisonPreference();
+      markProjectDirty();
+      return;
+    }
+    if (event.target.classList.contains("user-note-input")) {
+      const user = event.target.dataset.user || "";
+      const value = event.target.value.trim();
+      if (value) state.userNotes[user] = value;
+      else delete state.userNotes[user];
+      markProjectDirty();
+      return;
+    }
+    if (event.target.classList.contains("user-photo-position")) {
+      updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+      markProjectDirty();
+      return;
+    }
     const groupKey = event.target.dataset.groupKey;
     if (!groupKey) return;
     const layout = comparisonGroupLayout(groupKey);
@@ -3459,6 +3549,12 @@ function bindEvents() {
     }
     state.comparisonGroupLayouts[groupKey] = layout;
     renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonDetails.addEventListener("click", event => {
+    const button = event.target.closest(".photo-position-reset");
+    if (!button) return;
+    resetUserPhotoPosition(button.dataset.user || "");
     markProjectDirty();
   });
   els.comparisonApplyAllTables.addEventListener("click", () => {
@@ -3760,6 +3856,8 @@ async function start() {
     }
   } else if (window.location.protocol === "file:") {
     setProjectStatus("当前是 file:// 打开；保存项目和扫描照片需要通过启动器打开看板。");
+  } else {
+    await autoLoadProjectsFolder();
   }
 }
 
