@@ -117,6 +117,7 @@ const state = {
   userPhotoPositions: {},
   userFilter: null,
   deviceOrderMode: "source",
+  userOrder: [],
   search: "",
   columnFilters: {},
   headers: [],
@@ -142,6 +143,7 @@ const state = {
 };
 
 let draggedColumnId = "";
+let draggedDetailUser = "";
 let draggedMappingPhoto = null;
 let mappingDragTargetElement = null;
 let mappingDragImage = null;
@@ -325,7 +327,8 @@ function dashboardConfigSnapshot() {
     pressureWorst: state.pressureWorst,
     userPhotoPositions: state.userPhotoPositions,
     userFilter: state.userFilter,
-    deviceOrderMode: state.deviceOrderMode
+    deviceOrderMode: state.deviceOrderMode,
+    userOrder: state.userOrder
   };
 }
 
@@ -643,6 +646,7 @@ function applyDashboardConfig(config) {
   state.userPhotoPositions = clean.userPhotoPositions || {};
   state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
   state.deviceOrderMode = clean.deviceOrderMode || "source";
+  state.userOrder = Array.isArray(clean.userOrder) ? clean.userOrder : [];
   state.selectedGroup = null;
   buildSchema();
   initializeControls();
@@ -1482,7 +1486,36 @@ function groupByUser(rows) {
     if (!users.has(user)) users.set(user, []);
     users.get(user).push(row);
   });
-  return [...users.values()].map(userRows => sortUserDeviceRows(userRows));
+  const order = new Map((state.userOrder || []).map((user, index) => [String(user), index]));
+  return [...users.entries()]
+    .sort(([userA], [userB]) => {
+      const a = order.has(String(userA)) ? order.get(String(userA)) : Number.MAX_SAFE_INTEGER;
+      const b = order.has(String(userB)) ? order.get(String(userB)) : Number.MAX_SAFE_INTEGER;
+      return a - b;
+    })
+    .map(([, userRows]) => sortUserDeviceRows(userRows));
+}
+
+function syncUserOrder(users = allUserNames()) {
+  const current = new Set(users.map(String));
+  const ordered = (state.userOrder || []).filter(user => current.has(String(user))).map(String);
+  users.map(String).forEach(user => {
+    if (!ordered.includes(user)) ordered.push(user);
+  });
+  state.userOrder = ordered;
+  return state.userOrder;
+}
+
+function moveUserOrder(draggedUser, targetUser) {
+  if (!draggedUser || !targetUser || draggedUser === targetUser) return false;
+  const users = syncUserOrder();
+  const fromIndex = users.indexOf(String(draggedUser));
+  const toIndex = users.indexOf(String(targetUser));
+  if (fromIndex < 0 || toIndex < 0) return false;
+  const [user] = users.splice(fromIndex, 1);
+  users.splice(toIndex, 0, user);
+  state.userOrder = users;
+  return true;
 }
 
 function sortUserDeviceRows(userRows = []) {
@@ -1632,6 +1665,7 @@ function renderDetails(rows, groups) {
   ];
   els.groupStats.innerHTML = stats.map(([label, value]) => `<div class="group-stat">${label}<strong>${value}</strong></div>`).join("");
   els.detailCount.textContent = `显示 ${visibleRows.length} / ${baseRows.length} 条记录`;
+  syncUserOrder();
   const visibleColumns = state.layout.columns.filter(column => column.visible);
   const maxPhotos = Math.max(1, ...groupByUser(visibleRows).map(userRows =>
     Math.max(...visibleColumns.filter(column => column.photo).map(column =>
@@ -1645,12 +1679,15 @@ function renderDetails(rows, groups) {
     column.photo ? Math.max(column.width, maxPhotos * (state.layout.photoSize + 10) + 118) : column.width
   );
   const totalWeight = columnWidths.reduce((sum, width) => sum + width, 0);
-  els.detailColgroup.innerHTML = visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
-  els.detailHead.innerHTML = `<tr>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}</tr>`;
+  els.detailColgroup.innerHTML = `<col class="user-sort-col" style="width:32px">` +
+    visibleColumns.map((column, index) => `<col style="width:${columnWidths[index] / totalWeight * 100}%">`).join("");
+  els.detailHead.innerHTML = `<tr><th class="user-sort-head" title="拖动用户排序">排序</th>${visibleColumns.map(column => renderDetailHeaderCell(column, rows)).join("")}</tr>`;
   const noUsersSelected = Array.isArray(state.userFilter) && state.userFilter.length === 0;
-  els.detailBody.innerHTML = noUsersSelected ? `<tr><td colspan="${visibleColumns.length || 1}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
+  const detailColumnCount = visibleColumns.length + 1;
+  els.detailBody.innerHTML = noUsersSelected ? `<tr><td colspan="${detailColumnCount}"><div class="empty-state error-state">没有用户信息被展示。请在用户列下拉菜单中至少勾选一个用户。</div></td></tr>` :
     visibleRows.length ? groupByUser(visibleRows).map(userRows =>
-    userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}">
+    userRows.map((row, rowIndex) => `<tr class="${rowIndex === 0 ? "user-group-start" : ""}" data-detail-user="${attrEscape(userRows[0][state.userIdField])}">
+      ${rowIndex === 0 ? `<td class="user-sort-cell" rowspan="${userRows.length}"><button type="button" class="user-sort-handle" draggable="true" data-user="${attrEscape(userRows[0][state.userIdField])}" aria-label="拖动${attrEscape(userRows[0][state.userIdField])}排序">⋮⋮</button></td>` : ""}
       ${visibleColumns.map(column => {
         if (column.photo) return rowIndex === 0 ? photoGalleryCell(column, userRows) : "";
         if (column.userLevel && rowIndex > 0) return "";
@@ -1658,7 +1695,7 @@ function renderDetails(rows, groups) {
         return column.userLevel ? cell.replace("<td", `<td rowspan="${userRows.length}"`) : cell;
       }).join("")}
     </tr>`).join("")
-  ).join("") : `<tr><td colspan="${visibleColumns.length || 1}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
+  ).join("") : `<tr><td colspan="${detailColumnCount}"><div class="empty-state">当前组内没有匹配记录。</div></td></tr>`;
   observeDetailPhotos();
 }
 
@@ -2802,6 +2839,41 @@ function bindEvents() {
     if (!button) return;
     resetUserPhotoPosition(button.dataset.user || "");
     markProjectDirty();
+  });
+  els.detailBody.addEventListener("dragstart", event => {
+    const handle = event.target.closest(".user-sort-handle");
+    if (!handle) return;
+    draggedDetailUser = handle.dataset.user || "";
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedDetailUser);
+    handle.closest("tr")?.classList.add("user-sort-dragging");
+  });
+  els.detailBody.addEventListener("dragover", event => {
+    if (!draggedDetailUser) return;
+    const row = event.target.closest("tr[data-detail-user]");
+    if (!row || row.dataset.detailUser === draggedDetailUser) return;
+    event.preventDefault();
+    row.classList.add("user-sort-drop-target");
+  });
+  els.detailBody.addEventListener("dragleave", event => {
+    event.target.closest("tr[data-detail-user]")?.classList.remove("user-sort-drop-target");
+  });
+  els.detailBody.addEventListener("drop", event => {
+    if (!draggedDetailUser) return;
+    const row = event.target.closest("tr[data-detail-user]");
+    els.detailBody.querySelectorAll(".user-sort-drop-target").forEach(item => item.classList.remove("user-sort-drop-target"));
+    if (!row || row.dataset.detailUser === draggedDetailUser) return;
+    event.preventDefault();
+    if (moveUserOrder(draggedDetailUser, row.dataset.detailUser)) {
+      renderDetails(filteredRows(), groupedRows(filteredRows()));
+      markProjectDirty();
+    }
+  });
+  els.detailBody.addEventListener("dragend", () => {
+    draggedDetailUser = "";
+    els.detailBody.querySelectorAll(".user-sort-dragging, .user-sort-drop-target").forEach(row =>
+      row.classList.remove("user-sort-dragging", "user-sort-drop-target")
+    );
   });
   els.fontSizeControl.addEventListener("input", () => {
     state.layout.fontSize = Number(els.fontSizeControl.value);

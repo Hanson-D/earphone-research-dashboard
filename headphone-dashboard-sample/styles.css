@@ -409,6 +409,27 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .header-menu-actions button { flex: 1; padding: 4px 6px; color: var(--accent-dark); background: var(--accent-pale); border: 1px solid var(--line); font-size: 10px; font-weight: 800; cursor: pointer; }
 .user-filter-options { display: grid; gap: 5px; }
 .user-filter-options label { display: flex; gap: 5px; align-items: center; color: var(--ink); font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.user-sort-head { width: 32px; color: var(--muted); font-size: 9px !important; text-align: center; }
+.detail-table td.user-sort-cell { padding: 4px; background: #fff; text-align: center; vertical-align: middle; }
+.user-sort-handle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  min-width: 24px;
+  height: 34px;
+  margin: 0 auto;
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+  border: 1px solid #d8c5c5;
+  border-radius: 3px;
+  cursor: grab;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -2px;
+}
+.user-sort-handle:active { cursor: grabbing; }
+.detail-table tr.user-sort-dragging { opacity: .45; }
+.detail-table tr.user-sort-drop-target td { border-top-color: var(--accent-dark); box-shadow: inset 0 3px 0 var(--accent-dark); }
 .detail-table td { overflow: hidden; font-size: 1em; line-height: 1.25; overflow-wrap: anywhere; }
 .detail-table td.photo-cell { padding: 4px; text-align: center; }
 .detail-table tbody tr.user-group-start td { border-top: 3px solid var(--accent); }

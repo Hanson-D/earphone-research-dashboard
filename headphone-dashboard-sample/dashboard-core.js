@@ -1026,6 +1026,8 @@
     const validUsers = new Set((config.rows || []).map(row => row?.[userField]).filter(Boolean).map(String));
     const userFilter = Array.isArray(config.userFilter) ?
       config.userFilter.map(String).filter(user => !validUsers.size || validUsers.has(user)) : null;
+    const userOrder = Array.isArray(config.userOrder) ?
+      config.userOrder.map(String).filter(user => !validUsers.size || validUsers.has(user)) : [];
     const deviceOrderMode = ["source", "asc", "desc"].includes(config.deviceOrderMode) ? config.deviceOrderMode : "";
     const keepField = field => headerSet.has(field) ? field : "";
     return {
@@ -1039,6 +1041,7 @@
       pressureWorst: config.pressureWorst === "high" ? "high" : config.pressureWorst === "low" ? "low" : "",
       userPhotoPositions,
       userFilter,
+      userOrder,
       deviceOrderMode
     };
   }
