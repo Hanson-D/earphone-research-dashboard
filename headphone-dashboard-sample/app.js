@@ -153,6 +153,8 @@ const state = {
 
 let draggedColumnId = "";
 let draggedDetailUser = "";
+let draggedProjectTabId = "";
+let activeColumnConfigList = null;
 let draggedMappingPhoto = null;
 let mappingDragTargetElement = null;
 let mappingDragImage = null;
@@ -624,12 +626,21 @@ function upsertProjectTab(path = state.projectPath, options = {}) {
 function renderProjectTabs() {
   if (!els.projectTabs) return;
   els.projectTabs.innerHTML = state.projectTabs.map(tab => `
-    <div class="project-tab-item ${tab.id === state.activeProjectTabId ? "active" : ""}" role="button" tabindex="0" data-tab-id="${attrEscape(tab.id)}" title="${attrEscape(tab.path || tab.title)}">
-      <input class="project-tab-title" data-tab-name="${attrEscape(tab.id)}" value="${attrEscape(tab.title)}" aria-label="项目标签名称">
+    <div class="project-tab-item ${tab.id === state.activeProjectTabId ? "active" : ""} ${tab.renaming ? "renaming" : ""}" data-tab-id="${attrEscape(tab.id)}" title="${attrEscape(tab.path || tab.title)}">
+      <button class="project-tab-drag" type="button" draggable="true" data-drag-tab="${attrEscape(tab.id)}" aria-label="拖动项目排序">⋮⋮</button>
+      ${tab.renaming ?
+        `<input class="project-tab-title-input" data-tab-name="${attrEscape(tab.id)}" value="${attrEscape(tab.title)}" aria-label="项目标签名称">` :
+        `<button class="project-tab-title" type="button" data-activate-tab="${attrEscape(tab.id)}">${escapeHtml(tab.title)}</button>`}
       <span class="project-tab-dirty" aria-hidden="true">${tab.dirty ? "*" : ""}</span>
+      <button class="project-tab-rename" type="button" data-rename-tab="${attrEscape(tab.id)}" aria-label="重命名项目标签">改</button>
       <button class="project-tab-close" type="button" data-close-tab="${attrEscape(tab.id)}" aria-label="关闭项目标签">×</button>
     </div>
   `).join("") || `<div class="project-empty">暂无打开项目</div>`;
+  const renaming = els.projectTabs.querySelector(".project-tab-title-input");
+  if (renaming) {
+    renaming.focus({ preventScroll: true });
+    renaming.select();
+  }
 }
 
 function restoreProjectTabSnapshot(snapshot) {
@@ -770,6 +781,7 @@ function renameProjectTab(tabId, title, options = {}) {
   const cleanTitle = String(title || "").trim() || projectTabTitle(tab.path);
   tab.title = cleanTitle;
   tab.customTitle = true;
+  if (options.persist) tab.renaming = false;
   if (tab.id === state.activeProjectTabId) {
     state.projectTitle = cleanTitle;
     if (options.persist) {
@@ -779,6 +791,24 @@ function renameProjectTab(tabId, title, options = {}) {
       setProjectStatus(state.projectPath ? `当前项目：${state.projectPath}` : "未加载项目文件");
     }
   }
+}
+
+function startRenameProjectTab(tabId) {
+  state.projectTabs.forEach(tab => {
+    tab.renaming = tab.id === tabId;
+  });
+  renderProjectTabs();
+}
+
+function moveProjectTab(draggedId, targetId) {
+  if (!draggedId || !targetId || draggedId === targetId) return false;
+  const fromIndex = state.projectTabs.findIndex(tab => tab.id === draggedId);
+  const toIndex = state.projectTabs.findIndex(tab => tab.id === targetId);
+  if (fromIndex < 0 || toIndex < 0) return false;
+  const [tab] = state.projectTabs.splice(fromIndex, 1);
+  state.projectTabs.splice(toIndex, 0, tab);
+  renderProjectTabs();
+  return true;
 }
 
 function setProjectStatus(message, dirty = state.projectDirty) {
@@ -1076,6 +1106,16 @@ function applyLayoutVariables() {
   els.photoPositionYValue.value = `${state.layout.photoPositionY ?? 50}%`;
   els.detailPhotoModeControl.value = sanitizeDetailPhotoMode(state.layout.detailPhotoMode);
   els.detailPhotoModeValue.value = state.layout.detailPhotoMode === "capture" ? "原图" : "预览";
+  document.querySelectorAll(".layout-font-size-control").forEach(input => { input.value = state.layout.fontSize; });
+  document.querySelectorAll(".layout-font-size-value").forEach(output => { output.value = `${state.layout.fontSize}px`; });
+  document.querySelectorAll(".layout-photo-size-control").forEach(input => { input.value = state.layout.photoSize; });
+  document.querySelectorAll(".layout-photo-size-value").forEach(output => { output.value = `${state.layout.photoSize}px`; });
+  document.querySelectorAll(".layout-photo-position-x-control").forEach(input => { input.value = state.layout.photoPositionX ?? 50; });
+  document.querySelectorAll(".layout-photo-position-x-value").forEach(output => { output.value = `${state.layout.photoPositionX ?? 50}%`; });
+  document.querySelectorAll(".layout-photo-position-y-control").forEach(input => { input.value = state.layout.photoPositionY ?? 50; });
+  document.querySelectorAll(".layout-photo-position-y-value").forEach(output => { output.value = `${state.layout.photoPositionY ?? 50}%`; });
+  document.querySelectorAll(".layout-detail-photo-mode-control").forEach(select => { select.value = sanitizeDetailPhotoMode(state.layout.detailPhotoMode); });
+  document.querySelectorAll(".layout-detail-photo-mode-value").forEach(output => { output.value = state.layout.detailPhotoMode === "capture" ? "原图" : "预览"; });
   syncVisiblePhotoPositionControls();
 }
 
@@ -1094,7 +1134,7 @@ function syncVisiblePhotoPositionControls() {
 }
 
 function renderColumnConfig() {
-  els.columnConfigList.innerHTML = state.layout.columns.map(column => `
+  const html = state.layout.columns.map(column => `
     <div class="column-config-row" data-column-id="${attrEscape(column.id)}" draggable="true">
       <span class="column-drag-handle" aria-label="拖拽移动${attrEscape(column.label)}" title="拖拽排序">⋮⋮</span>
       <input class="column-visible" type="checkbox" aria-label="显示${attrEscape(column.label)}" ${column.visible ? "checked" : ""}>
@@ -1102,6 +1142,10 @@ function renderColumnConfig() {
       <input class="column-width" type="number" min="60" max="500" step="10" value="${column.width}" aria-label="${attrEscape(column.label)}列宽">
     </div>
   `).join("");
+  els.columnConfigList.innerHTML = html;
+  document.querySelectorAll(".synced-column-config-list").forEach(list => {
+    list.innerHTML = html;
+  });
 }
 
 function moveColumn(draggedId, targetId, placeAfter = false) {
@@ -1121,14 +1165,14 @@ function runColumnDragAutoScroll() {
     columnDragScrollFrame = 0;
     return;
   }
-  if (columnDragScroll.list) els.columnConfigList.scrollTop += columnDragScroll.list;
+  if (columnDragScroll.list) (activeColumnConfigList || els.columnConfigList).scrollTop += columnDragScroll.list;
   if (columnDragScroll.page) window.scrollBy(0, columnDragScroll.page);
   columnDragScrollFrame = requestAnimationFrame(runColumnDragAutoScroll);
 }
 
-function updateColumnDragAutoScroll(clientY) {
+function updateColumnDragAutoScroll(clientY, list = activeColumnConfigList || els.columnConfigList) {
   const edge = 48;
-  const listRect = els.columnConfigList.getBoundingClientRect();
+  const listRect = list.getBoundingClientRect();
   let listDelta = 0;
   if (clientY < listRect.top + edge) listDelta = -Math.ceil((edge - (clientY - listRect.top)) / 3);
   else if (clientY > listRect.bottom - edge) listDelta = Math.ceil((edge - (listRect.bottom - clientY)) / 3);
@@ -3225,37 +3269,207 @@ function bindUserSortDrag(container) {
   });
 }
 
+function importDashboardConfigFile(file, input) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      applyDashboardConfig(JSON.parse(reader.result));
+    } catch (error) {
+      alert(`配置导入失败：${error.message}`);
+    } finally {
+      if (input) input.value = "";
+    }
+  };
+  reader.readAsText(file, "UTF-8");
+}
+
+function handleLayoutControlInput(event) {
+  if (event.target.classList.contains("layout-font-size-control")) {
+    state.layout.fontSize = Number(event.target.value);
+  } else if (event.target.classList.contains("layout-photo-size-control")) {
+    state.layout.photoSize = Number(event.target.value);
+  } else if (event.target.classList.contains("layout-photo-position-x-control")) {
+    state.layout.photoPositionX = Number(event.target.value);
+  } else if (event.target.classList.contains("layout-photo-position-y-control")) {
+    state.layout.photoPositionY = Number(event.target.value);
+  } else {
+    return false;
+  }
+  applyLayoutVariables();
+  saveLayout();
+  markProjectDirty();
+  return true;
+}
+
+function handleLayoutControlChange(event) {
+  if (event.target.classList.contains("layout-detail-photo-mode-control")) {
+    state.layout.detailPhotoMode = sanitizeDetailPhotoMode(event.target.value);
+    applyLayoutVariables();
+    saveLayout();
+    render();
+    markProjectDirty();
+    return true;
+  }
+  const row = event.target.closest(".column-config-row");
+  if (row && event.target.classList.contains("column-visible")) {
+    const column = state.layout.columns.find(item => item.id === row.dataset.columnId);
+    if (column) column.visible = event.target.checked;
+    saveLayout();
+    renderColumnConfig();
+    render();
+    markProjectDirty();
+    return true;
+  }
+  return false;
+}
+
+function handleColumnConfigInput(event) {
+  if (!event.target.classList.contains("column-width")) return false;
+  const row = event.target.closest(".column-config-row");
+  const column = state.layout.columns.find(item => item.id === row?.dataset.columnId);
+  if (!column) return false;
+  column.width = Math.max(60, Math.min(500, Number(event.target.value) || column.width));
+  saveLayout();
+  render();
+  markProjectDirty();
+  return true;
+}
+
+function handleColumnConfigDragStart(event) {
+  const row = event.target.closest(".column-config-row");
+  if (!row || !event.target.classList.contains("column-drag-handle")) return false;
+  draggedColumnId = row.dataset.columnId;
+  activeColumnConfigList = row.closest(".column-config-list");
+  row.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", draggedColumnId);
+  return true;
+}
+
+function handleColumnConfigDragOver(event) {
+  if (!draggedColumnId) return false;
+  const row = event.target.closest(".column-config-row");
+  if (!row || row.dataset.columnId === draggedColumnId) return false;
+  event.preventDefault();
+  updateColumnDragAutoScroll(event.clientY, row.closest(".column-config-list") || activeColumnConfigList || els.columnConfigList);
+  const rect = row.getBoundingClientRect();
+  const placeAfter = event.clientY > rect.top + rect.height / 2;
+  row.classList.toggle("drop-before", !placeAfter);
+  row.classList.toggle("drop-after", placeAfter);
+  return true;
+}
+
+function handleColumnConfigDrop(event) {
+  const row = event.target.closest(".column-config-row");
+  if (!row || !draggedColumnId) return false;
+  event.preventDefault();
+  stopColumnDragAutoScroll();
+  const rect = row.getBoundingClientRect();
+  const placeAfter = event.clientY > rect.top + rect.height / 2;
+  if (moveColumn(draggedColumnId, row.dataset.columnId, placeAfter)) {
+    saveLayout();
+    renderColumnConfig();
+    render();
+    markProjectDirty();
+  }
+  return true;
+}
+
+function finishColumnConfigDrag() {
+  draggedColumnId = "";
+  activeColumnConfigList = null;
+  stopColumnDragAutoScroll();
+  document.querySelectorAll(".column-config-row").forEach(row =>
+    row.classList.remove("dragging", "drop-before", "drop-after")
+  );
+}
+
 function bindEvents() {
   document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
   els.projectTabs.addEventListener("click", event => {
-    if (event.target.closest(".project-tab-title")) return;
     const close = event.target.closest("[data-close-tab]");
     if (close) {
       event.stopPropagation();
       closeProjectTab(close.dataset.closeTab || "");
       return;
     }
-    const tab = event.target.closest(".project-tab-item");
-    if (tab) activateProjectTab(tab.dataset.tabId || "");
+    const rename = event.target.closest("[data-rename-tab]");
+    if (rename) {
+      event.stopPropagation();
+      startRenameProjectTab(rename.dataset.renameTab || "");
+      return;
+    }
+    const activate = event.target.closest("[data-activate-tab]");
+    if (activate) activateProjectTab(activate.dataset.activateTab || "");
   });
   els.projectTabs.addEventListener("keydown", event => {
-    if (event.target.closest(".project-tab-title")) return;
+    if (event.target.closest(".project-tab-title-input")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const input = event.target.closest(".project-tab-title-input");
+        renameProjectTab(input.dataset.tabName || "", input.value, { persist: true });
+        renderProjectTabs();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        state.projectTabs.forEach(tab => { tab.renaming = false; });
+        renderProjectTabs();
+      }
+      return;
+    }
     if (event.key !== "Enter" && event.key !== " ") return;
-    const tab = event.target.closest(".project-tab-item");
+    const tab = event.target.closest("[data-activate-tab]");
     if (!tab) return;
     event.preventDefault();
-    activateProjectTab(tab.dataset.tabId || "");
+    activateProjectTab(tab.dataset.activateTab || "");
   });
   els.projectTabs.addEventListener("input", event => {
-    const input = event.target.closest(".project-tab-title");
+    const input = event.target.closest(".project-tab-title-input");
     if (!input) return;
     renameProjectTab(input.dataset.tabName || "", input.value);
   });
   els.projectTabs.addEventListener("change", event => {
-    const input = event.target.closest(".project-tab-title");
+    const input = event.target.closest(".project-tab-title-input");
     if (!input) return;
     renameProjectTab(input.dataset.tabName || "", input.value, { persist: true });
     renderProjectTabs();
+  });
+  els.projectTabs.addEventListener("focusout", event => {
+    const input = event.target.closest(".project-tab-title-input");
+    if (!input) return;
+    renameProjectTab(input.dataset.tabName || "", input.value, { persist: true });
+    renderProjectTabs();
+  });
+  els.projectTabs.addEventListener("dragstart", event => {
+    const handle = event.target.closest("[data-drag-tab]");
+    if (!handle) return;
+    draggedProjectTabId = handle.dataset.dragTab || "";
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedProjectTabId);
+    handle.closest(".project-tab-item")?.classList.add("dragging");
+  });
+  els.projectTabs.addEventListener("dragover", event => {
+    if (!draggedProjectTabId) return;
+    const tab = event.target.closest(".project-tab-item");
+    if (!tab || tab.dataset.tabId === draggedProjectTabId) return;
+    event.preventDefault();
+    tab.classList.add("drop-target");
+  });
+  els.projectTabs.addEventListener("dragleave", event => {
+    event.target.closest(".project-tab-item")?.classList.remove("drop-target");
+  });
+  els.projectTabs.addEventListener("drop", event => {
+    if (!draggedProjectTabId) return;
+    const tab = event.target.closest(".project-tab-item");
+    els.projectTabs.querySelectorAll(".drop-target").forEach(item => item.classList.remove("drop-target"));
+    if (!tab || tab.dataset.tabId === draggedProjectTabId) return;
+    event.preventDefault();
+    moveProjectTab(draggedProjectTabId, tab.dataset.tabId || "");
+  });
+  els.projectTabs.addEventListener("dragend", () => {
+    draggedProjectTabId = "";
+    els.projectTabs.querySelectorAll(".dragging, .drop-target").forEach(item => item.classList.remove("dragging", "drop-target"));
   });
   els.useSampleProjectButton.addEventListener("click", useSampleProject);
   els.clearProjectPathButton.addEventListener("click", clearProjectPath);
@@ -3680,6 +3894,46 @@ function bindEvents() {
     renderComparisonPreference();
     markProjectDirty();
   });
+  const comparisonPage = document.getElementById("comparisonPage");
+  comparisonPage?.addEventListener("input", event => {
+    if (handleLayoutControlInput(event)) return;
+    handleColumnConfigInput(event);
+  });
+  comparisonPage?.addEventListener("change", event => {
+    if (handleLayoutControlChange(event)) return;
+    const importInput = event.target.closest(".import-config-trigger");
+    if (importInput) importDashboardConfigFile(importInput.files[0], importInput);
+  });
+  comparisonPage?.addEventListener("click", event => {
+    if (event.target.closest(".export-config-trigger")) {
+      exportDashboardConfig();
+      return;
+    }
+    if (event.target.closest(".reset-layout-trigger")) {
+      state.layout = defaultLayout();
+      buildSchema();
+      saveLayout();
+      applyLayoutVariables();
+      renderColumnConfig();
+      render();
+      markProjectDirty();
+    }
+  });
+  comparisonPage?.addEventListener("dragstart", event => {
+    handleColumnConfigDragStart(event);
+  });
+  comparisonPage?.addEventListener("dragover", event => {
+    handleColumnConfigDragOver(event);
+  });
+  comparisonPage?.addEventListener("dragleave", event => {
+    const row = event.target.closest(".column-config-row");
+    if (!row || row.contains(event.relatedTarget)) return;
+    row.classList.remove("drop-before", "drop-after");
+  });
+  comparisonPage?.addEventListener("drop", event => {
+    handleColumnConfigDrop(event);
+  });
+  comparisonPage?.addEventListener("dragend", finishColumnConfigDrag);
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });
   els.detailHead.addEventListener("change", event => {
@@ -3777,52 +4031,19 @@ function bindEvents() {
   });
   els.exportConfigButton.addEventListener("click", exportDashboardConfig);
   els.importConfigInput.addEventListener("change", event => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        applyDashboardConfig(JSON.parse(reader.result));
-      } catch (error) {
-        alert(`配置导入失败：${error.message}`);
-      } finally {
-        els.importConfigInput.value = "";
-      }
-    };
-    reader.readAsText(file, "UTF-8");
+    importDashboardConfigFile(event.target.files[0], els.importConfigInput);
   });
   els.columnConfigList.addEventListener("change", event => {
-    const row = event.target.closest(".column-config-row");
-    if (!row) return;
-    const column = state.layout.columns.find(item => item.id === row.dataset.columnId);
-    if (event.target.classList.contains("column-visible")) column.visible = event.target.checked;
-    saveLayout(); render(); markProjectDirty();
+    handleLayoutControlChange(event);
   });
   els.columnConfigList.addEventListener("input", event => {
-    if (!event.target.classList.contains("column-width")) return;
-    const row = event.target.closest(".column-config-row");
-    const column = state.layout.columns.find(item => item.id === row.dataset.columnId);
-    column.width = Math.max(60, Math.min(500, Number(event.target.value) || column.width));
-    saveLayout(); render(); markProjectDirty();
+    handleColumnConfigInput(event);
   });
   els.columnConfigList.addEventListener("dragstart", event => {
-    const row = event.target.closest(".column-config-row");
-    if (!row) return;
-    draggedColumnId = row.dataset.columnId;
-    row.classList.add("dragging");
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", draggedColumnId);
+    handleColumnConfigDragStart(event);
   });
   els.columnConfigList.addEventListener("dragover", event => {
-    if (!draggedColumnId) return;
-    event.preventDefault();
-    updateColumnDragAutoScroll(event.clientY);
-    const row = event.target.closest(".column-config-row");
-    if (!row || row.dataset.columnId === draggedColumnId) return;
-    const rect = row.getBoundingClientRect();
-    const placeAfter = event.clientY > rect.top + rect.height / 2;
-    row.classList.toggle("drop-before", !placeAfter);
-    row.classList.toggle("drop-after", placeAfter);
+    handleColumnConfigDragOver(event);
   });
   els.columnConfigList.addEventListener("dragleave", event => {
     const row = event.target.closest(".column-config-row");
@@ -3830,22 +4051,10 @@ function bindEvents() {
     row.classList.remove("drop-before", "drop-after");
   });
   els.columnConfigList.addEventListener("drop", event => {
-    const row = event.target.closest(".column-config-row");
-    if (!row || !draggedColumnId) return;
-    event.preventDefault();
-    stopColumnDragAutoScroll();
-    const rect = row.getBoundingClientRect();
-    const placeAfter = event.clientY > rect.top + rect.height / 2;
-    if (moveColumn(draggedColumnId, row.dataset.columnId, placeAfter)) {
-      saveLayout(); renderColumnConfig(); render(); markProjectDirty();
-    }
+    handleColumnConfigDrop(event);
   });
   els.columnConfigList.addEventListener("dragend", () => {
-    draggedColumnId = "";
-    stopColumnDragAutoScroll();
-    els.columnConfigList.querySelectorAll(".column-config-row").forEach(row =>
-      row.classList.remove("dragging", "drop-before", "drop-after")
-    );
+    finishColumnConfigDrag();
   });
   els.resetLayoutButton.addEventListener("click", () => {
     state.layout = defaultLayout();

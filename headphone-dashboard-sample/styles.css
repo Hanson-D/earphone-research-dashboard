@@ -75,7 +75,7 @@ summary:focus-visible,
 .project-tabs { display: grid; gap: 6px; margin-bottom: 10px; }
 .project-tab-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   gap: 6px;
   align-items: center;
   padding: 8px;
@@ -86,7 +86,30 @@ summary:focus-visible,
   text-align: left;
 }
 .project-tab-item.active { color: #fff; background: var(--accent); border-color: var(--accent-dark); }
-.project-tab-title {
+.project-tab-item.dragging { opacity: .45; }
+.project-tab-item.drop-target { box-shadow: inset 3px 0 0 var(--accent-dark); }
+.project-tab-drag,
+.project-tab-rename,
+.project-tab-close {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+.project-tab-drag {
+  border-radius: 3px;
+  cursor: grab;
+  font-weight: 900;
+  letter-spacing: -2px;
+}
+.project-tab-drag:active { cursor: grabbing; }
+.project-tab-title,
+.project-tab-title-input {
   min-width: 0;
   width: 100%;
   padding: 4px 5px;
@@ -96,25 +119,19 @@ summary:focus-visible,
   border-radius: 3px;
   font-size: 11px;
   font-weight: 800;
+  text-align: left;
 }
-.project-tab-item.active .project-tab-title { background: rgba(255,255,255,.16); }
-.project-tab-title:focus {
+.project-tab-title { cursor: pointer; }
+.project-tab-item.active .project-tab-title,
+.project-tab-item.active .project-tab-title-input { background: rgba(255,255,255,.16); }
+.project-tab-title:focus,
+.project-tab-title-input:focus {
   color: var(--ink);
   background: #fff;
   border-color: var(--accent-dark);
 }
 .project-tab-dirty { font-size: 13px; font-weight: 900; line-height: 1; }
-.project-tab-close {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  font-size: 12px;
-  line-height: 1;
-}
+.project-tab-rename { font-size: 10px; font-weight: 800; }
 .project-empty { color: var(--muted); font-size: 11px; }
 body.capture-mode .project-sidebar,
 body.capture-mode .topbar,

@@ -498,7 +498,7 @@
         <div class="control-block">
           <label for="comparisonThreshold">明显差异阈值</label>
           <input id="comparisonThreshold" type="number" min="0" max="10" step="0.5" value="1">
-          <small>按 A 分数 - B 分数分组；默认差值 ≥ 1 分认为 A 明显更好。</small>
+          <small>按 A 分数 - B 分数分组；差值必须大于阈值才判 A 更好，必须小于负阈值才判 B 更好；等于阈值或低于阈值均判为无明显差异。</small>
         </div>
 
         <p class="pressure-note">04 页重点看同一用户内的设备胜负关系。总体排名只用于辅助自动选择比较对象。</p>
@@ -525,6 +525,61 @@
               <h2>胜负分组详情</h2>
               <p class="hint">下方表格沿用 02 数据看板的显示与布局配置；这里只额外增加“胜负”列。</p>
             </div>
+            <details class="layout-config comparison-layout-config">
+              <summary>显示与布局</summary>
+              <div class="layout-config-panel">
+                <section class="layout-config-section">
+                  <div class="column-config-heading">
+                    <strong>显示设置</strong>
+                    <span>与 02 数据看板同步</span>
+                  </div>
+                  <div class="display-settings">
+                    <label>
+                      表格字号
+                      <input class="layout-font-size-control" type="range" min="10" max="18" step="1">
+                      <output class="layout-font-size-value"></output>
+                    </label>
+                    <label>
+                      照片大小
+                      <input class="layout-photo-size-control" type="range" min="60" max="220" step="10">
+                      <output class="layout-photo-size-value"></output>
+                    </label>
+                    <label>
+                      全局照片水平中心
+                      <input class="layout-photo-position-x-control" type="range" min="0" max="100" step="1">
+                      <output class="layout-photo-position-x-value"></output>
+                    </label>
+                    <label>
+                      全局照片垂直中心
+                      <input class="layout-photo-position-y-control" type="range" min="0" max="100" step="1">
+                      <output class="layout-photo-position-y-value"></output>
+                    </label>
+                    <label>
+                      照片加载模式
+                      <select class="layout-detail-photo-mode-control">
+                        <option value="performance">性能模式</option>
+                        <option value="capture">截图模式</option>
+                      </select>
+                      <output class="layout-detail-photo-mode-value"></output>
+                    </label>
+                    <button type="button" class="compact-button export-config-trigger">导出配置</button>
+                    <label class="config-import-button">
+                      导入配置
+                      <input class="import-config-trigger" type="file" accept=".json,application/json">
+                    </label>
+                    <button type="button" class="compact-button reset-layout-trigger">恢复默认布局</button>
+                  </div>
+                </section>
+                <details class="layout-config-section column-layout-section">
+                  <summary>详情列配置</summary>
+                  <div class="column-config-heading">
+                    <strong>列显示与顺序</strong>
+                    <span>拖拽排序，勾选显示，输入列宽</span>
+                  </div>
+                  <div class="column-config-list synced-column-config-list"></div>
+                </details>
+              </div>
+            </details>
             <details class="preference-global-config" hidden>
               <summary>全部小表设置</summary>
               <div class="preference-config-panel">
