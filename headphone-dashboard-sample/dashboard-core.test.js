@@ -411,9 +411,9 @@ test("photo mapping can match folder levels by name, ear side, prototype, and di
   assert.equal(result.photoFields[0], "photo_左耳_正面");
   assert.equal(result.photoViews[0].label, "左耳 · 正面");
   assert.equal(result.photoViews[2].label, "右耳 · 正面");
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/左耳/正面/张三/样机A/001.jpg");
-  assert.equal(result.mapped[0].photo_左耳_侧面, "/photos/样机A/张三/侧面/左耳/002.jpg");
-  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/张三/右耳/样机A/正面/003.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "左耳/正面/张三/样机A/001.jpg");
+  assert.equal(result.mapped[0].photo_左耳_侧面, "样机A/张三/侧面/左耳/002.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "张三/右耳/样机A/正面/003.jpg");
   assert.equal(result.mapped[0].photo_右耳_侧面, "");
   assert.equal(result.mapped.length, 2);
   assert.equal(result.mapped[1].ear_side, "右耳");
@@ -466,10 +466,10 @@ test("folder mode maps bare ear folders parallel to device folders", () => {
   assert.deepEqual(views, ["正面"]);
   assert.equal(result.photoFields.includes("bare_ear_photo_左耳"), true);
   assert.equal(result.photoFields.includes("bare_ear_photo_右耳"), true);
-  assert.equal(result.mapped[0].bare_ear_photo_左耳, "/photos/left-bare.jpg");
-  assert.equal(result.mapped[1].bare_ear_photo_右耳, "/photos/right-bare.jpg");
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/left-device.jpg");
-  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/right-device.jpg");
+  assert.equal(result.mapped[0].bare_ear_photo_左耳, "张三/空耳/左耳/正面/000.jpg");
+  assert.equal(result.mapped[1].bare_ear_photo_右耳, "张三/空耳/右耳/正面/001.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "张三/样机A/左耳/正面/010.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "张三/样机A/右耳/正面/011.jpg");
   assert.equal(result.reviews[0].bareSlots.length, 2);
 });
 
@@ -504,10 +504,10 @@ test("folder mode auto-enables single-ear columns when each condition has only o
     deviceField: "prototype"
   }).enabled, true);
   assert.deepEqual(result.photoFields, ["photo_正面", "photo_侧面"]);
-  assert.equal(result.mapped[0].photo_正面, "/photos/u1-left-front.jpg");
-  assert.equal(result.mapped[0].photo_侧面, "/photos/u1-left-side.jpg");
-  assert.equal(result.mapped[1].photo_正面, "/photos/u2-right-front.jpg");
-  assert.equal(result.mapped[1].photo_侧面, "/photos/u2-right-side.jpg");
+  assert.equal(result.mapped[0].photo_正面, "用户1/样机A/左耳/正面/001.jpg");
+  assert.equal(result.mapped[0].photo_侧面, "用户1/样机A/左耳/侧面/002.jpg");
+  assert.equal(result.mapped[1].photo_正面, "用户2/样机A/右耳/正面/003.jpg");
+  assert.equal(result.mapped[1].photo_侧面, "用户2/样机A/右耳/侧面/004.jpg");
 });
 
 test("folder mode keeps ear columns when any condition has both sides", () => {
@@ -559,7 +559,7 @@ test("folder mode can force single-ear columns even when both sides exist", () =
   });
 
   assert.deepEqual(result.photoFields, ["photo_正面"]);
-  assert.equal(result.mapped[0].photo_正面, "/photos/left.jpg");
+  assert.equal(result.mapped[0].photo_正面, "张三/样机A/左耳/正面/001.jpg");
   assert.equal(result.reviews[0].status, "ok");
 });
 
@@ -586,8 +586,8 @@ test("folder mode does not treat bare ear folder as a device when device field i
 
   assert.deepEqual(views, ["正面"]);
   assert.equal(result.mapped.length, 1);
-  assert.equal(result.mapped[0].bare_ear_photo, "/photos/bare.jpg");
-  assert.equal(result.mapped[0].photo_正面, "/photos/device.jpg");
+  assert.equal(result.mapped[0].bare_ear_photo, "张三/空耳/左耳/正面/000.jpg");
+  assert.equal(result.mapped[0].photo_正面, "张三/样机A/左耳/正面/001.jpg");
 });
 
 test("folder mode derives ear sides from photo folders even when csv has one ear side", () => {
@@ -615,8 +615,8 @@ test("folder mode derives ear sides from photo folders even when csv has one ear
   assert.equal(result.photoFields.includes("photo_左耳_正面"), true);
   assert.equal(result.photoFields.includes("photo_右耳_正面"), true);
   assert.equal(result.mapped.length, 1);
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/left.jpg");
-  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/right.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "张三/左耳/样机A/正面/001.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "张三/右耳/样机A/正面/002.jpg");
 });
 
 test("folder mode keeps left and right photo columns when csv has no ear side field", () => {
@@ -641,8 +641,8 @@ test("folder mode keeps left and right photo columns when csv has no ear side fi
   });
   assert.deepEqual(views, ["正面"]);
   assert.equal(result.mapped.length, 1);
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/left-front.jpg");
-  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/right-front.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "张三/左耳/样机A/正面/001.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "张三/右耳/样机A/正面/002.jpg");
 });
 
 test("folder mode treats missing device field as single device and uses first device folder", () => {
@@ -668,8 +668,8 @@ test("folder mode treats missing device field as single device and uses first de
   });
   assert.deepEqual(views, ["正面"]);
   assert.equal(result.mapped.length, 1);
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/device-a.jpg");
-  assert.equal(result.mapped[0].photo_右耳_正面, "/photos/device-a-right.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "张三/样机A/左耳/正面/001.jpg");
+  assert.equal(result.mapped[0].photo_右耳_正面, "张三/样机A/右耳/正面/003.jpg");
   assert.equal(result.reviews[0].notes[0].includes("样机A"), true);
 });
 
@@ -713,8 +713,8 @@ test("folder mode does not treat device folders as users and keeps csv rows with
   assert.equal(result.reviews.find(review => review.user === "用户1").entries.length, 2);
   assert.deepEqual([...new Set(result.mapped.map(row => row.name))], ["用户1", "用户2", "用户3", "用户4"]);
   assert.equal(result.mapped.filter(row => row.name === "用户1").length, 2);
-  assert.equal(result.mapped.find(row => row.name === "用户1" && row.prototype === "样机A").photo_左耳_正面, "/photos/a-u1-left-front.jpg");
-  assert.equal(result.mapped.find(row => row.name === "用户2" && row.prototype === "样机B").photo_右耳_正面, "/photos/b-u2-right-front.jpg");
+  assert.equal(result.mapped.find(row => row.name === "用户1" && row.prototype === "样机A").photo_左耳_正面, "样机A/用户1/左耳/正面/001.jpg");
+  assert.equal(result.mapped.find(row => row.name === "用户2" && row.prototype === "样机B").photo_右耳_正面, "样机B/用户2/右耳/正面/008.jpg");
   assert.equal(result.mapped.find(row => row.name === "用户3" && row.prototype === "样机A").photo_左耳_正面, "");
   assert.equal(result.mapped.find(row => row.name === "用户4" && row.prototype === "样机B").photo_右耳_正面, "");
 });
@@ -787,7 +787,7 @@ test("folder photo audit reports duplicate or reshoot photos for the same slot",
     viewLabels: Object.fromEntries(result.photoViews.map(view => [view.field, view.label]))
   });
 
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/001.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "U001/A/左耳/正面/001.jpg");
   assert.equal(result.reviews[0].files.length, 2);
   assert.equal(result.reviews[0].status, "extra");
   assert.equal(auditRows.some(row =>
@@ -819,7 +819,7 @@ test("folder photo audit uses protocol expected ears and views", () => {
   });
 
   assert.equal(result.photoFields.includes("photo_右耳_正面"), true);
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/u1-left-front.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "U001/A/左耳/正面/001.jpg");
   assert.equal(result.mapped[0].photo_右耳_正面, "");
   assert.equal(auditRows.some(row => row.view === "右耳 · 正面" && row.message === "缺失照片"), true);
 });
@@ -842,7 +842,7 @@ test("folder matching adapts to decorated folder names instead of requiring exac
     deviceField: "prototype",
     views: ["正面"]
   });
-  assert.equal(result.mapped[0].photo_左耳_正面, "/photos/姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg");
+  assert.equal(result.mapped[0].photo_左耳_正面, "姓名-张三/L-左耳/view_正面/样机A_试产/001.jpg");
   assert.equal(result.reviews[0].status, "ok");
 });
 

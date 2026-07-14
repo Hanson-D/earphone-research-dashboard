@@ -474,6 +474,10 @@
     return pathParts(file).some(isBareEarPart);
   }
 
+  function photoFileValue(file) {
+    return file?.relative_path || file?.path || file?.absolute_path || "";
+  }
+
   function photoFilesFromBrowserSelection(files = [], options = {}) {
     const imageFiles = [...files].filter(file => isImagePath(file.name || file.webkitRelativePath || ""));
     const rawPaths = imageFiles.map(file => file.webkitRelativePath || file.name || "");
@@ -738,7 +742,7 @@
                 (!slot.ear || partsInclude(parts, slot.ear));
             });
           const file = candidates[0];
-          const value = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+          const value = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(file);
           mapped[rowIndex][slot.field] = value;
           if (value) bareOverrideValues.add(value);
           if (file) matchedFiles.push(file);
@@ -755,7 +759,7 @@
               const singleDevice = singleDeviceSelections.get(row[userField]);
               const inferredDevice = singleDevice ? residualFolderParts(parts, [row[userField], ...folderEars, item.view])[0] || "" : "";
               return !pathHasBareEar(candidate) &&
-                !bareOverrideValues.has(candidate.absolute_path) &&
+                ![candidate.relative_path, candidate.absolute_path, candidate.path].some(value => bareOverrideValues.has(value)) &&
                 partsInclude(parts, row[userField]) &&
                 (!item.ear || partsInclude(parts, item.ear)) &&
                 (!singleEarInfo.forced || !singleEarInfo.ear || !firstEarInParts(parts) || partsInclude(parts, singleEarInfo.ear)) &&
@@ -776,7 +780,7 @@
               files: candidates.slice(1)
             });
           }
-          mapped[rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+          mapped[rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(file);
         });
         const expected = applicable.length;
         review.entries.push({ row, rowIndex });
@@ -822,7 +826,7 @@
         );
         const rowIndex = applicableEntries[0]?.rowIndex ?? entries[0]?.rowIndex;
         const overrideKey = `${rowIndex}::${slot.field}`;
-        const value = overrideKey in overrides ? overrides[overrideKey] : userFiles[index]?.absolute_path || "";
+        const value = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(userFiles[index]);
         if (value) bareValues.add(value);
         applicableEntries.forEach(entry => {
           mapped[entry.rowIndex][slot.field] = value;
@@ -831,14 +835,14 @@
         slot.value = value;
       });
       const deviceFiles = bareConfig.enabled ?
-        userFiles.filter(file => !bareValues.has(file.absolute_path)) :
+        userFiles.filter(file => ![file.relative_path, file.absolute_path, file.path].some(value => bareValues.has(value))) :
         userFiles;
       let cursor = 0;
       entries.forEach(entry => {
         applicableDescriptors(entry.row).forEach(item => {
           const overrideKey = `${entry.rowIndex}::${item.field}`;
           const file = deviceFiles[cursor];
-          mapped[entry.rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : file?.absolute_path || "";
+          mapped[entry.rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(file);
           cursor += 1;
         });
       });

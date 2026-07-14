@@ -92,6 +92,8 @@ const state = {
   detailPhotoObserver: null,
   mappingObjectUrls: [],
   thumbnailUrls: {},
+  photoUrlByPath: {},
+  photoRelativeByUrl: {},
   detailPreviewUrls: {},
   detailPreviewPromises: {},
   mappingViews: [],
@@ -326,10 +328,64 @@ function dashboardConfigSnapshot() {
   };
 }
 
+function normalizePhotoValueForSave(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (state.photoRelativeByUrl[text]) return state.photoRelativeByUrl[text];
+  if (state.photoUrlByPath[text] && !isRuntimePhotoUrl(text)) return normalizePathSlashes(text);
+  try {
+    const url = new URL(text, window.location.href);
+    const apiPath = url.pathname === "/api/photo" ? url.searchParams.get("path") || "" : "";
+    const serverPhotoPath = url.pathname.includes("/photos") ? url.searchParams.get("path") || "" : "";
+    if (serverPhotoPath) return normalizePathSlashes(serverPhotoPath);
+    if (apiPath) {
+      const root = els.photoRootInput?.value?.trim?.() || "";
+      const normalizedApiPath = normalizePathSlashes(apiPath);
+      const normalizedRoot = normalizePathSlashes(root).replace(/\/+$/, "");
+      if (normalizedRoot && normalizedApiPath.startsWith(`${normalizedRoot}/`)) {
+        return normalizedApiPath.slice(normalizedRoot.length + 1);
+      }
+    }
+  } catch {
+    // Plain relative or platform path; handled below.
+  }
+  const root = els.photoRootInput?.value?.trim?.() || "";
+  const normalized = normalizePathSlashes(text);
+  const normalizedRoot = normalizePathSlashes(root).replace(/\/+$/, "");
+  if (normalizedRoot && normalized.startsWith(`${normalizedRoot}/`)) {
+    return normalized.slice(normalizedRoot.length + 1);
+  }
+  if (isRuntimePhotoUrl(text)) {
+    throw new Error("项目中仍有临时照片 URL。请重新选择照片根文件夹并重新映射后再保存。");
+  }
+  return normalized;
+}
+
+function photoValueForDisplay(value) {
+  return state.photoRelativeByUrl[value] || normalizePathSlashes(value);
+}
+
+function normalizeRowsForSave(rows = []) {
+  const photoFields = new Set(state.photoFields);
+  Object.keys(state.viewLabels || {}).forEach(field => photoFields.add(field));
+  state.mappingPhotoFields.forEach(field => photoFields.add(field));
+  return rows.map(row => {
+    const next = { ...row };
+    photoFields.forEach(field => {
+      if (field in next) next[field] = normalizePhotoValueForSave(next[field]);
+    });
+    return next;
+  });
+}
+
+function normalizeOverridesForSave(overrides = {}) {
+  return Object.fromEntries(Object.entries(overrides).map(([key, value]) => [key, normalizePhotoValueForSave(value)]));
+}
+
 function projectDocumentSnapshot() {
   return Core.buildProjectDocument({
-    rows: state.rows,
-    mappingRows: state.mappingRows,
+    rows: normalizeRowsForSave(state.rows),
+    mappingRows: normalizeRowsForSave(state.mappingRows),
     photoRoot: els.photoRootInput.value.trim(),
     mappingMode: els.mappingMode.value,
     mappingFields: {
@@ -341,7 +397,7 @@ function projectDocumentSnapshot() {
       singleEarMode: state.singleEarMode
     },
     mappingViews: mappingViews(),
-    photoMappingOverrides: state.photoMappingOverrides,
+    photoMappingOverrides: normalizeOverridesForSave(state.photoMappingOverrides),
     protocolTemplate: state.protocolTemplate,
     dashboardConfig: dashboardConfigSnapshot()
   });
@@ -437,8 +493,8 @@ async function saveCurrentProjectConfig() {
   if (state.serverProjectId) {
     await writeServerProject({
       ...projectDocumentSnapshot(),
-      rows: state.rows,
-      mappingRows: state.mappingRows,
+      rows: normalizeRowsForSave(state.rows),
+      mappingRows: normalizeRowsForSave(state.mappingRows),
       savedAt: new Date().toISOString(),
       dashboardConfig: dashboardConfigSnapshot()
     }, "已保存当前配置");
@@ -479,6 +535,7 @@ async function loadProject(path) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "项目加载失败。");
   const project = Core.sanitizeProjectDocument(result.project);
+  setProjectPath(result.path);
   state.rows = project.rows.map(row => ({ ...row }));
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
@@ -516,7 +573,6 @@ async function loadProject(path) {
       setProjectStatus(`项目已加载，但照片目录未授权：${error.message}`);
     }
   }
-  setProjectPath(result.path);
   markProjectSaved(`已加载：${result.path}`);
   els.dataSourceLabel.textContent = "项目数据";
   switchPage("dashboard");
@@ -744,13 +800,68 @@ function isPhotoField(field) {
 
 function photoUrl(path) {
   if (!path) return "";
+  if (state.photoUrlByPath[path]) return state.photoUrlByPath[path];
   if (/^(blob:|data:|https?:|\/api\/)/i.test(path)) return path;
+  const rooted = rootedPhotoPath(path);
+  if (rooted) return `/api/photo?path=${encodeURIComponent(rooted)}`;
   if (/^[A-Za-z]:[\\/]|^\//.test(path)) return `/api/photo?path=${encodeURIComponent(path)}`;
   return path;
 }
 
 function photoThumbUrl(path) {
-  return state.thumbnailUrls[path] || photoUrl(path);
+  const stored = state.photoRelativeByUrl[path] || normalizePathSlashes(path);
+  return state.thumbnailUrls[path] || state.thumbnailUrls[stored] || photoUrl(path);
+}
+
+function normalizePathSlashes(value) {
+  return String(value || "").replaceAll("\\", "/");
+}
+
+function isRuntimePhotoUrl(value) {
+  return /^(blob:|https?:|\/api\/)/i.test(String(value || ""));
+}
+
+function photoFileStoredPath(file = {}) {
+  return normalizePathSlashes(file.relative_path || file.path || file.absolute_path || "");
+}
+
+function photoFileRuntimeUrl(file = {}) {
+  return file.url || file.absolute_path || file.path || file.relative_path || "";
+}
+
+function rebuildPhotoPathIndex(files = state.mappingFiles) {
+  state.photoUrlByPath = {};
+  state.photoRelativeByUrl = {};
+  (files || []).forEach(file => {
+    const stored = photoFileStoredPath(file);
+    const runtimeUrl = photoFileRuntimeUrl(file);
+    if (!stored || !runtimeUrl) return;
+    state.photoUrlByPath[stored] = runtimeUrl;
+    [runtimeUrl, file.absolute_path, file.url, file.path].filter(Boolean).forEach(value => {
+      state.photoRelativeByUrl[value] = stored;
+      state.photoUrlByPath[value] = runtimeUrl;
+    });
+  });
+}
+
+function projectDirectoryPath() {
+  const path = state.projectPath || els.projectPathInput?.value || "";
+  if (!path || !/[\\/]/.test(path)) return "";
+  return normalizePathSlashes(path).replace(/\/[^/]*$/, "");
+}
+
+function joinPath(base, relative) {
+  if (!base || !relative) return "";
+  return `${normalizePathSlashes(base).replace(/\/+$/, "")}/${normalizePathSlashes(relative).replace(/^\/+/, "")}`;
+}
+
+function rootedPhotoPath(relativePath) {
+  if (!relativePath || isRuntimePhotoUrl(relativePath) || /^[A-Za-z]:[\\/]|^\//.test(relativePath)) return "";
+  const root = els.photoRootInput?.value?.trim?.() || "";
+  if (!root || root.startsWith("browser-folder:") || root.startsWith("server:")) return "";
+  if (/^[A-Za-z]:[\\/]|^\//.test(root)) return joinPath(root, relativePath);
+  const projectDir = projectDirectoryPath();
+  return projectDir ? joinPath(projectDir, joinPath(root, relativePath)) : joinPath(root, relativePath);
 }
 
 function isUserLevelField(field) {
@@ -1620,6 +1731,8 @@ function clearMappingObjectUrls() {
     if (String(url).startsWith("blob:")) URL.revokeObjectURL(url);
   });
   state.thumbnailUrls = {};
+  state.photoUrlByPath = {};
+  state.photoRelativeByUrl = {};
   clearDetailPreviewUrls();
 }
 
@@ -1659,12 +1772,14 @@ async function createThumbnailUrl(sourceUrl, maxSize = 128, quality = 0.72) {
 
 async function buildMappingThumbnails(photos = []) {
   await Promise.all(photos.map(async photo => {
-    if (!photo.absolute_path || state.thumbnailUrls[photo.absolute_path]) return;
+    const key = photoFileStoredPath(photo);
+    const source = photoFileRuntimeUrl(photo);
+    if (!key || !source || state.thumbnailUrls[key]) return;
     try {
-      const thumbUrl = await createThumbnailUrl(photo.absolute_path);
-      state.thumbnailUrls[photo.absolute_path] = thumbUrl;
+      const thumbUrl = await createThumbnailUrl(source);
+      state.thumbnailUrls[key] = thumbUrl;
     } catch {
-      state.thumbnailUrls[photo.absolute_path] = photo.absolute_path;
+      state.thumbnailUrls[key] = source;
     }
   }));
 }
@@ -1681,6 +1796,7 @@ async function loadBrowserPhotoFolder(files = []) {
   if (els.photoFolderStatus) els.photoFolderStatus.textContent = `正在生成 ${photos.length} 张缩略图…`;
   await buildMappingThumbnails(photos);
   state.mappingFiles = photos;
+  rebuildPhotoPathIndex(photos);
   const rootName = [...files].find(file => file.webkitRelativePath)?.webkitRelativePath?.split(/[\\/]/)[0] || "已选择文件夹";
   els.photoRootInput.value = photos.length ? `browser-folder:${rootName}` : "";
   if (els.photoFolderStatus) {
@@ -1695,6 +1811,7 @@ async function loadBrowserPhotoFolder(files = []) {
 async function scanPhotoRoot() {
   if (state.serverProjectId) return uploadServerPhotoFiles();
   if (state.mappingFiles.some(file => file.source === "browser_folder")) {
+    rebuildPhotoPathIndex(state.mappingFiles);
     return { root: els.photoRootInput.value || "browser-folder", photos: state.mappingFiles };
   }
   const root = els.photoRootInput.value.trim();
@@ -1707,6 +1824,7 @@ async function scanPhotoRoot() {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "照片目录扫描失败。");
   state.mappingFiles = result.photos;
+  rebuildPhotoPathIndex(result.photos);
   return result;
 }
 
@@ -1742,6 +1860,7 @@ async function uploadServerPhotoFiles() {
   photos.sort((a, b) => (a.user_folder || "").localeCompare(b.user_folder || "", "zh-CN") ||
     Core.naturalCompare(a.relative_path || a.name, b.relative_path || b.name));
   state.mappingFiles = photos;
+  rebuildPhotoPathIndex(photos);
   els.photoRootInput.value = `server:${state.serverProjectId}`;
   return { root: els.photoRootInput.value, photos };
 }
@@ -1807,10 +1926,14 @@ function buildPhotoMapping() {
 }
 
 function photoSelectOptions(files, selectedPath) {
-  const selectedKnown = files.some(file => file.absolute_path === selectedPath);
+  const normalizedSelected = photoValueForDisplay(selectedPath);
+  const selectedKnown = files.some(file => photoFileStoredPath(file) === normalizedSelected);
   return `<option value="">缺失/不使用</option>` +
-    (!selectedKnown && selectedPath ? `<option value="${selectedPath}" selected>当前手动路径</option>` : "") +
-    files.map(file => `<option value="${file.absolute_path}" ${file.absolute_path === selectedPath ? "selected" : ""}>${file.name}</option>`).join("");
+    (!selectedKnown && selectedPath ? `<option value="${attrEscape(normalizedSelected)}" selected>当前手动路径</option>` : "") +
+    files.map(file => {
+      const value = photoFileStoredPath(file);
+      return `<option value="${attrEscape(value)}" ${value === normalizedSelected ? "selected" : ""}>${attrEscape(file.relative_path || file.name)}</option>`;
+    }).join("");
 }
 
 function detailPhotoPlaceholder() {
