@@ -2681,16 +2681,6 @@ function currentBarePhotoLabel(field, fallback = "") {
   return state.bareEarConfig.labels?.[field] || state.viewLabels[field] || fallback || barePhotoFieldLabel(field);
 }
 
-function bareSlotColumnCount(slots = []) {
-  if (!slots.length) return 1;
-  const groups = new Map();
-  slots.forEach(slot => {
-    const key = slot.ear || "通用";
-    groups.set(key, (groups.get(key) || 0) + 1);
-  });
-  return Math.max(1, ...groups.values());
-}
-
 function bareSlotGroups(slots = []) {
   const groups = new Map();
   slots.forEach(slot => {
@@ -2772,11 +2762,12 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
   const devicePhotoFields = photoFields.filter(field => !field.startsWith("bare_ear_photo"));
   const hasBare = bareFields.length && review.bareSlots?.length;
   const totalExpected = review.expected + (review.bareSlots?.length || 0);
-  const bareColumns = bareSlotColumnCount(review.bareSlots || []);
-  const bareHtml = hasBare ? `<aside class="mapping-bare-panel" style="--bare-slot-columns:${bareColumns}">
+  const bareGroups = bareSlotGroups(review.bareSlots || []);
+  const barePanelColumns = bareGroups.some(([group]) => group !== "通用") ? 2 : 1;
+  const bareHtml = hasBare ? `<aside class="mapping-bare-panel" style="--bare-panel-columns:${barePanelColumns}">
     <h3>空耳</h3>
-    ${bareSlotGroups(review.bareSlots || []).map(([group, slots]) => `
-      <section class="mapping-bare-row" style="--bare-row-columns:${slots.length}">
+    ${bareGroups.map(([group, slots]) => `
+      <section class="mapping-bare-row">
         ${group !== "通用" ? `<strong>${group}</strong>` : ""}
         ${slots.map(slot => renderBareSlotFigure(review, slot)).join("")}
       </section>
@@ -2788,7 +2779,7 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
       <span>预期 ${totalExpected} 张 / 实际 ${review.files.length} 张</span>
       <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
     </div>
-    <div class="${hasBare ? "mapping-review-columns" : ""}" style="${hasBare ? `--bare-panel-width:${180 * bareColumns}px` : ""}">
+    <div class="${hasBare ? "mapping-review-columns" : ""}" style="${hasBare ? `--bare-panel-width:${barePanelColumns === 2 ? 360 : 180}px` : ""}">
     ${bareHtml}
     <div class="mapping-device-list">${review.entries.map((entry, entryIndex) => `
       <div class="mapping-device-row ${sequencePhotoEarMode ? "mapping-device-row-ear-groups" : ""}">
