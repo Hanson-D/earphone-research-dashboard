@@ -1,0 +1,93 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = __dirname;
+const read = file => fs.readFileSync(path.join(root, file), "utf8");
+const cssBlock = (css, selector) => css.match(new RegExp(`${selector.replaceAll(".", "\\.")}\\s*{([^}]*)}`))?.[1] || "";
+
+function directSectionClasses(html, parentClass) {
+  const tokens = [...html.matchAll(/<\/?section\b[^>]*>/g)];
+  const stack = [];
+  const children = [];
+  for (const token of tokens) {
+    const tag = token[0];
+    if (tag.startsWith("</")) {
+      stack.pop();
+      continue;
+    }
+    const className = tag.match(/class="([^"]+)"/)?.[1] || "";
+    if (stack.at(-1) === parentClass) children.push(className);
+    stack.push(className);
+  }
+  return children;
+}
+
+test("mapping page is organized as a vertical workflow with optional advanced settings", () => {
+  const html = read("index.html");
+  const css = read("styles.css");
+
+  assert.match(html, /<section class="mapping-step">[\s\S]*导入数据源/);
+  assert.match(html, /<section class="mapping-step">[\s\S]*选择匹配规则/);
+  assert.match(html, /<section class="mapping-step mapping-run-step">[\s\S]*生成并应用映射/);
+  assert.match(html, /<details class="advanced-path-input mapping-advanced">[\s\S]*高级：手动输入照片路径/);
+  assert.match(html, /<details class="mapping-advanced">[\s\S]*高级匹配设置/);
+  assert.deepEqual(directSectionClasses(html, "mapping-layout"), [
+    "mapping-setup mapping-card mapping-builder",
+    "mapping-results panel"
+  ]);
+  assert.match(css, /\.mapping-layout\s*{[\s\S]*grid-template-columns:\s*1fr;/);
+  assert.doesNotMatch(cssBlock(css, ".mapping-setup"), /position:\s*sticky;/);
+});
+
+test("detail layout panel separates display settings from column configuration", () => {
+  const html = read("index.html");
+
+  assert.match(html, /<section class="layout-config-section">[\s\S]*显示设置/);
+  assert.match(html, /<details class="layout-config-section column-layout-section">[\s\S]*详情列配置/);
+  assert.match(html, /id="columnConfigList"/);
+});
+
+test("project load failures expose recovery actions without affecting sample data", () => {
+  const html = read("index.html");
+  const js = read("app.js");
+
+  assert.match(html, /id="projectRecoveryActions"[^>]*hidden/);
+  assert.match(html, /id="useSampleProjectButton"/);
+  assert.match(html, /id="clearProjectPathButton"/);
+  assert.match(js, /function showProjectRecoveryActions/);
+  assert.match(js, /function useSampleProject/);
+  assert.match(js, /function clearProjectPath/);
+  assert.match(js, /useSampleProjectButton\.addEventListener\("click", useSampleProject\)/);
+  assert.match(js, /clearProjectPathButton\.addEventListener\("click", clearProjectPath\)/);
+});
+
+test("dynamic dashboard and server entry rendering escapes user-controlled text", () => {
+  const js = read("app.js");
+  const serverEntry = read("server/server-entry.js");
+
+  assert.match(js, /function escapeHtml/);
+  assert.match(js, /function attrEscape/);
+  assert.match(js, /escapeHtml\(review\.user\)/);
+  assert.match(js, /escapeHtml\(item\.message\)/);
+  assert.match(js, /escapeHtml\(group\.values\[0\]\)/);
+  assert.match(js, /escapeHtml\(column\.label\)/);
+  assert.match(js, /escapeHtml\(state\.protocolTemplate\.name \|\| "未命名模板"\)/);
+  assert.match(js, /views\.map\(escapeHtml\)/);
+  assert.match(js, /escapeHtml\(fieldLabels\[metric\] \|\| metric\)/);
+  assert.match(js, /\$\{escapeHtml\(label\)\}：\$\{score\}/);
+  assert.match(js, /src="\$\{attrEscape\(thumbSrc\)\}"/);
+  assert.match(js, /data-field="\$\{attrEscape\(slot\.field\)\}"/);
+  assert.match(serverEntry, /function escapeHtml/);
+  assert.match(serverEntry, /escapeHtml\(project\.title \|\| project\.id\)/);
+  assert.match(serverEntry, /escapeHtml\(error\.message\)/);
+});
+
+test("dashboard declares a local favicon", () => {
+  const html = read("index.html");
+  const icon = read("favicon.svg");
+
+  assert.match(html, /<link rel="icon" href="favicon\.svg" type="image\/svg\+xml">/);
+  assert.match(icon, /<svg[^>]+viewBox="0 0 64 64"/);
+});

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>耳机佩戴研究看板</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=20260709-mapping-review">
 </head>
 <body>
@@ -40,6 +41,10 @@
           <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
         </div>
         <div id="projectStatus" class="project-status" aria-live="polite">未加载项目文件</div>
+        <div id="projectRecoveryActions" class="project-recovery-actions" hidden>
+          <button id="useSampleProjectButton" class="compact-button" type="button">使用示例数据</button>
+          <button id="clearProjectPathButton" class="compact-button secondary" type="button">清除项目路径</button>
+        </div>
       </section>
     </aside>
 
@@ -53,26 +58,50 @@
 
   <main id="mappingPage" class="app-page active">
     <section class="mapping-layout">
-      <section class="mapping-setup">
-        <section class="mapping-card mapping-builder">
+      <section class="mapping-setup mapping-card mapping-builder">
+        <div class="mapping-builder-heading">
           <p class="panel-kicker">PHOTO INDEX BUILDER</p>
           <h2>照片自动映射</h2>
           <p class="mapping-intro">从 CSV 与照片目录生成可直接用于看板的照片字段；可按拍摄顺序映射，也可按子文件夹自动识别。</p>
+        </div>
 
+        <section class="mapping-step">
+          <div class="mapping-step-heading">
+            <span>01</span>
+            <div>
+              <h3>导入数据源</h3>
+              <p>先选择原始 CSV 和照片根文件夹，系统会读取记录与图片索引。</p>
+            </div>
+          </div>
           <div class="mapping-form-grid">
             <label class="mapping-input">
-              <span>1. 选择原始 CSV</span>
+              <span>选择原始 CSV</span>
               <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
             </label>
             <label id="photoRootInputWrap" class="mapping-input">
-              <span>2. 选择照片根文件夹</span>
+              <span>选择照片根文件夹</span>
               <input id="photoFolderChooser" type="file" webkitdirectory directory multiple accept="image/*">
               <small id="photoFolderStatus">选择包含用户照片子文件夹的根目录；系统会读取文件夹结构和照片顺序。</small>
-              <details class="advanced-path-input">
-                <summary>高级：手动输入路径</summary>
-                <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
-              </details>
             </label>
+          </div>
+          <details class="advanced-path-input mapping-advanced">
+            <summary>高级：手动输入照片路径</summary>
+            <label class="mapping-input">
+              <span>照片根目录路径</span>
+              <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
+            </label>
+          </details>
+        </section>
+
+        <section class="mapping-step">
+          <div class="mapping-step-heading">
+            <span>02</span>
+            <div>
+              <h3>选择匹配规则</h3>
+              <p>默认按照片顺序匹配；目录命名规范时可切换为子文件夹识别。</p>
+            </div>
+          </div>
+          <div class="mapping-form-grid">
             <label class="mapping-input">
               <span>照片匹配方式</span>
               <select id="mappingMode">
@@ -83,46 +112,62 @@
             </label>
           </div>
           <div id="mappingModeNote" class="mapping-mode-note"></div>
-          <label id="bareEarToggleWrap" class="check-control mapping-check-control">
-            <input id="includeBareEarPhotos" type="checkbox">
-            包含空耳照片
-          </label>
-          <div id="bareEarConfigPanel" class="bare-ear-config" hidden>
-            <label class="check-control">
-              <input id="bareEarSplitByEar" type="checkbox">
-              空耳区分左右耳
-            </label>
-            <div id="bareEarGenericCountWrap">
-              <label>空耳张数<input id="bareEarGenericCount" type="number" min="1" max="12" value="1"></label>
-            </div>
-            <div id="bareEarSideCounts" hidden>
-              <label>左耳空耳张数<input id="bareEarLeftCount" type="number" min="0" max="12" value="1"></label>
-              <label>右耳空耳张数<input id="bareEarRightCount" type="number" min="0" max="12" value="1"></label>
-              <small>顺序逻辑按“先拍完一侧，再拍另一侧”解析：左耳全部空耳照片在前，右耳全部空耳照片在后。</small>
-            </div>
-          </div>
-          <label id="singleEarToggleWrap" class="check-control mapping-check-control">
-            <input id="singleEarMode" type="checkbox">
-            单耳模式（照片列只按视角生成）
-          </label>
-          <div class="mapping-fields">
-            <label>姓名/用户字段<select id="mappingUserField"></select></label>
-            <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
-            <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
-          </div>
-          <label id="viewNamesInputWrap" class="mapping-input">
-            <span>3. 按拍摄顺序填写视角名称</span>
-            <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…">
-            <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
-          </label>
-          <button id="runMappingButton" class="primary-button">生成照片映射</button>
 
+          <details class="mapping-advanced">
+            <summary>高级匹配设置</summary>
+            <div class="mapping-advanced-panel">
+              <label id="bareEarToggleWrap" class="check-control mapping-check-control">
+                <input id="includeBareEarPhotos" type="checkbox">
+                包含空耳照片
+              </label>
+              <div id="bareEarConfigPanel" class="bare-ear-config" hidden>
+                <label class="check-control">
+                  <input id="bareEarSplitByEar" type="checkbox">
+                  空耳区分左右耳
+                </label>
+                <div id="bareEarGenericCountWrap">
+                  <label>空耳张数<input id="bareEarGenericCount" type="number" min="1" max="12" value="1"></label>
+                </div>
+                <div id="bareEarSideCounts" hidden>
+                  <label>左耳空耳张数<input id="bareEarLeftCount" type="number" min="0" max="12" value="1"></label>
+                  <label>右耳空耳张数<input id="bareEarRightCount" type="number" min="0" max="12" value="1"></label>
+                  <small>顺序逻辑按“先拍完一侧，再拍另一侧”解析：左耳全部空耳照片在前，右耳全部空耳照片在后。</small>
+                </div>
+              </div>
+              <label id="singleEarToggleWrap" class="check-control mapping-check-control">
+                <input id="singleEarMode" type="checkbox">
+                单耳模式（照片列只按视角生成）
+              </label>
+              <div class="mapping-fields">
+                <label>姓名/用户字段<select id="mappingUserField"></select></label>
+                <label id="mappingEarFieldWrap">左右耳字段（可选）<select id="mappingEarField"></select></label>
+                <label>样机/设备字段（可选）<select id="mappingDeviceField"></select></label>
+              </div>
+              <label id="viewNamesInputWrap" class="mapping-input">
+                <span>按拍摄顺序填写视角名称</span>
+                <input id="viewNamesInput" name="viewNames" type="text" value="正面,侧面,后侧" autocomplete="off" placeholder="例如：左耳正面,左耳侧面,右耳正面,右耳侧面…">
+                <small>顺序逻辑请把左右耳写进拍摄顺序；子文件夹逻辑会从目录名自动识别方向，并生成左右耳 × 方向。</small>
+              </label>
+            </div>
+          </details>
+        </section>
+
+        <section class="mapping-step mapping-run-step">
+          <div class="mapping-step-heading">
+            <span>03</span>
+            <div>
+              <h3>生成并应用映射</h3>
+              <p>生成后先在下方检查缩略图，再应用到数据看板或下载审查文件。</p>
+            </div>
+          </div>
+          <button id="runMappingButton" class="primary-button">生成照片映射</button>
           <div class="mapping-actions">
             <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
             <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
             <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
           </div>
         </section>
+
       </section>
 
       <section class="mapping-results panel">
@@ -273,47 +318,56 @@
         <details class="layout-config">
           <summary>显示与布局</summary>
           <div class="layout-config-panel">
-            <div class="display-settings">
-              <label>
-                表格字号
-                <input id="fontSizeControl" type="range" min="10" max="18" step="1">
-                <output id="fontSizeValue"></output>
-              </label>
-              <label>
-                照片大小
-                <input id="photoSizeControl" type="range" min="60" max="220" step="10">
-                <output id="photoSizeValue"></output>
-              </label>
-              <label>
-                全局照片水平中心
-                <input id="photoPositionXControl" type="range" min="0" max="100" step="1">
-                <output id="photoPositionXValue"></output>
-              </label>
-              <label>
-                全局照片垂直中心
-                <input id="photoPositionYControl" type="range" min="0" max="100" step="1">
-                <output id="photoPositionYValue"></output>
-              </label>
-              <label>
-                照片加载模式
-                <select id="detailPhotoModeControl">
-                  <option value="performance">性能模式</option>
-                  <option value="capture">截图模式</option>
-                </select>
-                <output id="detailPhotoModeValue"></output>
-              </label>
-              <button id="exportConfigButton" type="button" class="compact-button">导出配置</button>
-              <label class="config-import-button">
-                导入配置
-                <input id="importConfigInput" type="file" accept=".json,application/json">
-              </label>
-              <button id="resetLayoutButton" type="button" class="compact-button">恢复默认布局</button>
-            </div>
-            <div class="column-config-heading">
-              <strong>详情列配置</strong>
-              <span>拖拽排序，勾选显示，输入列宽</span>
-            </div>
-            <div id="columnConfigList" class="column-config-list"></div>
+            <section class="layout-config-section">
+              <div class="column-config-heading">
+                <strong>显示设置</strong>
+                <span>控制详情表字号、照片尺寸和加载方式</span>
+              </div>
+              <div class="display-settings">
+                <label>
+                  表格字号
+                  <input id="fontSizeControl" type="range" min="10" max="18" step="1">
+                  <output id="fontSizeValue"></output>
+                </label>
+                <label>
+                  照片大小
+                  <input id="photoSizeControl" type="range" min="60" max="220" step="10">
+                  <output id="photoSizeValue"></output>
+                </label>
+                <label>
+                  全局照片水平中心
+                  <input id="photoPositionXControl" type="range" min="0" max="100" step="1">
+                  <output id="photoPositionXValue"></output>
+                </label>
+                <label>
+                  全局照片垂直中心
+                  <input id="photoPositionYControl" type="range" min="0" max="100" step="1">
+                  <output id="photoPositionYValue"></output>
+                </label>
+                <label>
+                  照片加载模式
+                  <select id="detailPhotoModeControl">
+                    <option value="performance">性能模式</option>
+                    <option value="capture">截图模式</option>
+                  </select>
+                  <output id="detailPhotoModeValue"></output>
+                </label>
+                <button id="exportConfigButton" type="button" class="compact-button">导出配置</button>
+                <label class="config-import-button">
+                  导入配置
+                  <input id="importConfigInput" type="file" accept=".json,application/json">
+                </label>
+                <button id="resetLayoutButton" type="button" class="compact-button">恢复默认布局</button>
+              </div>
+            </section>
+            <details class="layout-config-section column-layout-section">
+              <summary>详情列配置</summary>
+              <div class="column-config-heading">
+                <strong>列显示与顺序</strong>
+                <span>拖拽排序，勾选显示，输入列宽</span>
+              </div>
+              <div id="columnConfigList" class="column-config-list"></div>
+            </details>
           </div>
         </details>
       </div>

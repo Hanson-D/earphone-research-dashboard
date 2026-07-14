@@ -176,7 +176,7 @@ const els = Object.fromEntries([
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
   "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
-  "projectTabs", "newProjectTabButton",
+  "projectRecoveryActions", "useSampleProjectButton", "clearProjectPathButton", "projectTabs", "newProjectTabButton",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
   "pressurePage", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
   "pressureAggregation", "pressureSummary", "pressureHeatmaps", "pressureRanking",
@@ -300,14 +300,14 @@ function renderProtocolStatus() {
   const views = protocolPhotoViews();
   const ears = protocolExpectedEars();
   const parts = [
-    `<strong>${state.protocolTemplate.name || "未命名模板"}</strong>`,
+    `<strong>${escapeHtml(state.protocolTemplate.name || "未命名模板")}</strong>`,
     validation ? `CSV：${validation.valid ? "通过" : "有警告"}，${validation.rowCount} 行` : "CSV：等待导入",
-    views.length ? `照片视角：${views.join("、")}` : "照片视角：未限定",
-    ears.length ? `耳侧：${ears.join("、")}` : "耳侧：按数据/文件夹识别"
+    views.length ? `照片视角：${views.map(escapeHtml).join("、")}` : "照片视角：未限定",
+    ears.length ? `耳侧：${ears.map(escapeHtml).join("、")}` : "耳侧：按数据/文件夹识别"
   ];
   const issues = [];
-  if (validation?.missingRequiredFields?.length) issues.push(`缺少必填字段：${validation.missingRequiredFields.join("、")}`);
-  if (validation?.missingRecommendedFields?.length) issues.push(`缺少建议字段：${validation.missingRecommendedFields.join("、")}`);
+  if (validation?.missingRequiredFields?.length) issues.push(`缺少必填字段：${validation.missingRequiredFields.map(escapeHtml).join("、")}`);
+  if (validation?.missingRecommendedFields?.length) issues.push(`缺少建议字段：${validation.missingRecommendedFields.map(escapeHtml).join("、")}`);
   if (validation?.rangeIssues?.length) issues.push(`数值范围问题：${validation.rangeIssues.length} 处`);
   els.protocolStatus.innerHTML = `${parts.join(" · ")}${issues.length ? `<ul>${issues.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}`;
 }
@@ -476,6 +476,37 @@ function setProjectPath(path) {
 
 function defaultProjectPath() {
   return "projects/我的耳机项目.json";
+}
+
+function showProjectRecoveryActions(show = true) {
+  if (els.projectRecoveryActions) els.projectRecoveryActions.hidden = !show;
+}
+
+function setProjectUrlParam(path = "") {
+  if (state.serverProjectId || window.location.protocol === "file:") return;
+  const url = new URL(window.location.href);
+  if (path) url.searchParams.set("project", path);
+  else url.searchParams.delete("project");
+  history.replaceState(null, "", url);
+}
+
+function useSampleProject() {
+  state.projectPath = "";
+  state.projectDirty = false;
+  els.projectPathInput.value = "";
+  els.dataSourceLabel.textContent = "示例数据";
+  showProjectRecoveryActions(false);
+  setProjectUrlParam("");
+  upsertProjectTab("sample", { title: "示例数据" });
+  setProjectStatus("已切回示例数据", false);
+}
+
+function clearProjectPath() {
+  state.projectPath = "";
+  els.projectPathInput.value = "";
+  showProjectRecoveryActions(false);
+  setProjectUrlParam("");
+  setProjectStatus("已清除项目路径；可继续使用示例数据或填写新的项目 JSON 路径。", state.projectDirty);
 }
 
 function cloneStateData(value) {
@@ -1021,11 +1052,11 @@ function syncVisiblePhotoPositionControls() {
 
 function renderColumnConfig() {
   els.columnConfigList.innerHTML = state.layout.columns.map(column => `
-    <div class="column-config-row" data-column-id="${column.id}" draggable="true">
-      <span class="column-drag-handle" aria-label="拖拽移动${column.label}" title="拖拽排序">⋮⋮</span>
-      <input class="column-visible" type="checkbox" aria-label="显示${column.label}" ${column.visible ? "checked" : ""}>
-      <label>${column.label}${column.userLevel ? " · 用户级" : ""}</label>
-      <input class="column-width" type="number" min="60" max="500" step="10" value="${column.width}" aria-label="${column.label}列宽">
+    <div class="column-config-row" data-column-id="${attrEscape(column.id)}" draggable="true">
+      <span class="column-drag-handle" aria-label="拖拽移动${attrEscape(column.label)}" title="拖拽排序">⋮⋮</span>
+      <input class="column-visible" type="checkbox" aria-label="显示${attrEscape(column.label)}" ${column.visible ? "checked" : ""}>
+      <label>${escapeHtml(column.label)}${column.userLevel ? " · 用户级" : ""}</label>
+      <input class="column-width" type="number" min="60" max="500" step="10" value="${column.width}" aria-label="${attrEscape(column.label)}列宽">
     </div>
   `).join("");
 }
@@ -1096,8 +1127,8 @@ function renderFieldRoleConfig() {
   const options = Object.entries(labels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
   els.fieldRoleList.innerHTML = state.headers.map(field => `
     <label class="field-role-row">
-      <span>${fieldLabels[field] || field}<small>${field}</small></span>
-      <select data-field="${field}">
+      <span>${escapeHtml(fieldLabels[field] || field)}<small>${escapeHtml(field)}</small></span>
+      <select data-field="${attrEscape(field)}">
         ${options}
       </select>
     </label>
@@ -1362,7 +1393,7 @@ function renderViewControls() {
   els.resetViewsButton.hidden = state.photoFields.length === 0;
   const options = photoViewOptions();
   els.globalViewSelect.innerHTML = options.map(option =>
-    `<option value="${option.value}" ${option.value === state.globalView ? "selected" : ""}>${option.label}</option>`
+    `<option value="${attrEscape(option.value)}" ${option.value === state.globalView ? "selected" : ""}>${escapeHtml(option.label)}</option>`
   ).join("");
 }
 
@@ -1527,9 +1558,9 @@ function renderDataQuality() {
     `${report.errors} 个错误 · ${report.warnings} 个提醒` :
     "未发现明显问题";
   els.dataQualityList.innerHTML = report.totalIssues ?
-    report.items.slice(0, 12).map(item => `<div class="quality-item ${item.severity}">
+    report.items.slice(0, 12).map(item => `<div class="quality-item ${attrEscape(item.severity)}">
       <strong>${item.severity === "error" ? "错误" : "提醒"}</strong>
-      <span>${item.message}</span>
+      <span>${escapeHtml(item.message)}</span>
     </div>`).join("") +
     (report.items.length > 12 ? `<div class="quality-more">还有 ${report.items.length - 12} 条问题未展开。</div>` : "") :
     `<div class="quality-empty">当前数据通过基础检查：用户编号、设备条件、评分范围和组间变量一致性均正常。</div>`;
@@ -1538,15 +1569,15 @@ function renderDataQuality() {
 function renderPivot(groups) {
   const summaryFields = ["satisfaction_score", "comfort_score", "stability_score"].filter(field => state.headers.includes(field));
   els.pivotHead.innerHTML = `<tr>
-    <th>${fieldLabels[state.primaryDimension] || state.primaryDimension}</th>
-    ${state.secondaryDimension ? `<th>${fieldLabels[state.secondaryDimension] || state.secondaryDimension}</th>` : ""}
-    <th>记录数</th><th>${fieldLabels[state.metric] || state.metric}均值</th>
-    ${summaryFields.map(field => `<th>${fieldLabels[field] || field}</th>`).join("")}
+    <th>${escapeHtml(fieldLabels[state.primaryDimension] || state.primaryDimension)}</th>
+    ${state.secondaryDimension ? `<th>${escapeHtml(fieldLabels[state.secondaryDimension] || state.secondaryDimension)}</th>` : ""}
+    <th>记录数</th><th>${escapeHtml(fieldLabels[state.metric] || state.metric)}均值</th>
+    ${summaryFields.map(field => `<th>${escapeHtml(fieldLabels[field] || field)}</th>`).join("")}
   </tr>`;
   els.pivotBody.innerHTML = groups.map(group => `
-    <tr data-group-key="${group.key}" class="${state.selectedGroup === group.key ? "active" : ""}">
-      <td class="pivot-key">${group.values[0]}</td>
-      ${state.secondaryDimension ? `<td>${group.values[1]}</td>` : ""}
+    <tr data-group-key="${attrEscape(group.key)}" class="${state.selectedGroup === group.key ? "active" : ""}">
+      <td class="pivot-key">${escapeHtml(group.values[0])}</td>
+      ${state.secondaryDimension ? `<td>${escapeHtml(group.values[1])}</td>` : ""}
       <td>${group.rows.length}</td>
       <td><span class="metric-chip">${average(group.rows, state.metric).toFixed(1)}</span></td>
       ${summaryFields.map(field => `<td>${average(group.rows, field).toFixed(1)}</td>`).join("")}
@@ -1568,7 +1599,7 @@ function renderChart(groups) {
   const ticks = Array.from({ length: 6 }, (_, index) => axisMax - range * index / 5);
   els.chartTitle.textContent = `${fieldLabels[metric] || metric}组间柱状对比`;
   els.barChart.innerHTML = groups.length ? `<div class="academic-chart">
-    <div class="y-axis-title">${fieldLabels[metric] || metric}均值</div>
+    <div class="y-axis-title">${escapeHtml(fieldLabels[metric] || metric)}均值</div>
     <div class="y-axis">${ticks.map(tick => `<span style="top:${(axisMax - tick) / range * 100}%">${tick.toFixed(1)}</span>`).join("")}</div>
     <div class="plot-area">
       <div class="grid-lines">${ticks.map(tick => `<i style="top:${(axisMax - tick) / range * 100}%"></i>`).join("")}</div>
@@ -1576,15 +1607,15 @@ function renderChart(groups) {
     const value = mean;
     const errorTop = Math.max(0, Math.min(100, (axisMax - (mean + sd)) / range * 100));
     const errorBottom = Math.max(0, Math.min(100, (axisMax - (mean - sd)) / range * 100));
-    return `<div class="column-item" title="${group.values.join(" / ")}：${value.toFixed(1)} ± ${sd.toFixed(1)}，n=${n}">
+    return `<div class="column-item" title="${attrEscape(group.values.join(" / "))}：${value.toFixed(1)} ± ${sd.toFixed(1)}，n=${n}">
       <span class="column-value">${value.toFixed(1)}</span>
       ${state.showErrorBars ? `<span class="error-bar" style="top:${errorTop}%;height:${Math.max(0, errorBottom - errorTop)}%"></span>` : ""}
       <div class="column-bar" style="height:${Math.max(0, (value - axisMin) / range * 100)}%"></div>
-      <span class="column-label">${group.values.join(" / ")}<small>n=${n}</small></span>
+      <span class="column-label">${escapeHtml(group.values.join(" / "))}<small>n=${n}</small></span>
     </div>`;
   }).join("")}</div>
     </div>
-    <div class="x-axis-title">${fieldLabels[state.primaryDimension] || state.primaryDimension}${state.secondaryDimension ? ` × ${fieldLabels[state.secondaryDimension] || state.secondaryDimension}` : ""}</div>
+    <div class="x-axis-title">${escapeHtml(fieldLabels[state.primaryDimension] || state.primaryDimension)}${state.secondaryDimension ? ` × ${escapeHtml(fieldLabels[state.secondaryDimension] || state.secondaryDimension)}` : ""}</div>
   </div>` : '<div class="empty-state">没有可绘制的数据。</div>';
 }
 
@@ -1911,14 +1942,14 @@ function renderComparisonGlobalColumns() {
 function comparisonCell(columnId, item, result) {
   const preferredA = item.diff != null && item.diff > 0;
   const preferredB = item.diff != null && item.diff < 0;
-  if (columnId === "user") return `<td><strong>${attrEscape(item.user)}</strong></td>`;
+  if (columnId === "user") return `<td><strong>${escapeHtml(item.user)}</strong></td>`;
   if (columnId === "scoreA") return `<td>${comparisonScore(item.scoreA, preferredA)}</td>`;
   if (columnId === "scoreB") return `<td>${comparisonScore(item.scoreB, preferredB)}</td>`;
   if (columnId === "diff") return `<td><span class="preference-diff">${item.diff == null ? "—" : item.diff.toFixed(1)}</span></td>`;
   if (columnId === "profile") return `<td>${comparisonProfile(item.rows)}</td>`;
   if (columnId === "pressure") return `<td>${comparisonPressure(item.rows)}</td>`;
   if (columnId === "photos") return `<td>${comparisonPhotoStrip(item, result)}</td>`;
-  if (columnId === "note") return `<td>${attrEscape(state.userNotes[item.user] || "") || "—"}</td>`;
+  if (columnId === "note") return `<td>${escapeHtml(state.userNotes[item.user] || "") || "—"}</td>`;
   return "<td>—</td>";
 }
 
@@ -2055,7 +2086,7 @@ function pressureTag(label, value) {
   const score = Number(value);
   const noPressureScore = state.pressureWorst === "high" ? 0 : 10;
   if (!Number.isFinite(score) || score === noPressureScore) return "";
-  return `<span class="pressure-tag ${pressureClass(value)}" title="${pressureTitle(value)}">${label}：${score}</span>`;
+  return `<span class="pressure-tag ${pressureClass(value)}" title="${attrEscape(pressureTitle(value))}">${escapeHtml(label)}：${score}</span>`;
 }
 
 function groupByUser(rows) {
@@ -2129,16 +2160,16 @@ function detailCell(column, row) {
       item.userLevel && !item.derived && !item.photo && item.id !== state.userIdField
     );
     return `<td><div class="profile-tags">${profileFields.map(item =>
-      row[item.id] === "" ? "" : `<span class="profile-tag"><b>${item.label}</b>${row[item.id]}</span>`
+      row[item.id] === "" ? "" : `<span class="profile-tag"><b>${escapeHtml(item.label)}</b>${escapeHtml(row[item.id])}</span>`
     ).join("") || "—"}</div></td>`;
   }
   if (fieldRole(field) === "pressure") {
-    return `<td class="${classes}"><span class="pressure ${pressureClass(value)}" title="${pressureTitle(value)}">${value === "" ? "—" : `${value}分`}</span></td>`;
+    return `<td class="${classes}"><span class="pressure ${pressureClass(value)}" title="${attrEscape(pressureTitle(value))}">${value === "" ? "—" : `${escapeHtml(value)}分`}</span></td>`;
   }
   if (/score$|rating$|satisfaction|comfort|stability/i.test(field) && isNumericField(field)) {
-    return `<td class="${classes}"><span class="score ${scoreClass(value)}">${value || "—"}</span></td>`;
+    return `<td class="${classes}"><span class="score ${scoreClass(value)}">${escapeHtml(value) || "—"}</span></td>`;
   }
-  return `<td class="${classes}">${field === state.userIdField ? `<strong>${value}</strong>` : value || "—"}</td>`;
+  return `<td class="${classes}">${field === state.userIdField ? `<strong>${escapeHtml(value)}</strong>` : escapeHtml(value) || "—"}</td>`;
 }
 
 function photoGalleryCell(column, userRows) {
@@ -2156,18 +2187,18 @@ function photoGalleryCell(column, userRows) {
     const src = photoUrl(row[selectedView.field]);
     return `
     <figure class="photo-thumb">
-      <img class="ear-photo detail-photo-lazy photo-preview-trigger" src="${detailPhotoPlaceholder()}" data-src="${attrEscape(src)}" alt="${row[state.userIdField]} ${caption}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
-      <figcaption>${caption}</figcaption>
+      <img class="ear-photo detail-photo-lazy photo-preview-trigger" src="${detailPhotoPlaceholder()}" data-src="${attrEscape(src)}" alt="${attrEscape(`${row[state.userIdField]} ${caption}`)}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
+      <figcaption>${escapeHtml(caption)}</figcaption>
     </figure>`;
   }).join("");
   const options = userOptions.map(option =>
-    `<option value="${option.value}" ${state.userViews[user] === option.value ? "selected" : ""}>${option.label}</option>`
+    `<option value="${attrEscape(option.value)}" ${state.userViews[user] === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`
   ).join("");
   return `<td class="photo-cell" rowspan="${userRows.length}">
     <div class="photo-cell-layout">
       <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customPosition ? `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;` : ""}">${items || "—"}</div>
       <aside class="photo-cell-controls" aria-label="${attrEscape(user)}照片显示控制">
-        <select class="user-view-select" data-user="${user}" aria-label="${user}照片视角">
+        <select class="user-view-select" data-user="${attrEscape(user)}" aria-label="${attrEscape(user)}照片视角">
           <option value="">跟随全局</option>${options}
         </select>
         <div class="photo-position-controls" data-user="${attrEscape(user)}">
@@ -2193,7 +2224,7 @@ function allUserNames() {
 function renderUserHeaderMenu(column) {
   const users = allUserNames();
   const selected = Array.isArray(state.userFilter) ? new Set(state.userFilter.map(String)) : new Set(users);
-  return `<th><span>${column.label}</span>
+  return `<th><span>${escapeHtml(column.label)}</span>
     <details class="header-menu user-filter-menu">
       <summary>${selected.size}/${users.length} 用户</summary>
       <div class="header-menu-panel">
@@ -2202,7 +2233,7 @@ function renderUserHeaderMenu(column) {
           <button type="button" class="user-filter-none">全不选</button>
         </div>
         <div class="user-filter-options">
-          ${users.map(user => `<label><input class="user-filter-checkbox" type="checkbox" value="${attrEscape(user)}" ${selected.has(user) ? "checked" : ""}>${attrEscape(user)}</label>`).join("")}
+          ${users.map(user => `<label><input class="user-filter-checkbox" type="checkbox" value="${attrEscape(user)}" ${selected.has(user) ? "checked" : ""}>${escapeHtml(user)}</label>`).join("")}
         </div>
       </div>
     </details>
@@ -2210,7 +2241,7 @@ function renderUserHeaderMenu(column) {
 }
 
 function renderDeviceHeaderMenu(column) {
-  return `<th><span>${column.label}</span>
+  return `<th><span>${escapeHtml(column.label)}</span>
     <select class="device-order-select" aria-label="设备排序">
       <option value="source" ${state.deviceOrderMode === "source" ? "selected" : ""}>原始顺序</option>
       <option value="asc" ${state.deviceOrderMode === "asc" ? "selected" : ""}>设备名升序</option>
@@ -2220,13 +2251,13 @@ function renderDeviceHeaderMenu(column) {
 }
 
 function renderDetailHeaderCell(column, rows) {
-  if (column.id === "__user_note") return `<th class="user-note-head">${column.label}</th>`;
-  if (column.derived || column.photo) return `<th>${column.label}</th>`;
+  if (column.id === "__user_note") return `<th class="user-note-head">${escapeHtml(column.label)}</th>`;
+  if (column.derived || column.photo) return `<th>${escapeHtml(column.label)}</th>`;
   if (column.id === state.userIdField) return renderUserHeaderMenu(column);
   if (column.id === deviceField()) return renderDeviceHeaderMenu(column);
   const values = [...new Set(rows.map(row => row[column.id]).filter(value => value !== ""))].sort((a, b) => String(a).localeCompare(String(b), "zh-CN"));
   const options = values.length <= 80 ? values.map(value => `<option value="${attrEscape(value)}" ${state.columnFilters[column.id] === String(value) ? "selected" : ""}>${attrEscape(value)}</option>`).join("") : "";
-  return `<th><span>${column.label}</span><select class="header-filter" data-field="${column.id}" aria-label="${column.label}筛选"><option value="">全部</option>${options}</select></th>`;
+  return `<th><span>${escapeHtml(column.label)}</span><select class="header-filter" data-field="${attrEscape(column.id)}" aria-label="${attrEscape(column.label)}筛选"><option value="">全部</option>${options}</select></th>`;
 }
 
 function renderDetails(rows, groups) {
@@ -2701,10 +2732,10 @@ function renderBareSlotFigure(review, slot) {
   const thumbSrc = path ? photoThumbUrl(path) : "";
   const label = currentBarePhotoLabel(slot.field, slot.label);
   return `<figure class="mapping-photo-slot mapping-bare-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="bare" data-user="${attrEscape(review.user)}" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}" title="拖动照片到这里会重置该用户设备排序">
-    ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${attrEscape(label)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
-    <figcaption>${attrEscape(label)}</figcaption>
+    ${path ? `<img class="photo-preview-trigger" src="${attrEscape(thumbSrc)}" alt="${attrEscape(label)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
+    <figcaption>${escapeHtml(label)}</figcaption>
     <input class="bare-ear-label-input" data-field="${attrEscape(slot.field)}" value="${attrEscape(label)}" aria-label="${attrEscape(label)}名称">
-    <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${slot.field}">
+    <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}">
       ${photoSelectOptions(review.files, path)}
     </select>
   </figure>`;
@@ -2728,9 +2759,9 @@ function renderMappingPhotoSlot(review, entry, field, deviceField) {
   const thumbSrc = path ? photoThumbUrl(path) : "";
   const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
   return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="device" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
-    ${path ? `<img class="photo-preview-trigger" src="${thumbSrc}" alt="${state.viewLabels[field]}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
-    <figcaption>${photoFieldViewName(field)}</figcaption>
-    <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${field}">
+    ${path ? `<img class="photo-preview-trigger" src="${attrEscape(thumbSrc)}" alt="${attrEscape(state.viewLabels[field])}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
+    <figcaption>${escapeHtml(photoFieldViewName(field))}</figcaption>
+    <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}">
       ${photoSelectOptions(els.mappingMode.value === "folders" ? state.mappingFiles : review.files, path)}
     </select>
   </figure>`;
@@ -2775,7 +2806,7 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
   </aside>` : "";
   return `<article class="mapping-user ${review.status}" data-review-user="${attrEscape(review.user)}">
     <div class="mapping-user-heading">
-      <strong>${review.user}</strong>
+      <strong>${escapeHtml(review.user)}</strong>
       <span>预期 ${totalExpected} 张 / 实际 ${review.files.length} 张</span>
       <b>${review.status === "ok" ? "映射正常" : review.status === "missing" ? "照片不足" : "照片过多"}</b>
     </div>
@@ -2784,7 +2815,7 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
     <div class="mapping-device-list">${review.entries.map((entry, entryIndex) => `
       <div class="mapping-device-row ${sequencePhotoEarMode ? "mapping-device-row-ear-groups" : ""}">
         <div class="mapping-device-meta">
-          <strong>${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"}</strong>
+          <strong>${escapeHtml(deviceField ? entry.row[deviceField] || "未命名设备" : "单设备")}</strong>
           ${sequenceMode && review.entries.length > 1 ? `<div class="mapping-device-actions">
             <button type="button" class="mini-button mapping-device-move" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-direction="-1" ${entryIndex === 0 ? "disabled" : ""}>上移整组</button>
             <button type="button" class="mini-button mapping-device-move" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-direction="1" ${entryIndex === review.entries.length - 1 ? "disabled" : ""}>下移整组</button>
@@ -2795,7 +2826,7 @@ function renderMappingReviewCard(review, deviceField, photoFields) {
       </div>
     `).join("")}</div>
     </div>
-    ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${note}</p>`).join("")}</div>` : ""}
+    ${review.notes?.length ? `<div class="mapping-notes">${review.notes.map(note => `<p>${escapeHtml(note)}</p>`).join("")}</div>` : ""}
   </article>`;
 }
 
@@ -2957,6 +2988,10 @@ function attrEscape(value) {
     .replaceAll(">", "&gt;");
 }
 
+function escapeHtml(value) {
+  return attrEscape(value);
+}
+
 function downloadMappedCsv() {
   const headers = Object.keys(state.mappedRows[0] || {});
   const csv = [headers.join(","), ...state.mappedRows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
@@ -3069,14 +3104,18 @@ function bindEvents() {
     renameProjectTab(input.dataset.tabName || "", input.value, { persist: true });
     renderProjectTabs();
   });
+  els.useSampleProjectButton.addEventListener("click", useSampleProject);
+  els.clearProjectPathButton.addEventListener("click", clearProjectPath);
   els.newProjectTabButton.addEventListener("click", createNewProjectTab);
   els.loadProjectButton.addEventListener("click", async () => {
     els.loadProjectButton.disabled = true;
     setProjectStatus("正在加载项目…");
     try {
       await loadProject();
+      showProjectRecoveryActions(false);
     } catch (error) {
       setProjectStatus(error.message);
+      showProjectRecoveryActions(true);
     } finally {
       els.loadProjectButton.disabled = false;
     }
@@ -3700,8 +3739,10 @@ async function start() {
     setProjectStatus(`正在加载服务器项目：${state.serverProjectId}`);
     try {
       await loadServerProject();
+      showProjectRecoveryActions(false);
     } catch (error) {
       setProjectStatus(`服务器项目自动加载失败：${error.message}`);
+      showProjectRecoveryActions(true);
     }
     return;
   }
@@ -3712,8 +3753,10 @@ async function start() {
     els.projectPathInput.value = projectFromUrl;
     try {
       await loadProject(projectFromUrl);
+      showProjectRecoveryActions(false);
     } catch (error) {
       setProjectStatus(`自动加载失败：${error.message}`);
+      showProjectRecoveryActions(true);
     }
   } else if (window.location.protocol === "file:") {
     setProjectStatus("当前是 file:// 打开；保存项目和扫描照片需要通过启动器打开看板。");

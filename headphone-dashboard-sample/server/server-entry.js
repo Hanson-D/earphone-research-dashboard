@@ -18,15 +18,23 @@ function setStatus(message) {
   els.status.textContent = message;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 function renderProjects(projects) {
   els.count.textContent = `${projects.length} 个项目`;
   els.list.innerHTML = projects.length ? projects.map(project => `
     <article class="server-project-card">
       <div>
-        <strong>${project.title || project.id}</strong>
-        <span>${project.id} · rev ${project.revision || 1} · ${project.rows || 0} 行</span>
+        <strong>${escapeHtml(project.title || project.id)}</strong>
+        <span>${escapeHtml(project.id)} · rev ${Number(project.revision) || 1} · ${Number(project.rows) || 0} 行</span>
       </div>
-      <a class="outline-button" href="${dashboardUrl(project.id)}" target="_blank" rel="noopener">打开看板</a>
+      <a class="outline-button" href="${escapeHtml(dashboardUrl(project.id))}" target="_blank" rel="noopener">打开看板</a>
     </article>
   `).join("") : `<div class="empty-state">还没有服务器项目。可以先新建一个，再在看板中导入 CSV 和照片。</div>`;
 }
@@ -74,6 +82,6 @@ els.form.addEventListener("submit", event => {
 });
 
 loadProjects().catch(error => {
-  els.list.innerHTML = `<div class="empty-state">${error.message}</div>`;
+  els.list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   setStatus(error.message);
 });
