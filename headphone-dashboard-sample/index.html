@@ -48,6 +48,7 @@
         <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
         <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
         <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
+        <button class="page-tab" data-page="comparison">04 · 设备偏好</button>
       </nav>
 
   <main id="mappingPage" class="app-page active">
@@ -404,6 +405,71 @@
             </div>
           </article>
         </div>
+      </section>
+    </section>
+  </main>
+
+  <main id="comparisonPage" class="app-page">
+    <section class="comparison-preference-layout">
+      <aside class="control-panel comparison-control-panel">
+        <div class="section-heading">
+          <span>设备偏好分组</span>
+          <small>用户内配对比较</small>
+        </div>
+
+        <div class="control-block">
+          <label for="comparisonMetricSelect">比较指标</label>
+          <select id="comparisonMetricSelect"></select>
+        </div>
+
+        <label class="check-control">
+          <input id="comparisonAutoDevices" type="checkbox" checked>
+          自动选择整体最好 / 最差设备
+        </label>
+
+        <div class="control-block split-control">
+          <div>
+            <label for="comparisonDeviceA">设备 A</label>
+            <select id="comparisonDeviceA"></select>
+          </div>
+          <div>
+            <label for="comparisonDeviceB">设备 B</label>
+            <select id="comparisonDeviceB"></select>
+          </div>
+        </div>
+
+        <div class="control-block">
+          <label for="comparisonThreshold">明显差异阈值</label>
+          <input id="comparisonThreshold" type="number" min="0" max="10" step="0.5" value="1">
+          <small>按 A 分数 - B 分数分组；默认差值 ≥ 1 分认为 A 明显更好。</small>
+        </div>
+
+        <p class="pressure-note">04 页重点看同一用户内的设备胜负关系。总体排名只用于辅助自动选择比较对象。</p>
+      </aside>
+
+      <section class="comparison-preference-main">
+        <article class="panel preference-summary-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">WITHIN-USER DEVICE COMPARISON</p>
+              <h2 id="comparisonTitle">设备偏好分组</h2>
+            </div>
+            <span id="comparisonSummary" class="hint">等待数据</span>
+          </div>
+          <div id="comparisonDeviceRanking" class="preference-ranking"></div>
+        </article>
+
+        <section id="comparisonGroupCards" class="preference-group-grid"></section>
+
+        <article class="panel preference-detail-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">GROUP DETAILS</p>
+              <h2>胜负分组详情</h2>
+            </div>
+          </div>
+          <div id="comparisonDetails" class="preference-details"></div>
+        </article>
       </section>
     </section>
   </main>

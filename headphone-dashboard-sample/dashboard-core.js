@@ -1007,6 +1007,108 @@
     return { totalIssues: items.length, errors, warnings, items };
   }
 
+  function mean(values = []) {
+    const finite = values.map(Number).filter(Number.isFinite);
+    return finite.length ? finite.reduce((sum, value) => sum + value, 0) / finite.length : null;
+  }
+
+  function compareDevicesWithinUsers(rows = [], options = {}) {
+    const {
+      userField = "",
+      deviceField = "",
+      metric = "",
+      deviceA = "",
+      deviceB = "",
+      threshold = 1
+    } = options;
+    const cleanThreshold = Math.max(0, Number(threshold) || 0);
+    if (!userField || !deviceField || !metric) {
+      return { devices: [], deviceA: "", deviceB: "", groups: [], eligibleUsers: 0, incompleteUsers: 0 };
+    }
+
+    const deviceRows = new Map();
+    rows.forEach(row => {
+      const device = String(row[deviceField] || "").trim();
+      const value = Number(row[metric]);
+      if (!device || !Number.isFinite(value)) return;
+      if (!deviceRows.has(device)) deviceRows.set(device, []);
+      deviceRows.get(device).push(row);
+    });
+    const devices = [...deviceRows.entries()].map(([device, items]) => ({
+      device,
+      ...numericSummary(items, metric)
+    })).filter(item => item.n > 0)
+      .sort((a, b) => b.mean - a.mean || naturalCompare(a.device, b.device));
+
+    const selectedA = deviceA && deviceRows.has(deviceA) ? deviceA : devices[0]?.device || "";
+    const selectedB = deviceB && deviceRows.has(deviceB) && deviceB !== selectedA ?
+      deviceB :
+      devices.find(item => item.device !== selectedA)?.device || "";
+
+    const byUser = new Map();
+    rows.forEach(row => {
+      const user = String(row[userField] || "").trim();
+      if (!user) return;
+      if (!byUser.has(user)) byUser.set(user, []);
+      byUser.get(user).push(row);
+    });
+
+    const buckets = {
+      aBetter: { key: "aBetter", label: `${selectedA || "设备 A"} 更好`, users: [] },
+      bBetter: { key: "bBetter", label: `${selectedB || "设备 B"} 更好`, users: [] },
+      close: { key: "close", label: "接近无差异", users: [] },
+      incomplete: { key: "incomplete", label: "数据不完整", users: [] }
+    };
+
+    byUser.forEach((userRows, user) => {
+      const rowsA = userRows.filter(row => String(row[deviceField] || "").trim() === selectedA);
+      const rowsB = userRows.filter(row => String(row[deviceField] || "").trim() === selectedB);
+      const scoreA = mean(rowsA.map(row => row[metric]));
+      const scoreB = mean(rowsB.map(row => row[metric]));
+      const item = {
+        user,
+        scoreA,
+        scoreB,
+        diff: scoreA != null && scoreB != null ? scoreA - scoreB : null,
+        rowsA,
+        rowsB,
+        rows: [...rowsA, ...rowsB]
+      };
+      if (scoreA == null || scoreB == null) {
+        buckets.incomplete.users.push(item);
+      } else if (item.diff >= cleanThreshold) {
+        buckets.aBetter.users.push(item);
+      } else if (item.diff <= -cleanThreshold) {
+        buckets.bBetter.users.push(item);
+      } else {
+        buckets.close.users.push(item);
+      }
+    });
+
+    const groups = Object.values(buckets).map(group => {
+      const complete = group.users.filter(item => item.diff != null);
+      const diffs = complete.map(item => item.diff);
+      return {
+        ...group,
+        n: group.users.length,
+        meanA: mean(group.users.map(item => item.scoreA)),
+        meanB: mean(group.users.map(item => item.scoreB)),
+        meanDiff: mean(diffs),
+        rows: group.users.flatMap(item => item.rows)
+      };
+    });
+
+    return {
+      devices,
+      deviceA: selectedA,
+      deviceB: selectedB,
+      threshold: cleanThreshold,
+      groups,
+      eligibleUsers: groups.filter(group => group.key !== "incomplete").reduce((sum, group) => sum + group.n, 0),
+      incompleteUsers: buckets.incomplete.users.length
+    };
+  }
+
   function sanitizeDashboardConfig(config = {}, headers = []) {
     const headerSet = new Set(headers);
     const layout = config.layout && typeof config.layout === "object" ? { ...config.layout } : {};
@@ -1033,6 +1135,7 @@
       .filter(([user, note]) => (!validUsers.size || validUsers.has(user)) && note));
     const deviceOrderMode = ["source", "asc", "desc"].includes(config.deviceOrderMode) ? config.deviceOrderMode : "";
     const keepField = field => headerSet.has(field) ? field : "";
+    const comparisonThreshold = Number(config.comparisonThreshold);
     return {
       layout,
       fieldRoleOverrides,
@@ -1042,6 +1145,11 @@
       yAxisMode: config.yAxisMode === "full" ? "full" : config.yAxisMode === "adaptive" ? "adaptive" : "",
       showErrorBars: typeof config.showErrorBars === "boolean" ? config.showErrorBars : undefined,
       pressureWorst: config.pressureWorst === "high" ? "high" : config.pressureWorst === "low" ? "low" : "",
+      comparisonMetric: keepField(config.comparisonMetric),
+      comparisonAutoDevices: typeof config.comparisonAutoDevices === "boolean" ? config.comparisonAutoDevices : undefined,
+      comparisonDeviceA: String(config.comparisonDeviceA || ""),
+      comparisonDeviceB: String(config.comparisonDeviceB || ""),
+      comparisonThreshold: Number.isFinite(comparisonThreshold) ? Math.max(0, comparisonThreshold) : undefined,
       userPhotoPositions,
       userFilter,
       userOrder,
@@ -1116,6 +1224,7 @@
     mapPhotosToRows,
     buildPhotoAuditRows,
     validateRows,
+    compareDevicesWithinUsers,
     sanitizeDashboardConfig,
     buildProjectDocument,
     sanitizeProjectDocument

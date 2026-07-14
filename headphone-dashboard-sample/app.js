@@ -142,7 +142,12 @@ const state = {
   pressureEarFilter: "",
   pressureGroupField: "",
   pressureGroupValue: "",
-  pressureAggregation: "mean"
+  pressureAggregation: "mean",
+  comparisonMetric: "",
+  comparisonAutoDevices: true,
+  comparisonDeviceA: "",
+  comparisonDeviceB: "",
+  comparisonThreshold: 1
 };
 
 let draggedColumnId = "";
@@ -174,6 +179,8 @@ const els = Object.fromEntries([
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
   "pressurePage", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
   "pressureAggregation", "pressureSummary", "pressureHeatmaps", "pressureRanking",
+  "comparisonPage", "comparisonMetricSelect", "comparisonAutoDevices", "comparisonDeviceA", "comparisonDeviceB",
+  "comparisonThreshold", "comparisonTitle", "comparisonSummary", "comparisonDeviceRanking", "comparisonGroupCards", "comparisonDetails",
   "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
 
@@ -329,6 +336,11 @@ function dashboardConfigSnapshot() {
     yAxisMode: state.yAxisMode,
     showErrorBars: state.showErrorBars,
     pressureWorst: state.pressureWorst,
+    comparisonMetric: state.comparisonMetric,
+    comparisonAutoDevices: state.comparisonAutoDevices,
+    comparisonDeviceA: state.comparisonDeviceA,
+    comparisonDeviceB: state.comparisonDeviceB,
+    comparisonThreshold: state.comparisonThreshold,
     userPhotoPositions: state.userPhotoPositions,
     userFilter: state.userFilter,
     deviceOrderMode: state.deviceOrderMode,
@@ -490,6 +502,11 @@ function currentProjectTabSnapshot() {
     yAxisMode: state.yAxisMode,
     showErrorBars: state.showErrorBars,
     pressureWorst: state.pressureWorst,
+    comparisonMetric: state.comparisonMetric,
+    comparisonAutoDevices: state.comparisonAutoDevices,
+    comparisonDeviceA: state.comparisonDeviceA,
+    comparisonDeviceB: state.comparisonDeviceB,
+    comparisonThreshold: state.comparisonThreshold,
     userPhotoPositions: cloneStateData(state.userPhotoPositions),
     userFilter: cloneStateData(state.userFilter),
     deviceOrderMode: state.deviceOrderMode,
@@ -580,6 +597,11 @@ function restoreProjectTabSnapshot(snapshot) {
   state.yAxisMode = snapshot.yAxisMode || "adaptive";
   state.showErrorBars = snapshot.showErrorBars !== false;
   state.pressureWorst = snapshot.pressureWorst || "low";
+  state.comparisonMetric = snapshot.comparisonMetric || "";
+  state.comparisonAutoDevices = snapshot.comparisonAutoDevices !== false;
+  state.comparisonDeviceA = snapshot.comparisonDeviceA || "";
+  state.comparisonDeviceB = snapshot.comparisonDeviceB || "";
+  state.comparisonThreshold = Number.isFinite(Number(snapshot.comparisonThreshold)) ? Number(snapshot.comparisonThreshold) : 1;
   state.userPhotoPositions = cloneStateData(snapshot.userPhotoPositions || {});
   state.userFilter = cloneStateData(snapshot.userFilter || null);
   state.deviceOrderMode = snapshot.deviceOrderMode || "source";
@@ -929,6 +951,11 @@ function applyDashboardConfig(config) {
   if (clean.yAxisMode) state.yAxisMode = clean.yAxisMode;
   if (typeof clean.showErrorBars === "boolean") state.showErrorBars = clean.showErrorBars;
   if (clean.pressureWorst) state.pressureWorst = clean.pressureWorst;
+  if (clean.comparisonMetric) state.comparisonMetric = clean.comparisonMetric;
+  if (typeof clean.comparisonAutoDevices === "boolean") state.comparisonAutoDevices = clean.comparisonAutoDevices;
+  if (clean.comparisonDeviceA) state.comparisonDeviceA = clean.comparisonDeviceA;
+  if (clean.comparisonDeviceB) state.comparisonDeviceB = clean.comparisonDeviceB;
+  if (Number.isFinite(Number(clean.comparisonThreshold))) state.comparisonThreshold = Number(clean.comparisonThreshold);
   state.userPhotoPositions = clean.userPhotoPositions || {};
   state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
   state.deviceOrderMode = clean.deviceOrderMode || "source";
@@ -1213,6 +1240,7 @@ function buildSchema() {
     state.secondaryDimension = state.dimensionFields.find(field => field !== state.primaryDimension) || "";
   }
   if (!state.metricFields.includes(state.metric)) state.metric = state.metricFields[0] || "";
+  if (!state.metricFields.includes(state.comparisonMetric)) state.comparisonMetric = state.metric || state.metricFields[0] || "";
   const dynamicColumns = state.headers.map(field => ({
     id: field,
     label: fieldLabels[field] || field,
@@ -1307,6 +1335,7 @@ function initializeControls() {
   els.showErrorBars.checked = state.showErrorBars;
   els.pressureWorstSelect.value = state.pressureWorst;
   refreshPressureControls();
+  refreshComparisonControls();
   renderViewControls();
 }
 
@@ -1738,6 +1767,169 @@ function renderPressureMechanism() {
   }).join("") : '<div class="empty-state">暂无排行。</div>';
 }
 
+function refreshComparisonControls() {
+  if (!els.comparisonMetricSelect) return;
+  const compareDeviceField = deviceField();
+  const devices = compareDeviceField ? unique(compareDeviceField) : [];
+  const previousMetric = state.comparisonMetric || state.metric;
+  fillSelect(els.comparisonMetricSelect, state.metricFields, false, fieldLabels);
+  state.comparisonMetric = state.metricFields.includes(previousMetric) ? previousMetric : state.metricFields[0] || "";
+  els.comparisonMetricSelect.value = state.comparisonMetric;
+
+  fillSelect(els.comparisonDeviceA, devices, false, fieldLabels);
+  fillSelect(els.comparisonDeviceB, devices, false, fieldLabels);
+  els.comparisonAutoDevices.checked = state.comparisonAutoDevices;
+  els.comparisonDeviceA.disabled = state.comparisonAutoDevices;
+  els.comparisonDeviceB.disabled = state.comparisonAutoDevices;
+  if (!devices.includes(state.comparisonDeviceA)) state.comparisonDeviceA = devices[0] || "";
+  if (!devices.includes(state.comparisonDeviceB) || state.comparisonDeviceB === state.comparisonDeviceA) {
+    state.comparisonDeviceB = devices.find(device => device !== state.comparisonDeviceA) || "";
+  }
+  els.comparisonDeviceA.value = state.comparisonDeviceA;
+  els.comparisonDeviceB.value = state.comparisonDeviceB;
+  els.comparisonThreshold.value = state.comparisonThreshold;
+}
+
+function comparisonScore(value, preferred) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  return `<span class="preference-score ${preferred ? "good" : ""}">${Number(value).toFixed(1)}</span>`;
+}
+
+function comparisonProfile(userRows = []) {
+  const row = userRows[0] || {};
+  const fields = state.layout.columns.filter(column =>
+    column.userLevel && !column.derived && !column.photo && column.id !== state.userIdField
+  ).slice(0, 6);
+  return `<div class="profile-tags">${fields.map(column =>
+    row[column.id] === "" || row[column.id] == null ? "" : `<span class="profile-tag"><b>${attrEscape(column.label)}</b>${attrEscape(row[column.id])}</span>`
+  ).join("") || "—"}</div>`;
+}
+
+function comparisonPressure(rows = []) {
+  const fields = pressureFields();
+  if (!fields.length) return "—";
+  const tags = rows.flatMap(row => fields.map(field =>
+    pressureTag(Core.pressureSiteLabel(field, fieldLabels[field]), row[field])
+  )).filter(Boolean);
+  return `<div class="pressure-tags">${tags.slice(0, 8).join("") || "—"}</div>`;
+}
+
+function comparisonPhotoStrip(item, result) {
+  const rows = [
+    { label: result.deviceA || "设备 A", row: item.rowsA[0] },
+    { label: result.deviceB || "设备 B", row: item.rowsB[0] }
+  ];
+  return `<div class="preference-photo-strip">${rows.map(({ label, row }) => {
+    const selected = parsePhotoViewValue(state.globalView || state.photoFields[0] || "");
+    const field = row && rowMatchesPhotoView(row, selected) ? selected.field : state.photoFields.find(photoField => row?.[photoField]);
+    const src = field ? photoUrl(row[field]) : "";
+    return `<figure>
+      ${src ? `<img class="photo-preview-trigger" src="${attrEscape(src)}" alt="${attrEscape(`${item.user} ${label}`)}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${item.user} · ${label}`)}">` : `<div class="missing-photo">无图</div>`}
+      <figcaption>${attrEscape(label)}</figcaption>
+    </figure>`;
+  }).join("")}</div>`;
+}
+
+function renderComparisonDetails(result) {
+  const metricLabel = fieldLabels[state.comparisonMetric] || state.comparisonMetric || "指标";
+  els.comparisonDetails.innerHTML = result.groups.map(group => `
+    <section class="preference-detail-group">
+      <header>
+        <h3>${attrEscape(group.label)}</h3>
+        <span>${group.n} 位用户 · ${group.meanDiff == null ? "差值 —" : `平均差值 ${group.meanDiff.toFixed(1)}`}</span>
+      </header>
+      <div class="preference-table-wrap">
+        <table class="preference-table">
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>${attrEscape(result.deviceA || "设备 A")} ${attrEscape(metricLabel)}</th>
+              <th>${attrEscape(result.deviceB || "设备 B")} ${attrEscape(metricLabel)}</th>
+              <th>A-B</th>
+              <th>组间变量</th>
+              <th>挤压摘要</th>
+              <th>照片</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${group.users.length ? group.users.map(item => {
+              const preferredA = item.diff != null && item.diff > 0;
+              const preferredB = item.diff != null && item.diff < 0;
+              return `<tr>
+                <td><strong>${attrEscape(item.user)}</strong></td>
+                <td>${comparisonScore(item.scoreA, preferredA)}</td>
+                <td>${comparisonScore(item.scoreB, preferredB)}</td>
+                <td><span class="preference-diff">${item.diff == null ? "—" : item.diff.toFixed(1)}</span></td>
+                <td>${comparisonProfile(item.rows)}</td>
+                <td>${comparisonPressure(item.rows)}</td>
+                <td>${comparisonPhotoStrip(item, result)}</td>
+                <td>${attrEscape(state.userNotes[item.user] || "") || "—"}</td>
+              </tr>`;
+            }).join("") : `<tr><td colspan="8"><div class="empty-state">该分组暂无用户。</div></td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `).join("");
+}
+
+function renderComparisonPreference() {
+  if (!els.comparisonMetricSelect) return;
+  refreshComparisonControls();
+  const compareDeviceField = deviceField();
+  if (!state.rows.length) {
+    els.comparisonSummary.textContent = "尚未加载数据";
+    els.comparisonDeviceRanking.innerHTML = '<div class="empty-state">请先加载项目或应用照片映射数据。</div>';
+    els.comparisonGroupCards.innerHTML = "";
+    els.comparisonDetails.innerHTML = "";
+    return;
+  }
+  if (!compareDeviceField || !state.comparisonMetric) {
+    els.comparisonSummary.textContent = "缺少设备字段或评分指标";
+    els.comparisonDeviceRanking.innerHTML = '<div class="empty-state">请在 02 页字段角色中确认设备字段和评分指标。</div>';
+    els.comparisonGroupCards.innerHTML = "";
+    els.comparisonDetails.innerHTML = "";
+    return;
+  }
+
+  const result = Core.compareDevicesWithinUsers(filteredRows(), {
+    userField: state.userIdField,
+    deviceField: compareDeviceField,
+    metric: state.comparisonMetric,
+    deviceA: state.comparisonAutoDevices ? "" : state.comparisonDeviceA,
+    deviceB: state.comparisonAutoDevices ? "" : state.comparisonDeviceB,
+    threshold: state.comparisonThreshold
+  });
+  if (state.comparisonAutoDevices) {
+    state.comparisonDeviceA = result.deviceA;
+    state.comparisonDeviceB = result.deviceB;
+    els.comparisonDeviceA.value = result.deviceA;
+    els.comparisonDeviceB.value = result.deviceB;
+  }
+
+  const metricLabel = fieldLabels[state.comparisonMetric] || state.comparisonMetric;
+  els.comparisonTitle.textContent = `${result.deviceA || "设备 A"} vs ${result.deviceB || "设备 B"} · ${metricLabel}`;
+  els.comparisonSummary.textContent = `${result.eligibleUsers} 位可配对用户 · ${result.incompleteUsers} 位数据不完整`;
+  els.comparisonDeviceRanking.innerHTML = result.devices.length ? result.devices.slice(0, 8).map((item, index) => `
+    <div class="preference-rank-row ${item.device === result.deviceA ? "best" : item.device === result.deviceB ? "worst" : ""}">
+      <b>${index + 1}</b>
+      <strong>${attrEscape(item.device)}</strong>
+      <span>${item.mean.toFixed(1)} ± ${item.sd.toFixed(1)} · n=${item.n}</span>
+    </div>
+  `).join("") : '<div class="empty-state">当前数据没有可排名设备。</div>';
+
+  els.comparisonGroupCards.innerHTML = result.groups.map(group => `
+    <article class="preference-group-card ${group.key}">
+      <h3>${attrEscape(group.label)}</h3>
+      <div class="group-count">${group.n}</div>
+      <p>${group.meanA == null ? "A均值 —" : `A均值 ${group.meanA.toFixed(1)}`} · ${group.meanB == null ? "B均值 —" : `B均值 ${group.meanB.toFixed(1)}`}</p>
+      <p>${group.meanDiff == null ? "平均差值 —" : `平均差值 ${group.meanDiff.toFixed(1)}`} · 阈值 ${result.threshold}</p>
+    </article>
+  `).join("");
+  renderComparisonDetails(result);
+}
+
 function scoreClass(value) {
   return Number(value) >= 8 ? "high" : Number(value) <= 5 ? "low" : "";
 }
@@ -2016,6 +2208,7 @@ function render() {
   renderChart(groups);
   renderDetails(rows, groups);
   renderPressureMechanism();
+  renderComparisonPreference();
 }
 
 function switchPage(page) {
@@ -3099,6 +3292,33 @@ function bindEvents() {
   els.pressureAggregation.addEventListener("change", () => {
     state.pressureAggregation = els.pressureAggregation.value;
     renderPressureMechanism();
+  });
+  els.comparisonMetricSelect.addEventListener("change", () => {
+    state.comparisonMetric = els.comparisonMetricSelect.value;
+    renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonAutoDevices.addEventListener("change", () => {
+    state.comparisonAutoDevices = els.comparisonAutoDevices.checked;
+    renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonDeviceA.addEventListener("change", () => {
+    state.comparisonDeviceA = els.comparisonDeviceA.value;
+    state.comparisonAutoDevices = false;
+    renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonDeviceB.addEventListener("change", () => {
+    state.comparisonDeviceB = els.comparisonDeviceB.value;
+    state.comparisonAutoDevices = false;
+    renderComparisonPreference();
+    markProjectDirty();
+  });
+  els.comparisonThreshold.addEventListener("change", () => {
+    state.comparisonThreshold = Math.max(0, Number(els.comparisonThreshold.value) || 0);
+    renderComparisonPreference();
+    markProjectDirty();
   });
   els.clearGroupButton.addEventListener("click", () => { state.selectedGroup = null; render(); });
   els.detailSearch.addEventListener("input", () => { state.search = els.detailSearch.value; render(); });

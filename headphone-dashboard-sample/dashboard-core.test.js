@@ -883,6 +883,11 @@ test("dashboard config import keeps only fields in the current schema", () => {
     metric: "old_field",
     showErrorBars: false,
     pressureWorst: "high",
+    comparisonMetric: "comfort_score",
+    comparisonAutoDevices: false,
+    comparisonDeviceA: "样机A",
+    comparisonDeviceB: "样机B",
+    comparisonThreshold: "1.5",
     userFilter: ["U001"],
     userOrder: ["U002", "U001"],
     userNotes: { U001: "重点样本", U003: "不在当前数据" },
@@ -895,6 +900,11 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.metric, "");
   assert.equal(config.showErrorBars, false);
   assert.equal(config.pressureWorst, "high");
+  assert.equal(config.comparisonMetric, "comfort_score");
+  assert.equal(config.comparisonAutoDevices, false);
+  assert.equal(config.comparisonDeviceA, "样机A");
+  assert.equal(config.comparisonDeviceB, "样机B");
+  assert.equal(config.comparisonThreshold, 1.5);
   assert.deepEqual(config.userFilter, ["U001"]);
   assert.deepEqual(config.userOrder, ["U002", "U001"]);
   assert.deepEqual(config.userNotes, { U001: "重点样本", U003: "不在当前数据" });
@@ -942,4 +952,36 @@ test("project documents keep rows, mapping state, and dashboard config together"
   assert.equal(clean.title, "佩戴舒适性 A 轮");
   assert.deepEqual(clean.rows, []);
   assert.deepEqual(clean.dashboardConfig.fieldRoleOverrides, {});
+});
+
+test("compareDevicesWithinUsers ranks devices and groups paired user differences", () => {
+  const rows = [
+    { user_id: "U1", device_name: "A", satisfaction_score: "9" },
+    { user_id: "U1", device_name: "B", satisfaction_score: "6" },
+    { user_id: "U2", device_name: "A", satisfaction_score: "5" },
+    { user_id: "U2", device_name: "B", satisfaction_score: "8" },
+    { user_id: "U3", device_name: "A", satisfaction_score: "7" },
+    { user_id: "U3", device_name: "B", satisfaction_score: "7.5" },
+    { user_id: "U4", device_name: "A", satisfaction_score: "8" }
+  ];
+  const result = core.compareDevicesWithinUsers(rows, {
+    userField: "user_id",
+    deviceField: "device_name",
+    metric: "satisfaction_score",
+    deviceA: "A",
+    deviceB: "B",
+    threshold: 1
+  });
+
+  assert.equal(result.deviceA, "A");
+  assert.equal(result.deviceB, "B");
+  assert.deepEqual(Object.fromEntries(result.groups.map(group => [group.key, group.n])), {
+    aBetter: 1,
+    bBetter: 1,
+    close: 1,
+    incomplete: 1
+  });
+  assert.equal(result.groups.find(group => group.key === "aBetter").users[0].user, "U1");
+  assert.equal(result.groups.find(group => group.key === "bBetter").users[0].user, "U2");
+  assert.equal(result.groups.find(group => group.key === "close").users[0].diff, -0.5);
 });
