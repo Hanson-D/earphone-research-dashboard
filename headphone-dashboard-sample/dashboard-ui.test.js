@@ -24,19 +24,21 @@ function directSectionClasses(html, parentClass) {
   return children;
 }
 
-test("mapping page is organized as a vertical workflow with optional advanced settings", () => {
+test("mapping page is organized as a three-step workflow with optional advanced settings", () => {
   const html = read("index.html");
   const css = read("styles.css");
 
-  assert.match(html, /<section class="mapping-step">[\s\S]*导入数据源/);
-  assert.match(html, /<section class="mapping-step">[\s\S]*选择匹配规则/);
-  assert.match(html, /<section class="mapping-step mapping-run-step">[\s\S]*生成并应用映射/);
+  assert.match(html, /<section class="mapping-step">[\s\S]*导入 CSV/);
+  assert.match(html, /<section class="mapping-step">[\s\S]*照片根目录与规则/);
+  assert.match(html, /<section class="mapping-step">[\s\S]*字段与拍照顺序/);
+  assert.match(html, /<div class="mapping-run-step">[\s\S]*生成照片映射/);
   assert.match(html, /<details class="advanced-path-input mapping-advanced">[\s\S]*高级：手动输入照片路径/);
   assert.match(html, /<details class="mapping-advanced">[\s\S]*高级匹配设置/);
   assert.deepEqual(directSectionClasses(html, "mapping-layout"), [
     "mapping-setup mapping-card mapping-builder",
     "mapping-results panel"
   ]);
+  assert.match(css, /\.mapping-steps-grid\s*{[\s\S]*grid-template-columns:\s*minmax\(180px,\s*1fr\)\s*minmax\(260px,\s*2fr\)\s*minmax\(420px,\s*3fr\);/);
   assert.match(css, /\.mapping-layout\s*{[\s\S]*grid-template-columns:\s*1fr;/);
   assert.doesNotMatch(cssBlock(css, ".mapping-setup"), /position:\s*sticky;/);
 });

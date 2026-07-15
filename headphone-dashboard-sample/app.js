@@ -3,6 +3,7 @@ const Core = globalThis.DashboardCore;
 const initialParams = new URL(window.location.href).searchParams;
 const initialServerProjectId = initialParams.get("projectId") || "";
 const PHOTO_EAR_MODE_VALUE = "__photo_ear__";
+const USER_NOTE_FIELD = "user_note";
 
 function storageScope() {
   return initialServerProjectId ? `server:${initialServerProjectId}` : "local";
@@ -429,6 +430,8 @@ function normalizeOverridesForSave(overrides = {}) {
 }
 
 function projectDocumentSnapshot() {
+  applyUserNotesToRows(state.rows);
+  applyUserNotesToRows(state.mappedRows);
   return Core.buildProjectDocument({
     title: state.projectTitle || projectTabTitle(state.projectPath || els.projectPathInput.value),
     rows: normalizeRowsForSave(state.rows),
@@ -528,6 +531,49 @@ function cloneStateData(value) {
   }
 }
 
+function hydrateUserNotesFromRows(rows = state.rows) {
+  if (!state.userIdField) return;
+  rows.forEach(row => {
+    const user = String(row[state.userIdField] || "");
+    const note = String(row[USER_NOTE_FIELD] || "").trim();
+    if (user && note && !state.userNotes[user]) state.userNotes[user] = note;
+  });
+}
+
+function applyUserNotesToRows(rows = state.rows) {
+  if (!state.userIdField || !Array.isArray(rows)) return rows;
+  const hasAnyNote = Object.keys(state.userNotes || {}).some(user => state.userNotes[user]);
+  const hasNoteField = rows.some(row => Object.prototype.hasOwnProperty.call(row, USER_NOTE_FIELD));
+  if (!hasAnyNote && !hasNoteField) return rows;
+  rows.forEach(row => {
+    const user = String(row[state.userIdField] || "");
+    row[USER_NOTE_FIELD] = user ? (state.userNotes[user] || "") : (row[USER_NOTE_FIELD] || "");
+  });
+  return rows;
+}
+
+function rowsWithUserNotes(rows = []) {
+  return applyUserNotesToRows(rows.map(row => ({ ...row })));
+}
+
+function syncUserNoteInputs(user, value, source = null) {
+  if (!user) return;
+  document.querySelectorAll(`.user-note-input[data-user="${CSS.escape(user)}"]`).forEach(input => {
+    if (input !== source) input.value = value;
+  });
+}
+
+function setUserNote(user, rawValue, options = {}) {
+  const value = String(rawValue || "").trim();
+  if (!user) return;
+  if (value) state.userNotes[user] = value;
+  else delete state.userNotes[user];
+  applyUserNotesToRows(state.rows);
+  applyUserNotesToRows(state.mappedRows);
+  syncUserNoteInputs(user, value, options.source || null);
+  if (options.dirty) markProjectDirty();
+}
+
 function projectTabTitle(path = state.projectPath) {
   const value = String(path || "").trim();
   if (!value) return "未命名项目";
@@ -539,6 +585,8 @@ function currentPageName() {
 }
 
 function currentProjectTabSnapshot() {
+  applyUserNotesToRows(state.rows);
+  applyUserNotesToRows(state.mappedRows);
   return {
     rows: cloneStateData(state.rows),
     mappingRows: cloneStateData(state.mappingRows),
@@ -1357,6 +1405,7 @@ function buildSchema() {
   state.fieldRoleOverrides = Object.fromEntries(Object.entries(state.fieldRoleOverrides).filter(([field]) => state.headers.includes(field)));
   state.fieldRoles = Core.resolveFieldRoles(state.headers, state.rows, state.fieldRoleOverrides);
   state.userIdField = state.headers.find(field => fieldRole(field) === "user_id") || state.headers[0];
+  hydrateUserNotesFromRows();
   state.photoFields = state.headers.filter(field => fieldRole(field) === "photo");
   state.photoFields.forEach((field, index) => {
     if (!state.viewLabels[field]) state.viewLabels[field] = fieldLabels[field] || field.replace(/^photo_/, "");
@@ -1376,7 +1425,7 @@ function buildSchema() {
   }
   if (!state.metricFields.includes(state.metric)) state.metric = state.metricFields[0] || "";
   if (!state.metricFields.includes(state.comparisonMetric)) state.comparisonMetric = state.metric || state.metricFields[0] || "";
-  const dynamicColumns = state.headers.map(field => ({
+  const dynamicColumns = state.headers.filter(field => field !== USER_NOTE_FIELD).map(field => ({
     id: field,
     label: fieldLabels[field] || field,
     width: defaultColumnWidth(field),
@@ -2035,6 +2084,18 @@ function comparisonVerdict(item, result) {
   return "无明显差异";
 }
 
+function comparisonSuppressionRatio(result) {
+  const counts = Object.fromEntries((result.groups || []).map(group => [group.key, group.n || 0]));
+  const neutral = counts.close || 0;
+  const numerator = (counts.aBetter || 0) + neutral;
+  const denominator = (counts.bBetter || 0) + neutral;
+  return {
+    numerator,
+    denominator,
+    value: denominator ? numerator / denominator : null
+  };
+}
+
 function comparisonDeviceRows(item, result) {
   const buildRows = (rows, device, side) => rows.length ? rows.map(row => ({ row, device, side, missing: false })) : [{ row: null, device, side, missing: true }];
   return [
@@ -2135,7 +2196,12 @@ function renderComparisonPreference() {
     </div>
   `).join("") : '<div class="empty-state">当前数据没有可排名设备。</div>';
 
-  els.comparisonGroupCards.innerHTML = result.groups.map(group => `
+  const ratio = comparisonSuppressionRatio(result);
+  els.comparisonGroupCards.innerHTML = `<div class="preference-ratio-badge">
+    <span>压制比</span>
+    <strong>${ratio.value == null ? "—" : ratio.value.toFixed(2)}</strong>
+    <small>(${ratio.numerator} / ${ratio.denominator})</small>
+  </div>` + result.groups.map(group => `
     <article class="preference-group-card ${group.key}">
       <h3>${attrEscape(group.label)}</h3>
       <div class="group-count">${group.n}</div>
@@ -2669,7 +2735,76 @@ async function uploadServerPhotoFiles() {
   return { root: els.photoRootInput.value, photos };
 }
 
-function buildPhotoMapping() {
+function safeLibraryPart(value, fallback = "unknown") {
+  const clean = String(value || "").trim().replace(/[^A-Za-z0-9_\-\u4e00-\u9fff]+/g, "_").replace(/^[._-]+|[._-]+$/g, "");
+  return clean.slice(0, 80) || fallback;
+}
+
+function bareEarLibraryPayload() {
+  const bareFields = state.mappingPhotoFields.filter(field => field.startsWith("bare_ear_photo"));
+  if (!bareFields.length) return [];
+  return state.mappedRows.flatMap(row => {
+    const user = String(row[els.mappingUserField.value] || row[state.userIdField] || "");
+    return bareFields.map(field => {
+      const value = row[field] || "";
+      const source = rootedPhotoPath(value) || (isRuntimePhotoUrl(value) ? "" : state.photoUrlByPath[value] || "");
+      return source && !isRuntimePhotoUrl(source) ? {
+        user,
+        field,
+        label: currentBarePhotoLabel(field),
+        source
+      } : null;
+    }).filter(Boolean);
+  });
+}
+
+async function loadBareEarLibraryIndex() {
+  try {
+    const response = await fetch("/api/bare-ear-library");
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result.photos) ? result.photos : [];
+  } catch {
+    return [];
+  }
+}
+
+async function syncBareEarLibraryAndFallbacks() {
+  const payload = bareEarLibraryPayload();
+  if (payload.length) {
+    try {
+      await fetch("/api/bare-ear-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photos: payload })
+      });
+    } catch {
+      // 浏览器文件夹模式没有本地写入权限；忽略保存失败，仍尝试读取已有库作为 fallback。
+    }
+  }
+  const index = await loadBareEarLibraryIndex();
+  if (!index.length) return { saved: payload.length, filled: 0 };
+  const byKey = new Map();
+  index.forEach(photo => {
+    const key = `${safeLibraryPart(photo.user, "user")}::${safeLibraryPart(photo.field, "bare_ear_photo")}`;
+    if (!byKey.has(key)) byKey.set(key, photo);
+  });
+  let filled = 0;
+  const bareFields = state.mappingPhotoFields.filter(field => field.startsWith("bare_ear_photo"));
+  state.mappedRows.forEach(row => {
+    const user = String(row[els.mappingUserField.value] || row[state.userIdField] || "");
+    bareFields.forEach(field => {
+      if (row[field]) return;
+      const match = byKey.get(`${safeLibraryPart(user, "user")}::${safeLibraryPart(field, "bare_ear_photo")}`);
+      if (!match?.url) return;
+      row[field] = match.url;
+      filled += 1;
+    });
+  });
+  return { saved: payload.length, filled };
+}
+
+async function buildPhotoMapping() {
   const mode = els.mappingMode.value;
   const includeBareEar = mode === "sequence" && state.includeBareEarPhotos;
   const bareEarConfig = includeBareEar ? { enabled: true, ...state.bareEarConfig } : { enabled: false };
@@ -2704,7 +2839,7 @@ function buildPhotoMapping() {
     singleEarMode,
     overrides: state.photoMappingOverrides
   });
-  state.mappedRows = mapped;
+  state.mappedRows = applyUserNotesToRows(mapped);
   state.mappingReviews = reviews;
   state.mappingPhotoFields = photoFields;
   state.mappingViews = views;
@@ -2723,13 +2858,17 @@ function buildPhotoMapping() {
     const label = bareMatch ? barePhotoFieldLabel(field) : photoViews[index - bareFieldCount]?.label || views[index] || field;
     const savedBareLabel = bareMatch ? state.bareEarConfig.labels?.[field] : "";
     const finalLabel = savedBareLabel || label;
-    state.viewLabels[field] = finalLabel;
+  state.viewLabels[field] = finalLabel;
     fieldLabels[field] = finalLabel;
   });
+  const libraryResult = await syncBareEarLibraryAndFallbacks();
   renderMappingPreview(reviews, userField, deviceField, photoFields);
   els.applyMappingButton.disabled = false;
   els.downloadMappedCsvButton.disabled = false;
   els.downloadPhotoAuditButton.disabled = false;
+  if (libraryResult.filled) {
+    els.mappingSummary.textContent = `映射完成，并从空耳库补齐 ${libraryResult.filled} 个空耳照片。`;
+  }
 }
 
 function photoSelectOptions(files, selectedPath) {
@@ -3077,9 +3216,9 @@ function assignBareEarSlot(source, target) {
   if (!value) return false;
   clearUserDevicePhotoOverrides(source.user);
   state.photoMappingOverrides[`${target.rowIndex}::${target.field}`] = value;
-  buildPhotoMapping();
-  renderMappingReviewUser(source.user);
-  markProjectDirty();
+  buildPhotoMapping()
+    .then(() => markProjectDirty())
+    .catch(error => { els.mappingSummary.textContent = error.message; });
   return true;
 }
 
@@ -3120,8 +3259,9 @@ function escapeHtml(value) {
 }
 
 function downloadMappedCsv() {
-  const headers = Object.keys(state.mappedRows[0] || {});
-  const csv = [headers.join(","), ...state.mappedRows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
+  const rows = rowsWithUserNotes(state.mappedRows);
+  const headers = [...new Set(rows.flatMap(row => Object.keys(row)))];
+  const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
   link.download = "headphone_data_with_photos.csv";
@@ -3185,7 +3325,7 @@ function resetMappingOutputs() {
 }
 
 function applyMappedRows() {
-  state.rows = state.mappedRows.map(row => ({ ...row }));
+  state.rows = rowsWithUserNotes(state.mappedRows);
   state.selectedGroup = null;
   state.columnFilters = {};
   state.userViews = {};
@@ -3580,7 +3720,7 @@ function bindEvents() {
     try {
       await scanPhotoRoot();
       state.photoMappingOverrides = {};
-      buildPhotoMapping();
+      await buildPhotoMapping();
       markProjectDirty();
     } catch (error) {
       els.mappingSummary.textContent = error.message;
@@ -3636,7 +3776,7 @@ function bindEvents() {
       markProjectDirty();
     });
   });
-  els.mappingPreview.addEventListener("change", event => {
+  els.mappingPreview.addEventListener("change", async event => {
     if (event.target.classList.contains("bare-ear-label-input")) {
       updateBareEarLabel(event.target.dataset.field || "", event.target.value);
       renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
@@ -3646,7 +3786,7 @@ function bindEvents() {
     const key = `${event.target.dataset.rowIndex}::${event.target.dataset.field}`;
     if (event.target.value) state.photoMappingOverrides[key] = event.target.value;
     else state.photoMappingOverrides[key] = "";
-    buildPhotoMapping();
+    await buildPhotoMapping();
     markProjectDirty();
   });
   els.mappingPreview.addEventListener("click", event => {
@@ -3809,10 +3949,7 @@ function bindEvents() {
   });
   els.comparisonDetails.addEventListener("input", event => {
     if (event.target.classList.contains("user-note-input")) {
-      const user = event.target.dataset.user || "";
-      const value = event.target.value.trim();
-      if (value) state.userNotes[user] = value;
-      else delete state.userNotes[user];
+      setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target });
       return;
     }
     if (!event.target.classList.contains("user-photo-position")) return;
@@ -3836,11 +3973,7 @@ function bindEvents() {
       return;
     }
     if (event.target.classList.contains("user-note-input")) {
-      const user = event.target.dataset.user || "";
-      const value = event.target.value.trim();
-      if (value) state.userNotes[user] = value;
-      else delete state.userNotes[user];
-      markProjectDirty();
+      setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target, dirty: true });
       return;
     }
     if (event.target.classList.contains("user-photo-position")) {
@@ -3978,10 +4111,7 @@ function bindEvents() {
   });
   els.detailBody.addEventListener("input", event => {
     if (event.target.classList.contains("user-note-input")) {
-      const user = event.target.dataset.user || "";
-      const value = event.target.value.trim();
-      if (value) state.userNotes[user] = value;
-      else delete state.userNotes[user];
+      setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target });
       return;
     }
     if (!event.target.classList.contains("user-photo-position")) return;
@@ -3989,11 +4119,7 @@ function bindEvents() {
   });
   els.detailBody.addEventListener("change", event => {
     if (event.target.classList.contains("user-note-input")) {
-      const user = event.target.dataset.user || "";
-      const value = event.target.value.trim();
-      if (value) state.userNotes[user] = value;
-      else delete state.userNotes[user];
-      markProjectDirty();
+      setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target, dirty: true });
       return;
     }
     if (!event.target.classList.contains("user-photo-position")) return;

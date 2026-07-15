@@ -19,6 +19,7 @@ class ServerProjectTests(unittest.TestCase):
         os.environ["DASHBOARD_PROJECTS_ROOT"] = self.tmp.name
 
     def tearDown(self):
+        server.ALLOWED_ROOTS.clear()
         if self.previous_root is None:
             os.environ.pop("DASHBOARD_PROJECTS_ROOT", None)
         else:
@@ -45,6 +46,25 @@ class ServerProjectTests(unittest.TestCase):
             server.safe_relative_photo_path("../secret.jpg")
         with self.assertRaises(ValueError):
             server.safe_relative_photo_path("U001/readme.txt")
+
+    def test_bare_ear_library_saves_allowed_photos(self):
+        root = Path(self.tmp.name)
+        source_root = root / "photos"
+        source_root.mkdir()
+        photo = source_root / "bare.jpg"
+        photo.write_bytes(b"image")
+        server.ALLOWED_ROOTS.add(source_root.resolve())
+
+        result = server.save_bare_ear_library_photos([{
+            "user": "张三",
+            "field": "bare_ear_photo_左耳",
+            "source": str(photo),
+        }])
+
+        self.assertEqual(len(result["saved"]), 1)
+        self.assertEqual(result["saved"][0]["user"], "张三")
+        self.assertEqual(result["saved"][0]["field"], "bare_ear_photo_左耳")
+        self.assertEqual(len(server.bare_ear_library_index()), 1)
 
     def test_create_list_and_read_server_project(self):
         result = server.save_server_project(

@@ -37,6 +37,76 @@ def server_project_photo_root(project_id):
     return project_root() / f"{project_id}_assets" / "photos"
 
 
+def bare_ear_library_root():
+    return project_root() / "bare_ears"
+
+
+def safe_library_part(value, fallback="unknown"):
+    clean = re.sub(r"[^A-Za-z0-9_\-\u4e00-\u9fff]+", "_", str(value or "").strip()).strip("._-")
+    return clean[:80] or fallback
+
+
+def bare_ear_library_index():
+    root = bare_ear_library_root()
+    if not root.is_dir():
+        return []
+    photos = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        parts = relative.parts
+        if len(parts) < 3:
+            continue
+        user, field = parts[0], parts[1]
+        rel = relative.as_posix()
+        photos.append({
+            "user": user,
+            "field": field,
+            "name": path.name,
+            "path": rel,
+            "url": f"/api/bare-ear-photo?path={quote(rel)}",
+        })
+    return photos
+
+
+def save_bare_ear_library_photos(photos):
+    root = bare_ear_library_root()
+    root.mkdir(parents=True, exist_ok=True)
+    saved = []
+    skipped = []
+    for item in photos:
+        user = safe_library_part(item.get("user"), "user")
+        field = safe_library_part(item.get("field"), "bare_ear_photo")
+        source = Path(str(item.get("source") or "")).expanduser().resolve()
+        if not source.is_file() or source.suffix.lower() not in IMAGE_EXTENSIONS or not is_within_allowed_root(source):
+            skipped.append({"user": user, "field": field, "reason": "source_unavailable"})
+            continue
+        target_dir = root / user / field
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / source.name
+        if target.exists():
+            stem = source.stem
+            suffix = source.suffix
+            index = 2
+            while (target_dir / f"{stem}_{index}{suffix}").exists():
+                index += 1
+            target = target_dir / f"{stem}_{index}{suffix}"
+        target.write_bytes(source.read_bytes())
+        relative = target.relative_to(root).as_posix()
+        saved.append({
+            "user": user,
+            "field": field,
+            "name": target.name,
+            "path": relative,
+            "url": f"/api/bare-ear-photo?path={quote(relative)}",
+        })
+    return {"saved": saved, "skipped": skipped}
+
+
 def safe_relative_photo_path(value):
     parts = [part for part in Path(str(value or "")).parts if part not in ("", ".")]
     if not parts or any(part == ".." for part in parts):
@@ -184,6 +254,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/bare-ear-library":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地空耳库写入接口。"}, 403)
+                return
+            try:
+                payload = self.read_json_body()
+                result = save_bare_ear_library_photos(payload.get("photos") or [])
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, 400)
+                return
+            self.send_json(result)
+            return
         if parsed.path == "/api/server/projects":
             self.create_server_project()
             return
@@ -331,6 +413,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/bare-ear-library":
+            self.send_json({"photos": bare_ear_library_index()})
+            return
+        if parsed.path == "/api/bare-ear-photo":
+            self.serve_bare_ear_photo(parsed)
+            return
         if parsed.path == "/api/server/projects":
             self.send_json({"projects": list_server_projects()})
             return
@@ -418,6 +506,26 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.send_error(404, "Photo not found")
                 return
         except (ValueError, IndexError) as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve_bare_ear_photo(self, parsed):
+        try:
+            relative = safe_relative_photo_path(parse_qs(parsed.query).get("path", [""])[0])
+            root = bare_ear_library_root().resolve()
+            path = (root / relative).resolve()
+            if root not in path.parents or not path.is_file():
+                self.send_error(404, "Bare ear photo not found")
+                return
+        except ValueError as error:
             self.send_json({"error": str(error)}, 400)
             return
 
