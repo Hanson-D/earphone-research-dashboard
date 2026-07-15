@@ -99,6 +99,27 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(projects[0]["rows"], 2)
         self.assertTrue(projects[0]["path"].endswith("我的项目.json"))
 
+    def test_local_project_files_use_relative_paths_inside_app_root(self):
+        with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
+            previous_root = os.environ.get("DASHBOARD_PROJECTS_ROOT")
+            os.environ["DASHBOARD_PROJECTS_ROOT"] = local_root
+            try:
+                project_path = Path(local_root) / "相对项目.json"
+                project_path.write_text(json.dumps({
+                    "title": "相对项目",
+                    "rows": [{"user_id": "U001"}],
+                }), encoding="utf-8")
+
+                projects = server.list_local_project_files()
+            finally:
+                if previous_root is None:
+                    os.environ.pop("DASHBOARD_PROJECTS_ROOT", None)
+                else:
+                    os.environ["DASHBOARD_PROJECTS_ROOT"] = previous_root
+
+        self.assertEqual(projects[0]["path"], project_path.relative_to(server.app_root()).as_posix())
+        self.assertNotIn(str(server.app_root()), projects[0]["path"])
+
     def test_save_requires_matching_revision(self):
         server.save_server_project("study-01", {"version": 1, "rows": []}, create=True)
         ok = server.save_server_project("study-01", {"version": 1, "rows": []}, expected_revision=1)

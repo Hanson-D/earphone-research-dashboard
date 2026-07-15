@@ -17,8 +17,25 @@ PORT_SEARCH_LIMIT = 100
 DEFAULT_HOST = "0.0.0.0"
 
 
+def app_root():
+    return Path(__file__).resolve().parents[1]
+
+
 def project_root():
     return Path(os.environ.get("DASHBOARD_PROJECTS_ROOT", "projects")).expanduser().resolve()
+
+
+def display_path(path):
+    resolved = Path(path).expanduser().resolve()
+    try:
+        return resolved.relative_to(app_root()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def resolve_client_path(value):
+    raw = Path(str(value or "")).expanduser()
+    return raw.resolve()
 
 
 def is_valid_project_id(project_id):
@@ -180,7 +197,7 @@ def list_local_project_files():
         except json.JSONDecodeError:
             continue
         projects.append({
-            "path": str(path.resolve()),
+            "path": display_path(path),
             "title": project.get("title") or path.stem,
             "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
             "updatedAt": __import__("datetime").datetime.fromtimestamp(path.stat().st_mtime, __import__("datetime").timezone.utc).isoformat(),
@@ -308,7 +325,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 photos.append({
                     "name": path.name,
                     "relative_path": relative.as_posix(),
-                    "absolute_path": str(path.resolve()),
+                    "absolute_path": relative.as_posix(),
                     "user_folder": relative.parts[0] if len(relative.parts) > 1 else "",
                     "url": f"/api/photo?path={quote(str(path.resolve()))}",
                 })
@@ -320,7 +337,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
-            project_path = Path(payload.get("path", "")).expanduser().resolve()
+            project_path = resolve_client_path(payload.get("path", ""))
             project = payload.get("project")
         except (ValueError, json.JSONDecodeError):
             self.send_json({"error": "无效的项目保存请求。"}, 400)
@@ -335,7 +352,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
 
         project_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.send_json({"path": str(project_path)})
+        self.send_json({"path": display_path(project_path)})
 
     def read_json_body(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -459,7 +476,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if not values:
                 self.send_error(400, "Missing path")
                 return
-            project_path = Path(values[0]).expanduser().resolve()
+            project_path = resolve_client_path(values[0])
             if not project_path.is_file():
                 self.send_json({"error": f"项目文件不存在：{project_path}"}, 404)
                 return
@@ -468,7 +485,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             except json.JSONDecodeError:
                 self.send_json({"error": "项目文件不是有效 JSON。"}, 400)
                 return
-            self.send_json({"path": str(project_path), "project": project})
+            self.send_json({"path": display_path(project_path), "project": project})
             return
         if parsed.path != "/api/photo":
             super().do_GET()
