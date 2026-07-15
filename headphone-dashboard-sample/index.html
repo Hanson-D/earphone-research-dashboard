@@ -30,10 +30,16 @@
       <section class="project-panel">
         <p class="panel-kicker">PROJECT CONFIG</p>
         <h2>项目配置</h2>
+        <input id="projectPathInput" name="projectPath" type="hidden" value="projects/我的耳机项目.json">
+        <div class="project-folder-picker">
+          <span>项目保存文件夹</span>
+          <button id="chooseProjectFolderButton" class="outline-button" type="button">选择项目文件夹</button>
+          <small id="projectFolderStatus">默认保存到看板根目录下的 projects 文件夹。项目会保存 CSV、照片映射、布局、备注和用户排序。</small>
+        </div>
         <label class="mapping-input">
-          <span>项目文件路径</span>
-          <input id="projectPathInput" name="projectPath" type="text" autocomplete="off" placeholder="例如：projects/project-a.json">
-          <small>这是当前项目 JSON 的保存/加载位置；不是照片根目录。项目会保存 CSV、照片映射、布局、备注和用户排序。</small>
+          <span>项目文件名</span>
+          <input id="projectFileNameInput" name="projectFileName" type="text" autocomplete="off" value="我的耳机项目.json" placeholder="例如：耳机研究01.json">
+          <small>无需输入路径，只填写文件名；未选择文件夹时默认使用 projects 文件夹。</small>
         </label>
         <div class="project-actions">
           <button id="loadProjectButton" class="outline-button" type="button">加载项目</button>
@@ -101,7 +107,7 @@
             <label id="photoRootInputWrap" class="mapping-input">
               <span>选择照片根文件夹</span>
               <input id="photoFolderChooser" type="file" webkitdirectory directory multiple accept="image/*">
-              <small id="photoFolderStatus">选择包含用户照片子文件夹的根目录；系统会读取文件夹结构和照片顺序。</small>
+              <small id="photoFolderStatus">建议把照片文件夹放在看板根目录下，选择包含用户照片子文件夹的根目录；系统会读取文件夹结构和照片顺序。</small>
             </label>
             <label class="mapping-input">
               <span>照片匹配方式</span>

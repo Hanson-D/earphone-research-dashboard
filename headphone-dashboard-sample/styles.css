@@ -283,6 +283,9 @@ select[multiple] { min-height: 84px; }
 .mapping-card { padding: 18px; border-top: 4px solid var(--accent); }
 .project-panel { margin: 0; }
 .project-panel h2 { margin-bottom: 12px; }
+.project-folder-picker { display: grid; gap: 6px; margin-bottom: 10px; }
+.project-folder-picker > span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .04em; }
+.project-folder-picker small { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .project-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .project-status { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .project-recovery-actions { display: grid; grid-template-columns: 1fr; gap: 7px; margin-top: 9px; }

@@ -78,6 +78,18 @@ test("detail dashboard exposes csv export and click-to-center photo controls", (
   assert.match(css, /--photo-zoom/);
 });
 
+test("project config uses folder selection instead of manual path entry", () => {
+  const html = read("index.html");
+  const js = read("app.js");
+
+  assert.match(html, /id="projectPathInput"[^>]*type="hidden"/);
+  assert.match(html, /id="chooseProjectFolderButton"[\s\S]*选择项目文件夹/);
+  assert.match(html, /id="projectFileNameInput"/);
+  assert.doesNotMatch(html, /项目文件路径/);
+  assert.match(js, /showDirectoryPicker/);
+  assert.match(js, /selectedProjectPath/);
+});
+
 test("project load failures expose recovery actions without affecting sample data", () => {
   const html = read("index.html");
   const js = read("app.js");

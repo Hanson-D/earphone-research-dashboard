@@ -133,6 +133,8 @@ const state = {
   photoFields: [],
   layout: loadLayout(),
   projectPath: "",
+  projectFolderHandle: null,
+  projectFolderLabel: "",
   serverProjectId: initialServerProjectId,
   projectRevision: null,
   projectTitle: "",
@@ -190,7 +192,8 @@ const els = Object.fromEntries([
   "bareEarGenericCount", "bareEarSideCounts", "bareEarLeftCount", "bareEarRightCount", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
-  "projectPathInput", "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
+  "projectPathInput", "projectFileNameInput", "chooseProjectFolderButton", "projectFolderStatus",
+  "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
   "projectRecoveryActions", "useSampleProjectButton", "clearProjectPathButton", "projectTabs", "newProjectTabButton",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
   "pressurePage", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
@@ -497,6 +500,7 @@ function setProjectPath(path) {
   const previousPath = state.projectPath;
   state.projectPath = path || "";
   els.projectPathInput.value = state.projectPath;
+  if (state.projectPath) syncProjectFileNameFromPath(state.projectPath);
   const activeTab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
   if (activeTab && state.projectPath && activeTab.id !== state.projectPath && !state.projectTabs.some(item => item.id === state.projectPath)) {
     activeTab.id = state.projectPath;
@@ -507,6 +511,10 @@ function setProjectPath(path) {
   }
   if (state.serverProjectId) return;
   if (!state.projectPath) return;
+  if (String(state.projectPath).startsWith("browser-folder:")) {
+    setProjectUrlParam("");
+    return;
+  }
   const url = new URL(window.location.href);
   url.searchParams.set("project", state.projectPath);
   history.replaceState(null, "", url);
@@ -514,6 +522,73 @@ function setProjectPath(path) {
 
 function defaultProjectPath() {
   return "projects/我的耳机项目.json";
+}
+
+function sanitizeProjectFileName(name = "") {
+  const clean = String(name || "").trim()
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/^\.+/, "")
+    .trim();
+  const base = clean || "我的耳机项目.json";
+  return base.toLowerCase().endsWith(".json") ? base : `${base}.json`;
+}
+
+function projectFileNameFromPath(path = "") {
+  const value = String(path || "").trim();
+  if (!value) return "我的耳机项目.json";
+  return sanitizeProjectFileName(value.split(/[\\/]/).filter(Boolean).pop() || value);
+}
+
+function defaultProjectFolderPath() {
+  return "projects";
+}
+
+function projectPathFromFileName(name = els.projectFileNameInput?.value || "") {
+  return joinPath(defaultProjectFolderPath(), sanitizeProjectFileName(name));
+}
+
+function syncProjectFileNameFromPath(path = state.projectPath) {
+  if (els.projectFileNameInput) els.projectFileNameInput.value = projectFileNameFromPath(path);
+}
+
+function selectedProjectFileName() {
+  const name = sanitizeProjectFileName(els.projectFileNameInput?.value || projectFileNameFromPath(state.projectPath));
+  if (els.projectFileNameInput) els.projectFileNameInput.value = name;
+  return name;
+}
+
+function selectedProjectPath() {
+  const fileName = selectedProjectFileName();
+  const currentPath = String(state.projectPath || "");
+  if (currentPath && !currentPath.startsWith("browser-folder:") && projectFileNameFromPath(currentPath) === fileName) return currentPath;
+  return projectPathFromFileName(fileName);
+}
+
+function updateProjectFolderStatus(message = "") {
+  if (!els.projectFolderStatus) return;
+  if (message) {
+    els.projectFolderStatus.textContent = message;
+    return;
+  }
+  els.projectFolderStatus.textContent = state.projectFolderHandle ?
+    `已选择项目文件夹：${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}` :
+    "默认保存到看板根目录下的 projects 文件夹。项目会保存 CSV、照片映射、布局、备注和用户排序。";
+}
+
+async function chooseProjectFolder() {
+  if (!window.showDirectoryPicker) {
+    updateProjectFolderStatus("当前浏览器不支持直接授权项目文件夹；将默认保存到看板根目录下的 projects 文件夹。");
+    return;
+  }
+  const handle = await window.showDirectoryPicker({
+    id: "headphone-dashboard-project-folder",
+    mode: "readwrite",
+    startIn: "documents"
+  });
+  state.projectFolderHandle = handle;
+  state.projectFolderLabel = handle.name || "本地文件夹";
+  updateProjectFolderStatus();
+  setProjectPath(`browser-folder:${state.projectFolderLabel}/${selectedProjectFileName()}`);
 }
 
 function showProjectRecoveryActions(show = true) {
@@ -532,6 +607,7 @@ function useSampleProject() {
   state.projectPath = "";
   state.projectDirty = false;
   els.projectPathInput.value = "";
+  syncProjectFileNameFromPath(defaultProjectPath());
   els.dataSourceLabel.textContent = "示例数据";
   showProjectRecoveryActions(false);
   setProjectUrlParam("");
@@ -542,9 +618,10 @@ function useSampleProject() {
 function clearProjectPath() {
   state.projectPath = "";
   els.projectPathInput.value = "";
+  syncProjectFileNameFromPath(defaultProjectPath());
   showProjectRecoveryActions(false);
   setProjectUrlParam("");
-  setProjectStatus("已清除项目路径；可继续使用示例数据或填写新的项目 JSON 路径。", state.projectDirty);
+  setProjectStatus("已清除项目位置；可继续使用示例数据，或选择项目文件夹并填写项目文件名。", state.projectDirty);
 }
 
 function cloneStateData(value) {
@@ -851,6 +928,8 @@ function createNewProjectTab() {
   state.protocolValidation = null;
   els.photoRootInput.value = "";
   els.projectPathInput.value = defaultProjectPath();
+  syncProjectFileNameFromPath(defaultProjectPath());
+  updateProjectFolderStatus();
   buildSchema();
   initializeMappingFields();
   initializeControls();
@@ -935,9 +1014,23 @@ async function saveProject() {
     await writeServerProject(projectDocumentSnapshot(), "已保存完整项目");
     return;
   }
-  const path = els.projectPathInput.value.trim();
-  if (!path) throw new Error("请先填写项目 JSON 路径。");
+  if (state.projectFolderHandle) {
+    await writeProjectToSelectedFolder(projectDocumentSnapshot(), "已保存完整项目");
+    return;
+  }
+  const path = selectedProjectPath();
   await writeProject(path, projectDocumentSnapshot(), "已保存完整项目");
+}
+
+async function writeProjectToSelectedFolder(project, successPrefix) {
+  const fileName = selectedProjectFileName();
+  const handle = await state.projectFolderHandle.getFileHandle(fileName, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(JSON.stringify(project, null, 2));
+  await writable.close();
+  const folderLabel = state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹";
+  setProjectPath(`browser-folder:${folderLabel}/${fileName}`);
+  markProjectSaved(`${successPrefix}：${folderLabel}/${fileName}`);
 }
 
 async function writeProject(path, project, successPrefix) {
@@ -970,6 +1063,13 @@ async function writeServerProject(project, successPrefix) {
   markProjectSaved(`${successPrefix}：${state.projectTitle || state.serverProjectId} · rev ${state.projectRevision}`);
 }
 
+async function readProjectFromSelectedFolder(fileName = selectedProjectFileName()) {
+  if (!state.projectFolderHandle) throw new Error("未选择项目文件夹。");
+  const handle = await state.projectFolderHandle.getFileHandle(sanitizeProjectFileName(fileName));
+  const file = await handle.getFile();
+  return JSON.parse(await file.text());
+}
+
 async function saveCurrentProjectConfig() {
   if (state.serverProjectId) {
     await writeServerProject({
@@ -981,8 +1081,29 @@ async function saveCurrentProjectConfig() {
     }, "已保存当前配置");
     return;
   }
-  const path = els.projectPathInput.value.trim();
-  if (!path) throw new Error("请先填写项目 JSON 路径。");
+  if (state.projectFolderHandle) {
+    let project = null;
+    try {
+      project = await readProjectFromSelectedFolder(selectedProjectFileName());
+    } catch {
+      project = null;
+    }
+    if (!project) project = projectDocumentSnapshot();
+    const mappingConfig = mappingConfigSnapshot();
+    await writeProjectToSelectedFolder({
+      ...project,
+      title: state.projectTitle || project.title || projectTabTitle(selectedProjectFileName()),
+      savedAt: new Date().toISOString(),
+      photoRoot: mappingConfig.photoRoot,
+      mappingMode: mappingConfig.mappingMode,
+      mappingFields: mappingConfig.mappingFields,
+      mappingViews: mappingConfig.mappingViews,
+      protocolTemplate: state.protocolTemplate,
+      dashboardConfig: dashboardConfigSnapshot()
+    }, "已保存当前配置");
+    return;
+  }
+  const path = selectedProjectPath();
   let project = null;
   try {
     const response = await fetch(`/api/load-project?path=${encodeURIComponent(path)}`);
@@ -1012,15 +1133,24 @@ async function loadProject(path) {
     return;
   }
   saveActiveProjectTabSnapshot();
-  const projectPath = path || els.projectPathInput.value.trim();
-  if (!projectPath) throw new Error("请先填写项目 JSON 路径。");
+  if (!path && state.projectFolderHandle) {
+    const fileName = selectedProjectFileName();
+    const project = await readProjectFromSelectedFolder(fileName);
+    await applyLoadedProject(`browser-folder:${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}/${fileName}`, project);
+    return;
+  }
+  const projectPath = path || selectedProjectPath();
   const response = await fetch(`/api/load-project?path=${encodeURIComponent(projectPath)}`);
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "项目加载失败。");
-  const project = Core.sanitizeProjectDocument(result.project);
+  await applyLoadedProject(result.path, result.project);
+}
+
+async function applyLoadedProject(path, rawProject) {
+  const project = Core.sanitizeProjectDocument(rawProject);
   state.activeProjectTabId = "";
-  setProjectPath(result.path);
-  state.projectTitle = project.title || projectTabTitle(result.path);
+  setProjectPath(path);
+  state.projectTitle = project.title || projectTabTitle(path);
   state.rows = project.rows.map(row => ({ ...row }));
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
@@ -1058,8 +1188,8 @@ async function loadProject(path) {
       setProjectStatus(`项目已加载，但照片目录未授权：${error.message}`);
     }
   }
-  markProjectSaved(`已加载：${result.path}`);
-  upsertProjectTab(result.path, { title: state.projectTitle });
+  markProjectSaved(`已加载：${path}`);
+  upsertProjectTab(path, { title: state.projectTitle });
   els.dataSourceLabel.textContent = "项目数据";
   switchPage("dashboard");
 }
@@ -1137,8 +1267,11 @@ async function loadServerProject() {
   if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
   if (project.mappingFields.deviceField && [...els.mappingDeviceField.options].some(option => option.value === project.mappingFields.deviceField)) els.mappingDeviceField.value = project.mappingFields.deviceField;
   setProjectPath(state.serverProjectId);
-  els.projectPathInput.readOnly = true;
   els.projectPathInput.value = state.serverProjectId;
+  syncProjectFileNameFromPath(state.serverProjectId);
+  if (els.chooseProjectFolderButton) els.chooseProjectFolderButton.disabled = true;
+  if (els.projectFileNameInput) els.projectFileNameInput.disabled = true;
+  updateProjectFolderStatus("服务器项目模式：项目由服务器管理。");
   markProjectSaved(`已加载服务器项目：${state.projectTitle} · rev ${state.projectRevision}`);
   upsertProjectTab(state.serverProjectId, { title: state.projectTitle || state.serverProjectId });
   els.dataSourceLabel.textContent = "服务器项目";
@@ -1409,6 +1542,7 @@ function rebuildPhotoPathIndex(files = state.mappingFiles) {
 
 function projectDirectoryPath() {
   const path = state.projectPath || els.projectPathInput?.value || "";
+  if (String(path).startsWith("browser-folder:")) return "";
   if (!path || !/[\\/]/.test(path)) return "";
   return normalizePathSlashes(path).replace(/\/[^/]*$/, "");
 }
@@ -4159,6 +4293,24 @@ function bindEvents() {
   els.useSampleProjectButton.addEventListener("click", useSampleProject);
   els.clearProjectPathButton.addEventListener("click", clearProjectPath);
   els.newProjectTabButton.addEventListener("click", createNewProjectTab);
+  els.chooseProjectFolderButton?.addEventListener("click", async () => {
+    try {
+      await chooseProjectFolder();
+      showProjectRecoveryActions(false);
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      setProjectStatus(`项目文件夹选择失败：${error.message}`);
+    }
+  });
+  els.projectFileNameInput?.addEventListener("change", () => {
+    const fileName = selectedProjectFileName();
+    if (state.projectFolderHandle) setProjectPath(`browser-folder:${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}/${fileName}`);
+    else setProjectPath(projectPathFromFileName(fileName));
+  });
+  els.projectFileNameInput?.addEventListener("input", () => {
+    if (state.projectFolderHandle) return;
+    els.projectPathInput.value = projectPathFromFileName(els.projectFileNameInput.value);
+  });
   els.loadProjectButton.addEventListener("click", async () => {
     els.loadProjectButton.disabled = true;
     setProjectStatus("正在加载项目…");
@@ -4775,9 +4927,13 @@ async function start() {
   renderProtocolStatus();
   render();
   upsertProjectTab("sample", { title: "示例数据" });
+  updateProjectFolderStatus();
   if (state.serverProjectId) {
     els.projectPathInput.value = state.serverProjectId;
-    els.projectPathInput.readOnly = true;
+    syncProjectFileNameFromPath(state.serverProjectId);
+    if (els.chooseProjectFolderButton) els.chooseProjectFolderButton.disabled = true;
+    if (els.projectFileNameInput) els.projectFileNameInput.disabled = true;
+    updateProjectFolderStatus("服务器项目模式：项目由服务器管理。");
     setProjectStatus(`正在加载服务器项目：${state.serverProjectId}`);
     try {
       await loadServerProject();
@@ -4793,6 +4949,7 @@ async function start() {
   const projectFromUrl = new URL(window.location.href).searchParams.get("project");
   if (projectFromUrl) {
     els.projectPathInput.value = projectFromUrl;
+    syncProjectFileNameFromPath(projectFromUrl);
     try {
       await loadProject(projectFromUrl);
       showProjectRecoveryActions(false);
