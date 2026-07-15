@@ -46,6 +46,7 @@ function defaultLayout() {
     photoSize: 120,
     photoPositionX: 50,
     photoPositionY: 50,
+    photoZoom: 100,
     detailPhotoMode: "performance",
     version: 5,
     schema: "",
@@ -67,6 +68,7 @@ function loadLayout() {
       photoSize: Number(saved.photoSize) || 120,
       photoPositionX: Number.isFinite(Number(saved.photoPositionX)) ? Number(saved.photoPositionX) : 50,
       photoPositionY: Number.isFinite(Number(saved.photoPositionY)) ? Number(saved.photoPositionY) : 50,
+      photoZoom: Number.isFinite(Number(saved.photoZoom)) ? Number(saved.photoZoom) : 100,
       detailPhotoMode: sanitizeDetailPhotoMode(saved.detailPhotoMode),
       version: Number(saved.version) || 1,
       schema: saved.schema || "",
@@ -178,7 +180,8 @@ const els = Object.fromEntries([
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
-  "photoSizeValue", "photoPositionXControl", "photoPositionXValue", "photoPositionYControl", "photoPositionYValue",
+  "photoSizeValue", "photoZoomControl", "photoZoomValue", "photoPositionXControl", "photoPositionXValue", "photoPositionYControl", "photoPositionYValue",
+  "globalCenterValue", "exportDetailCsvButton",
   "detailPhotoModeControl", "detailPhotoModeValue",
   "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
@@ -1189,25 +1192,34 @@ function applyLayoutVariables() {
   document.documentElement.style.setProperty("--photo-size", `${state.layout.photoSize}px`);
   document.documentElement.style.setProperty("--photo-position-x", `${state.layout.photoPositionX ?? 50}%`);
   document.documentElement.style.setProperty("--photo-position-y", `${state.layout.photoPositionY ?? 50}%`);
+  document.documentElement.style.setProperty("--photo-zoom", `${(state.layout.photoZoom ?? 100) / 100}`);
   document.body.classList.toggle("capture-mode", sanitizeDetailPhotoMode(state.layout.detailPhotoMode) === "capture");
-  els.fontSizeControl.value = state.layout.fontSize;
-  els.fontSizeValue.value = `${state.layout.fontSize}px`;
-  els.photoSizeControl.value = state.layout.photoSize;
-  els.photoSizeValue.value = `${state.layout.photoSize}px`;
-  els.photoPositionXControl.value = state.layout.photoPositionX ?? 50;
-  els.photoPositionXValue.value = `${state.layout.photoPositionX ?? 50}%`;
-  els.photoPositionYControl.value = state.layout.photoPositionY ?? 50;
-  els.photoPositionYValue.value = `${state.layout.photoPositionY ?? 50}%`;
-  els.detailPhotoModeControl.value = sanitizeDetailPhotoMode(state.layout.detailPhotoMode);
-  els.detailPhotoModeValue.value = state.layout.detailPhotoMode === "capture" ? "原图" : "预览";
+  if (els.fontSizeControl) els.fontSizeControl.value = state.layout.fontSize;
+  if (els.fontSizeValue) els.fontSizeValue.value = `${state.layout.fontSize}px`;
+  if (els.photoSizeControl) els.photoSizeControl.value = state.layout.photoSize;
+  if (els.photoSizeValue) els.photoSizeValue.value = `${state.layout.photoSize}px`;
+  if (els.photoZoomControl) els.photoZoomControl.value = state.layout.photoZoom ?? 100;
+  if (els.photoZoomValue) els.photoZoomValue.value = `${state.layout.photoZoom ?? 100}%`;
+  if (els.photoPositionXControl) els.photoPositionXControl.value = state.layout.photoPositionX ?? 50;
+  if (els.photoPositionXValue) els.photoPositionXValue.value = `${state.layout.photoPositionX ?? 50}%`;
+  if (els.photoPositionYControl) els.photoPositionYControl.value = state.layout.photoPositionY ?? 50;
+  if (els.photoPositionYValue) els.photoPositionYValue.value = `${state.layout.photoPositionY ?? 50}%`;
+  if (els.globalCenterValue) els.globalCenterValue.textContent = `全局中心 ${state.layout.photoPositionX ?? 50}%, ${state.layout.photoPositionY ?? 50}%`;
+  if (els.detailPhotoModeControl) els.detailPhotoModeControl.value = sanitizeDetailPhotoMode(state.layout.detailPhotoMode);
+  if (els.detailPhotoModeValue) els.detailPhotoModeValue.value = state.layout.detailPhotoMode === "capture" ? "原图" : "预览";
   document.querySelectorAll(".layout-font-size-control").forEach(input => { input.value = state.layout.fontSize; });
   document.querySelectorAll(".layout-font-size-value").forEach(output => { output.value = `${state.layout.fontSize}px`; });
   document.querySelectorAll(".layout-photo-size-control").forEach(input => { input.value = state.layout.photoSize; });
   document.querySelectorAll(".layout-photo-size-value").forEach(output => { output.value = `${state.layout.photoSize}px`; });
+  document.querySelectorAll(".layout-photo-zoom-control").forEach(input => { input.value = state.layout.photoZoom ?? 100; });
+  document.querySelectorAll(".layout-photo-zoom-value").forEach(output => { output.value = `${state.layout.photoZoom ?? 100}%`; });
   document.querySelectorAll(".layout-photo-position-x-control").forEach(input => { input.value = state.layout.photoPositionX ?? 50; });
   document.querySelectorAll(".layout-photo-position-x-value").forEach(output => { output.value = `${state.layout.photoPositionX ?? 50}%`; });
   document.querySelectorAll(".layout-photo-position-y-control").forEach(input => { input.value = state.layout.photoPositionY ?? 50; });
   document.querySelectorAll(".layout-photo-position-y-value").forEach(output => { output.value = `${state.layout.photoPositionY ?? 50}%`; });
+  document.querySelectorAll(".layout-global-center-value").forEach(output => {
+    output.textContent = `全局中心 ${state.layout.photoPositionX ?? 50}%, ${state.layout.photoPositionY ?? 50}%`;
+  });
   document.querySelectorAll(".layout-detail-photo-mode-control").forEach(select => { select.value = sanitizeDetailPhotoMode(state.layout.detailPhotoMode); });
   document.querySelectorAll(".layout-detail-photo-mode-value").forEach(output => { output.value = state.layout.detailPhotoMode === "capture" ? "原图" : "预览"; });
   syncVisiblePhotoPositionControls();
@@ -1224,6 +1236,8 @@ function syncVisiblePhotoPositionControls() {
       input.value = value;
       input.nextElementSibling.value = `${value}%`;
     });
+    const hint = controls.querySelector(".photo-center-hint");
+    if (hint) hint.textContent = `中心 ${position.x}%, ${position.y}%`;
   });
 }
 
@@ -1637,6 +1651,12 @@ function clampPercent(value, fallback = 50) {
   return Math.max(0, Math.min(100, Math.round(number)));
 }
 
+function clampPhotoZoom(value, fallback = 100) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(100, Math.min(240, Math.round(number)));
+}
+
 function userPhotoPosition(user) {
   const custom = state.userPhotoPositions[user];
   return {
@@ -1645,10 +1665,13 @@ function userPhotoPosition(user) {
   };
 }
 
-function updateUserPhotoPosition(user, axis, value) {
-  if (!user || !["x", "y"].includes(axis)) return;
+function updateUserPhotoCenter(user, x, y) {
+  if (!user) return;
   const current = userPhotoPosition(user);
-  const next = { ...current, [axis]: clampPercent(value, current[axis]) };
+  const next = {
+    x: clampPercent(x, current.x),
+    y: clampPercent(y, current.y)
+  };
   state.userPhotoPositions[user] = next;
   document.querySelectorAll(`[data-photo-user="${CSS.escape(user)}"]`).forEach(gallery => {
     gallery.style.setProperty("--user-photo-position-x", `${next.x}%`);
@@ -1660,8 +1683,47 @@ function updateUserPhotoPosition(user, axis, value) {
       input.value = position;
       input.nextElementSibling.value = `${position}%`;
     });
+    const hint = controls.querySelector(".photo-center-hint");
+    if (hint) hint.textContent = `中心 ${next.x}%, ${next.y}%`;
     controls.querySelector(".photo-position-reset")?.removeAttribute("disabled");
   });
+}
+
+function updateUserPhotoPosition(user, axis, value) {
+  if (!user || !["x", "y"].includes(axis)) return;
+  const current = userPhotoPosition(user);
+  updateUserPhotoCenter(user, axis === "x" ? value : current.x, axis === "y" ? value : current.y);
+}
+
+function updateGlobalPhotoCenter(x, y) {
+  state.layout.photoPositionX = clampPercent(x, state.layout.photoPositionX ?? 50);
+  state.layout.photoPositionY = clampPercent(y, state.layout.photoPositionY ?? 50);
+  applyLayoutVariables();
+  saveLayout();
+}
+
+function photoCenterFromPointer(event, image) {
+  const frame = image.closest(".photo-image-frame") || image;
+  const rect = frame.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: clampPercent(((event.clientX - rect.left) / rect.width) * 100),
+    y: clampPercent(((event.clientY - rect.top) / rect.height) * 100)
+  };
+}
+
+function handleDetailPhotoCenterClick(event) {
+  const image = event.target.closest("img[data-photo-center-user]");
+  if (!image) return false;
+  const center = photoCenterFromPointer(event, image);
+  if (!center) return false;
+  if (event.shiftKey) {
+    updateGlobalPhotoCenter(center.x, center.y);
+  } else {
+    updateUserPhotoCenter(image.dataset.photoCenterUser || "", center.x, center.y);
+  }
+  markProjectDirty();
+  return true;
 }
 
 function resetUserPhotoPosition(user) {
@@ -1678,6 +1740,8 @@ function resetUserPhotoPosition(user) {
       input.value = position;
       input.nextElementSibling.value = `${position}%`;
     });
+    const hint = controls.querySelector(".photo-center-hint");
+    if (hint) hint.textContent = `中心 ${globalPosition.x}%, ${globalPosition.y}%`;
     controls.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
   });
 }
@@ -2394,7 +2458,9 @@ function photoGalleryContent(column, userRows) {
     const src = photoUrl(row[selectedView.field]);
     return `
     <figure class="photo-thumb">
-      <img class="ear-photo detail-photo-lazy photo-preview-trigger" src="${detailPhotoPlaceholder()}" data-src="${attrEscape(src)}" alt="${attrEscape(`${row[state.userIdField]} ${caption}`)}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}">
+      <span class="photo-image-frame">
+        <img class="ear-photo detail-photo-lazy photo-preview-trigger" src="${detailPhotoPlaceholder()}" data-src="${attrEscape(src)}" alt="${attrEscape(`${row[state.userIdField]} ${caption}`)}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${row[state.userIdField]} ${caption}`)}" data-photo-center-user="${attrEscape(user)}">
+      </span>
       <figcaption>${escapeHtml(caption)}</figcaption>
     </figure>`;
   }).join("");
@@ -2408,8 +2474,8 @@ function photoGalleryContent(column, userRows) {
           <option value="">跟随全局</option>${options}
         </select>
         <div class="photo-position-controls" data-user="${attrEscape(user)}">
-          <label>水平<input class="user-photo-position" data-axis="x" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.x}"><output>${position.x}%</output></label>
-          <label>垂直<input class="user-photo-position" data-axis="y" data-user="${attrEscape(user)}" type="range" min="0" max="100" step="1" value="${position.y}"><output>${position.y}%</output></label>
+          <span class="photo-center-hint">中心 ${position.x}%, ${position.y}%</span>
+          <small>点击照片设为该用户中心；Shift 点击设为全局。</small>
           <button type="button" class="photo-position-reset" data-user="${attrEscape(user)}" ${customPosition ? "" : "disabled"}>跟随全局</button>
         </div>
       </aside>
@@ -3659,6 +3725,28 @@ function downloadMappedCsv() {
   URL.revokeObjectURL(link.href);
 }
 
+function downloadCurrentDetailCsv() {
+  const rows = rowsWithUserNotes(filteredRows());
+  if (!rows.length) {
+    alert("当前没有可导出的详情数据。");
+    return;
+  }
+  const headers = [...state.headers.filter(header => header !== USER_NOTE_FIELD)];
+  if (Object.values(state.userNotes || {}).some(Boolean) && !headers.includes(USER_NOTE_FIELD)) headers.push(USER_NOTE_FIELD);
+  rows.forEach(row => {
+    Object.keys(row).forEach(header => {
+      if (!headers.includes(header)) headers.push(header);
+    });
+  });
+  const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
+  const link = document.createElement("a");
+  const label = state.selectedGroup ? state.selectedGroup.replace(/[\\/:*?"<>|]+/g, "_") : "current_detail";
+  link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
+  link.download = `headphone_dashboard_${label}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 function downloadPhotoAuditCsv() {
   const deviceField = els.mappingDeviceField.value;
   const auditRows = Core.buildPhotoAuditRows(state.mappingReviews, state.mappingPhotoFields, state.mappedRows, {
@@ -3819,6 +3907,8 @@ function handleLayoutControlInput(event) {
     state.layout.fontSize = Number(event.target.value);
   } else if (event.target.classList.contains("layout-photo-size-control")) {
     state.layout.photoSize = Number(event.target.value);
+  } else if (event.target.classList.contains("layout-photo-zoom-control")) {
+    state.layout.photoZoom = clampPhotoZoom(event.target.value, state.layout.photoZoom ?? 100);
   } else if (event.target.classList.contains("layout-photo-position-x-control")) {
     state.layout.photoPositionX = Number(event.target.value);
   } else if (event.target.classList.contains("layout-photo-position-y-control")) {
@@ -4304,10 +4394,21 @@ function bindEvents() {
   document.addEventListener("click", event => {
     const trigger = event.target.closest(".photo-preview-trigger");
     if (trigger) {
+      const isDetailCenterPhoto = Boolean(trigger.dataset.photoCenterUser);
+      const isMultiProjectPhoto = Boolean(trigger.closest("#multiComparePage, #multiFlowPage"));
+      if (isDetailCenterPhoto && !isMultiProjectPhoto) {
+        handleDetailPhotoCenterClick(event);
+        if (!event.ctrlKey && !event.metaKey) return;
+      }
       openPhotoLightbox(trigger.dataset.previewSrc || trigger.currentSrc || trigger.src, trigger.dataset.previewCaption || trigger.alt || "", trigger);
       return;
     }
     if (event.target === els.photoLightbox) closePhotoLightbox();
+  });
+  document.addEventListener("dblclick", event => {
+    const trigger = event.target.closest(".photo-preview-trigger[data-photo-center-user]");
+    if (!trigger) return;
+    openPhotoLightbox(trigger.dataset.previewSrc || trigger.currentSrc || trigger.src, trigger.dataset.previewCaption || trigger.alt || "", trigger);
   });
   document.addEventListener("keydown", event => {
     if ((event.key === "Enter" || event.key === " ") && event.target.classList?.contains("photo-preview-trigger")) {
@@ -4544,6 +4645,7 @@ function bindEvents() {
     render();
     markProjectDirty();
   });
+  els.exportDetailCsvButton?.addEventListener("click", downloadCurrentDetailCsv);
   els.globalViewSelect.addEventListener("change", () => {
     state.globalView = els.globalViewSelect.value;
     render();
@@ -4596,11 +4698,15 @@ function bindEvents() {
     state.layout.photoSize = Number(els.photoSizeControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
   });
-  els.photoPositionXControl.addEventListener("input", () => {
+  els.photoZoomControl?.addEventListener("input", () => {
+    state.layout.photoZoom = clampPhotoZoom(els.photoZoomControl.value, state.layout.photoZoom ?? 100);
+    applyLayoutVariables(); saveLayout(); markProjectDirty();
+  });
+  els.photoPositionXControl?.addEventListener("input", () => {
     state.layout.photoPositionX = Number(els.photoPositionXControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
   });
-  els.photoPositionYControl.addEventListener("input", () => {
+  els.photoPositionYControl?.addEventListener("input", () => {
     state.layout.photoPositionY = Number(els.photoPositionYControl.value);
     applyLayoutVariables(); saveLayout(); markProjectDirty();
   });

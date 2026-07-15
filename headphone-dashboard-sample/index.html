@@ -328,6 +328,7 @@
         <label id="globalViewControl" class="view-control">全局视角<select id="globalViewSelect"></select></label>
         <button id="resetViewsButton" type="button" class="compact-button">重置视角</button>
         <button id="clearColumnFilters" type="button" class="compact-button">清除表头筛选</button>
+        <button id="exportDetailCsvButton" type="button" class="compact-button">导出当前详情 CSV</button>
         <details class="layout-config">
           <summary>显示与布局</summary>
           <div class="layout-config-panel">
@@ -348,15 +349,15 @@
                   <output id="photoSizeValue"></output>
                 </label>
                 <label>
-                  全局照片水平中心
-                  <input id="photoPositionXControl" type="range" min="0" max="100" step="1">
-                  <output id="photoPositionXValue"></output>
+                  全局照片缩放
+                  <input id="photoZoomControl" type="range" min="100" max="240" step="5">
+                  <output id="photoZoomValue"></output>
                 </label>
-                <label>
-                  全局照片垂直中心
-                  <input id="photoPositionYControl" type="range" min="0" max="100" step="1">
-                  <output id="photoPositionYValue"></output>
-                </label>
+                <div class="display-tip">
+                  <strong>照片中心</strong>
+                  <span id="globalCenterValue">全局中心 50%, 50%</span>
+                  <small>点击详情照片设置该用户中心；按住 Shift 点击设置全局中心。</small>
+                </div>
                 <label>
                   照片加载模式
                   <select id="detailPhotoModeControl">
@@ -555,15 +556,15 @@
                       <output class="layout-photo-size-value"></output>
                     </label>
                     <label>
-                      全局照片水平中心
-                      <input class="layout-photo-position-x-control" type="range" min="0" max="100" step="1">
-                      <output class="layout-photo-position-x-value"></output>
+                      全局照片缩放
+                      <input class="layout-photo-zoom-control" type="range" min="100" max="240" step="5">
+                      <output class="layout-photo-zoom-value"></output>
                     </label>
-                    <label>
-                      全局照片垂直中心
-                      <input class="layout-photo-position-y-control" type="range" min="0" max="100" step="1">
-                      <output class="layout-photo-position-y-value"></output>
-                    </label>
+                    <div class="display-tip">
+                      <strong>照片中心</strong>
+                      <span class="layout-global-center-value">全局中心 50%, 50%</span>
+                      <small>点击详情照片设置该用户中心；按住 Shift 点击设置全局中心。</small>
+                    </div>
                     <label>
                       照片加载模式
                       <select class="layout-detail-photo-mode-control">
@@ -608,29 +609,31 @@
 
   <main id="multiComparePage" class="app-page">
     <section class="multi-project-layout">
-      <aside class="control-panel">
+      <article class="panel multi-config-card">
         <div class="section-heading">
           <span>多项目配置</span>
           <small>用户匹配</small>
         </div>
-        <div class="control-block split-control">
-          <div>
+        <div class="multi-config-grid">
+          <div class="control-block">
             <label for="multiCompareProjectA">项目 1</label>
             <select id="multiCompareProjectA"></select>
           </div>
-          <div>
+          <div class="control-block">
             <label for="multiCompareProjectB">项目 2</label>
             <select id="multiCompareProjectB"></select>
           </div>
+          <div class="control-block">
+            <label for="multiCompareUserField">用户匹配字段</label>
+            <select id="multiCompareUserField"></select>
+            <small>默认使用两个项目都存在的用户/姓名字段；匹配成功的用户会在顶部左右对齐展示。</small>
+          </div>
+          <div class="control-block multi-config-actions">
+            <button id="multiCompareRefresh" class="primary-button" type="button">刷新项目对比</button>
+            <p id="multiCompareSummary" class="pressure-note">请选择两个已打开项目。</p>
+          </div>
         </div>
-        <div class="control-block">
-          <label for="multiCompareUserField">用户匹配字段</label>
-          <select id="multiCompareUserField"></select>
-          <small>默认使用两个项目都存在的用户/姓名字段；匹配成功的用户会在顶部左右对齐展示。</small>
-        </div>
-        <button id="multiCompareRefresh" class="primary-button" type="button">刷新项目对比</button>
-        <p id="multiCompareSummary" class="pressure-note">请选择两个已打开项目。</p>
-      </aside>
+      </article>
 
       <section class="multi-project-main">
         <article class="panel">
@@ -670,42 +673,42 @@
 
   <main id="multiFlowPage" class="app-page">
     <section class="multi-project-layout">
-      <aside class="control-panel">
+      <article class="panel multi-config-card">
         <div class="section-heading">
           <span>设备偏好流向</span>
           <small>基于匹配用户</small>
         </div>
-        <div class="control-block split-control">
-          <div>
+        <div class="multi-config-grid multi-flow-config-grid">
+          <div class="control-block">
             <label for="multiFlowProjectA">项目 1</label>
             <select id="multiFlowProjectA"></select>
           </div>
-          <div>
+          <div class="control-block">
             <label for="multiFlowProjectB">项目 2</label>
             <select id="multiFlowProjectB"></select>
           </div>
-        </div>
-        <div class="control-block split-control">
-          <div>
+          <div class="control-block">
             <label for="multiFlowMetricA">项目 1 指标</label>
             <select id="multiFlowMetricA"></select>
           </div>
-          <div>
+          <div class="control-block">
             <label for="multiFlowMetricB">项目 2 指标</label>
             <select id="multiFlowMetricB"></select>
           </div>
+          <div class="control-block">
+            <label for="multiFlowThreshold">无明显差异阈值</label>
+            <input id="multiFlowThreshold" type="number" min="0" max="10" step="0.5" value="1">
+          </div>
+          <div class="control-block multi-flow-mapping-block">
+            <label>设备等价映射</label>
+            <div id="multiFlowDeviceMappings" class="flow-device-mappings"></div>
+            <button id="multiFlowAddMapping" class="outline-button" type="button">添加设备映射</button>
+          </div>
+          <div class="control-block multi-config-actions">
+            <button id="multiFlowRefresh" class="primary-button" type="button">生成流向</button>
+          </div>
         </div>
-        <div class="control-block">
-          <label for="multiFlowThreshold">无明显差异阈值</label>
-          <input id="multiFlowThreshold" type="number" min="0" max="10" step="0.5" value="1">
-        </div>
-        <div class="control-block">
-          <label>设备等价映射</label>
-          <div id="multiFlowDeviceMappings" class="flow-device-mappings"></div>
-          <button id="multiFlowAddMapping" class="outline-button" type="button">添加设备映射</button>
-        </div>
-        <button id="multiFlowRefresh" class="primary-button" type="button">生成流向</button>
-      </aside>
+      </article>
 
       <section class="multi-project-main">
         <article class="panel">

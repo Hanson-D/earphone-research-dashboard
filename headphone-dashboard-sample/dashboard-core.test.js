@@ -877,7 +877,7 @@ test("numeric summaries include n, mean, and sample standard deviation", () => {
 
 test("dashboard config import keeps only fields in the current schema", () => {
   const config = core.sanitizeDashboardConfig({
-    layout: { detailPhotoMode: "capture", columns: [{ id: "gender", visible: true }, { id: "old_field", visible: false }] },
+    layout: { detailPhotoMode: "capture", photoZoom: "145", columns: [{ id: "gender", visible: true }, { id: "old_field", visible: false }] },
     fieldRoleOverrides: { gender: "user", old_field: "metric" },
     primaryDimension: "gender",
     metric: "old_field",
@@ -905,6 +905,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.deepEqual(config.fieldRoleOverrides, { gender: "user" });
   assert.deepEqual(config.layout.columns, [{ id: "gender", visible: true }]);
   assert.equal(config.layout.detailPhotoMode, "capture");
+  assert.equal(config.layout.photoZoom, 145);
   assert.equal(config.primaryDimension, "gender");
   assert.equal(config.metric, "");
   assert.equal(config.showErrorBars, false);

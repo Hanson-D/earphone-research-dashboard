@@ -60,7 +60,22 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(html, /id="multiComparePage"[\s\S]*匹配用户详情对比/);
   assert.match(html, /id="multiFlowPage"[\s\S]*设备偏好流向/);
   assert.match(html, /id="multiFlowDeviceMappings"/);
+  assert.match(html, /class="panel multi-config-card"/);
   assert.match(css, /\.multi-user-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+});
+
+test("detail dashboard exposes csv export and click-to-center photo controls", () => {
+  const html = read("index.html");
+  const js = read("app.js");
+  const css = read("styles.css");
+
+  assert.match(html, /id="exportDetailCsvButton"[\s\S]*导出当前详情 CSV/);
+  assert.match(html, /id="photoZoomControl"[\s\S]*全局照片缩放/);
+  assert.match(js, /function downloadCurrentDetailCsv/);
+  assert.match(js, /data-photo-center-user/);
+  assert.match(js, /!event\.ctrlKey && !event\.metaKey/);
+  assert.match(js, /addEventListener\("dblclick"/);
+  assert.match(css, /--photo-zoom/);
 });
 
 test("project load failures expose recovery actions without affecting sample data", () => {
