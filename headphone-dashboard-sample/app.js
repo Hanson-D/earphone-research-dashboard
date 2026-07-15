@@ -463,7 +463,7 @@ function projectDocumentSnapshot() {
     title: state.projectTitle || projectTabTitle(state.projectPath || els.projectPathInput.value),
     rows: normalizeRowsForSave(state.rows),
     mappingRows: normalizeRowsForSave(state.mappingRows),
-    photoRoot: els.photoRootInput.value.trim(),
+    photoRoot: els.photoRootInput.value.trim() || "photos",
     mappingMode: els.mappingMode.value,
     mappingFields: {
       userField: els.mappingUserField.value,
@@ -482,7 +482,7 @@ function projectDocumentSnapshot() {
 
 function mappingConfigSnapshot() {
   return {
-    photoRoot: els.photoRootInput.value.trim(),
+    photoRoot: els.photoRootInput.value.trim() || "photos",
     mappingMode: els.mappingMode.value,
     mappingFields: {
       userField: els.mappingUserField.value,
@@ -1498,6 +1498,8 @@ function photoUrl(path) {
   if (!path) return "";
   if (state.photoUrlByPath[path]) return state.photoUrlByPath[path];
   if (/^(blob:|data:|https?:|\/api\/)/i.test(path)) return path;
+  const projectPhoto = projectPhotoUrl(path);
+  if (projectPhoto) return projectPhoto;
   const rooted = rootedPhotoPath(path);
   if (rooted) return `/api/photo?path=${encodeURIComponent(rooted)}`;
   if (/^[A-Za-z]:[\\/]|^\//.test(path)) return `/api/photo?path=${encodeURIComponent(path)}`;
@@ -1550,6 +1552,22 @@ function projectDirectoryPath() {
 function joinPath(base, relative) {
   if (!base || !relative) return "";
   return `${normalizePathSlashes(base).replace(/\/+$/, "")}/${normalizePathSlashes(relative).replace(/^\/+/, "")}`;
+}
+
+function safeRelativeRootForProjectPhoto(root) {
+  const normalized = normalizePathSlashes(root || "photos").replace(/^\/+|\/+$/g, "") || "photos";
+  if (!normalized || normalized.startsWith("browser-folder:") || normalized.startsWith("server:")) return "";
+  if (/^[A-Za-z]:[\\/]|^\//.test(root || "")) return "";
+  if (normalized.split("/").includes("..")) return "";
+  return normalized;
+}
+
+function projectPhotoUrl(relativePath) {
+  if (!relativePath || isRuntimePhotoUrl(relativePath) || /^[A-Za-z]:[\\/]|^\//.test(relativePath)) return "";
+  if (state.photoUrlByPath[relativePath]) return "";
+  const root = safeRelativeRootForProjectPhoto(els.photoRootInput?.value?.trim?.() || "photos");
+  if (!root) return "";
+  return `/api/project-photo?root=${encodeURIComponent(root)}&path=${encodeURIComponent(normalizePathSlashes(relativePath))}`;
 }
 
 function rootedPhotoPath(relativePath) {
@@ -3261,7 +3279,7 @@ async function loadBrowserPhotoFolder(files = []) {
   els.photoRootInput.value = photos.length ? `browser-folder:${rootName}` : "";
   if (els.photoFolderStatus) {
     els.photoFolderStatus.textContent = photos.length ?
-      `已选择 ${rootName}，识别到 ${photos.length} 张图片。` :
+      `已选择 ${rootName}，识别到 ${photos.length} 张图片。保存项目后建议把照片文件夹命名为 photos 并放在看板根目录，其他设备即可通过服务器加载。` :
       "未识别到图片，请选择包含照片的文件夹。";
   }
   resetMappingOutputs();

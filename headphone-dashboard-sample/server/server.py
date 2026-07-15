@@ -38,6 +38,16 @@ def resolve_client_path(value):
     return raw.resolve()
 
 
+def safe_relative_root(value, fallback="photos"):
+    text = str(value or fallback).strip() or fallback
+    if Path(text).is_absolute() or re.match(r"^[A-Za-z]:[\\/]", text):
+        raise ValueError("照片根目录必须是相对路径。")
+    parts = [part for part in Path(text).parts if part not in ("", ".")]
+    if any(part == ".." for part in parts):
+        raise ValueError("照片根目录不能包含上级目录。")
+    return Path(*parts) if parts else Path(fallback)
+
+
 def is_valid_project_id(project_id):
     return bool(PROJECT_ID_PATTERN.fullmatch(project_id or ""))
 
@@ -448,6 +458,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
             self.serve_server_project_photo(parsed)
             return
+        if parsed.path == "/api/project-photo":
+            self.serve_project_photo(parsed)
+            return
         if parsed.path.startswith("/api/server/projects/"):
             project_id = parsed.path.rsplit("/", 1)[-1]
             try:
@@ -502,6 +515,28 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         path = Path(values[0]).expanduser()
         if not path.is_file() or not is_within_allowed_root(path):
             self.send_error(403, "Photo path is not inside a scanned root")
+            return
+
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve_project_photo(self, parsed):
+        try:
+            query = parse_qs(parsed.query)
+            root = safe_relative_root(query.get("root", ["photos"])[0])
+            relative_path = safe_relative_photo_path(query.get("path", [""])[0])
+            base = (app_root() / root).resolve()
+            path = (base / relative_path).resolve()
+            if base not in path.parents or not path.is_file():
+                self.send_error(404, "Project photo not found")
+                return
+        except ValueError as error:
+            self.send_json({"error": str(error)}, 400)
             return
 
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"

@@ -47,6 +47,14 @@ class ServerProjectTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.safe_relative_photo_path("U001/readme.txt")
 
+    def test_project_photo_root_must_be_relative(self):
+        self.assertEqual(server.safe_relative_root("photos").as_posix(), "photos")
+        self.assertEqual(server.safe_relative_root("").as_posix(), "photos")
+        with self.assertRaises(ValueError):
+            server.safe_relative_root("../photos")
+        with self.assertRaises(ValueError):
+            server.safe_relative_root("/tmp/photos")
+
     def test_bare_ear_library_saves_allowed_photos(self):
         root = Path(self.tmp.name)
         source_root = root / "photos"

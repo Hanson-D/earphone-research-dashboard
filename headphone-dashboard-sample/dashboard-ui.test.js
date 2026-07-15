@@ -90,6 +90,14 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.match(js, /selectedProjectPath/);
 });
 
+test("detail photos can load from sibling photos folder through project-photo api", () => {
+  const js = read("app.js");
+
+  assert.match(js, /function projectPhotoUrl/);
+  assert.match(js, /\/api\/project-photo\?root=/);
+  assert.match(js, /photoRoot: els\.photoRootInput\.value\.trim\(\) \|\| "photos"/);
+});
+
 test("project load failures expose recovery actions without affecting sample data", () => {
   const html = read("index.html");
   const js = read("app.js");
