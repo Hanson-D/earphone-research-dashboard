@@ -889,6 +889,14 @@ test("dashboard config import keeps only fields in the current schema", () => {
     comparisonDeviceB: "样机B",
     comparisonThreshold: "1.5",
     comparisonGroupLayouts: { aBetter: { fontSize: 12, columns: { photos: { visible: false, width: 120 } } } },
+    analysisMode: "multi",
+    multiProjectA: "project-a",
+    multiProjectB: "project-b",
+    multiUserField: "user_id",
+    multiFlowMetricA: "comfort_score",
+    multiFlowMetricB: "comfort_score",
+    multiFlowThreshold: "1.5",
+    multiFlowMappings: [{ a: "样机A", b: "样机C" }],
     userFilter: ["U001"],
     userOrder: ["U002", "U001"],
     userNotes: { U001: "重点样本", U003: "不在当前数据" },
@@ -907,6 +915,14 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.comparisonDeviceB, "样机B");
   assert.equal(config.comparisonThreshold, 1.5);
   assert.equal(config.comparisonGroupLayouts.aBetter.fontSize, 12);
+  assert.equal(config.analysisMode, "multi");
+  assert.equal(config.multiProjectA, "project-a");
+  assert.equal(config.multiProjectB, "project-b");
+  assert.equal(config.multiUserField, "user_id");
+  assert.equal(config.multiFlowMetricA, "comfort_score");
+  assert.equal(config.multiFlowMetricB, "comfort_score");
+  assert.equal(config.multiFlowThreshold, 1.5);
+  assert.deepEqual(config.multiFlowMappings, [{ a: "样机A", b: "样机C" }]);
   assert.deepEqual(config.userFilter, ["U001"]);
   assert.deepEqual(config.userOrder, ["U002", "U001"]);
   assert.deepEqual(config.userNotes, { U001: "重点样本", U003: "不在当前数据" });

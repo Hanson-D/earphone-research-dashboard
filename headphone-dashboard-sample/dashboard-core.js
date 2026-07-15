@@ -1140,6 +1140,7 @@
       Object.fromEntries(Object.entries(config.comparisonGroupLayouts)
         .filter(([, value]) => value && typeof value === "object")
         .map(([key, value]) => [String(key), value])) : {};
+    const multiFlowThreshold = Number(config.multiFlowThreshold);
     return {
       layout,
       fieldRoleOverrides,
@@ -1155,6 +1156,16 @@
       comparisonDeviceB: String(config.comparisonDeviceB || ""),
       comparisonThreshold: Number.isFinite(comparisonThreshold) ? Math.max(0, comparisonThreshold) : undefined,
       comparisonGroupLayouts,
+      analysisMode: config.analysisMode === "multi" ? "multi" : config.analysisMode === "single" ? "single" : "",
+      multiProjectA: String(config.multiProjectA || ""),
+      multiProjectB: String(config.multiProjectB || ""),
+      multiUserField: String(config.multiUserField || ""),
+      multiFlowMetricA: String(config.multiFlowMetricA || ""),
+      multiFlowMetricB: String(config.multiFlowMetricB || ""),
+      multiFlowThreshold: Number.isFinite(multiFlowThreshold) ? Math.max(0, multiFlowThreshold) : undefined,
+      multiFlowMappings: Array.isArray(config.multiFlowMappings) ? config.multiFlowMappings
+        .map(item => ({ a: String(item?.a || ""), b: String(item?.b || "") }))
+        .filter(item => item.a || item.b) : [],
       userPhotoPositions,
       userFilter,
       userOrder,

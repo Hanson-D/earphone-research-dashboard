@@ -149,7 +149,15 @@ const state = {
   comparisonDeviceA: "",
   comparisonDeviceB: "",
   comparisonThreshold: 1,
-  comparisonGroupLayouts: {}
+  comparisonGroupLayouts: {},
+  analysisMode: "single",
+  multiProjectA: "",
+  multiProjectB: "",
+  multiUserField: "",
+  multiFlowMetricA: "",
+  multiFlowMetricB: "",
+  multiFlowThreshold: 1,
+  multiFlowMappings: []
 };
 
 let draggedColumnId = "";
@@ -164,7 +172,8 @@ const columnDragScroll = { list: 0, page: 0 };
 let photoLightboxReturnFocus = null;
 
 const els = Object.fromEntries([
-  "resetButton", "dataSourceLabel", "primaryDimension", "secondaryDimension",
+  "resetButton", "singleModeTab", "multiModeTab", "singlePageNav", "multiPageNav",
+  "dataSourceLabel", "primaryDimension", "secondaryDimension",
   "metricSelect", "yAxisMode", "showErrorBars", "clearGroupButton", "kpiGrid", "pivotHead", "pivotBody",
   "pivotHint", "barChart", "chartTitle", "detailTitle", "detailDescription",
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
@@ -186,6 +195,10 @@ const els = Object.fromEntries([
   "comparisonPage", "comparisonMetricSelect", "comparisonAutoDevices", "comparisonDeviceA", "comparisonDeviceB",
   "comparisonThreshold", "comparisonTitle", "comparisonSummary", "comparisonDeviceRanking", "comparisonGroupCards", "comparisonDetails",
   "comparisonGlobalFontSize", "comparisonGlobalPhotoSize", "comparisonGlobalColumns", "comparisonApplyAllTables",
+  "multiComparePage", "multiCompareProjectA", "multiCompareProjectB", "multiCompareUserField", "multiCompareRefresh",
+  "multiCompareSummary", "multiMatchedDetails", "multiOnlyA", "multiOnlyB",
+  "multiFlowPage", "multiFlowProjectA", "multiFlowProjectB", "multiFlowMetricA", "multiFlowMetricB",
+  "multiFlowThreshold", "multiFlowDeviceMappings", "multiFlowAddMapping", "multiFlowRefresh", "multiFlowSummary", "multiFlowChart", "multiFlowTable",
   "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
 
@@ -371,7 +384,15 @@ function dashboardConfigSnapshot() {
     userFilter: state.userFilter,
     deviceOrderMode: state.deviceOrderMode,
     userOrder: state.userOrder,
-    userNotes: state.userNotes
+    userNotes: state.userNotes,
+    analysisMode: state.analysisMode,
+    multiProjectA: state.multiProjectA,
+    multiProjectB: state.multiProjectB,
+    multiUserField: state.multiUserField,
+    multiFlowMetricA: state.multiFlowMetricA,
+    multiFlowMetricB: state.multiFlowMetricB,
+    multiFlowThreshold: state.multiFlowThreshold,
+    multiFlowMappings: state.multiFlowMappings
   };
 }
 
@@ -612,6 +633,14 @@ function currentProjectTabSnapshot() {
     comparisonDeviceB: state.comparisonDeviceB,
     comparisonThreshold: state.comparisonThreshold,
     comparisonGroupLayouts: cloneStateData(state.comparisonGroupLayouts),
+    analysisMode: state.analysisMode,
+    multiProjectA: state.multiProjectA,
+    multiProjectB: state.multiProjectB,
+    multiUserField: state.multiUserField,
+    multiFlowMetricA: state.multiFlowMetricA,
+    multiFlowMetricB: state.multiFlowMetricB,
+    multiFlowThreshold: state.multiFlowThreshold,
+    multiFlowMappings: cloneStateData(state.multiFlowMappings),
     userPhotoPositions: cloneStateData(state.userPhotoPositions),
     userFilter: cloneStateData(state.userFilter),
     deviceOrderMode: state.deviceOrderMode,
@@ -689,6 +718,7 @@ function renderProjectTabs() {
     renaming.focus({ preventScroll: true });
     renaming.select();
   }
+  if (state.analysisMode === "multi") renderMultiProjectSelectors();
 }
 
 function restoreProjectTabSnapshot(snapshot) {
@@ -717,6 +747,14 @@ function restoreProjectTabSnapshot(snapshot) {
   state.comparisonDeviceB = snapshot.comparisonDeviceB || "";
   state.comparisonThreshold = Number.isFinite(Number(snapshot.comparisonThreshold)) ? Number(snapshot.comparisonThreshold) : 1;
   state.comparisonGroupLayouts = cloneStateData(snapshot.comparisonGroupLayouts || {});
+  state.analysisMode = snapshot.analysisMode || "single";
+  state.multiProjectA = snapshot.multiProjectA || "";
+  state.multiProjectB = snapshot.multiProjectB || "";
+  state.multiUserField = snapshot.multiUserField || "";
+  state.multiFlowMetricA = snapshot.multiFlowMetricA || "";
+  state.multiFlowMetricB = snapshot.multiFlowMetricB || "";
+  state.multiFlowThreshold = Number.isFinite(Number(snapshot.multiFlowThreshold)) ? Number(snapshot.multiFlowThreshold) : 1;
+  state.multiFlowMappings = cloneStateData(snapshot.multiFlowMappings || []);
   state.userPhotoPositions = cloneStateData(snapshot.userPhotoPositions || {});
   state.userFilter = cloneStateData(snapshot.userFilter || null);
   state.deviceOrderMode = snapshot.deviceOrderMode || "source";
@@ -1125,6 +1163,14 @@ function applyDashboardConfig(config) {
   if (clean.comparisonDeviceB) state.comparisonDeviceB = clean.comparisonDeviceB;
   if (Number.isFinite(Number(clean.comparisonThreshold))) state.comparisonThreshold = Number(clean.comparisonThreshold);
   state.comparisonGroupLayouts = clean.comparisonGroupLayouts || {};
+  state.analysisMode = clean.analysisMode || state.analysisMode;
+  state.multiProjectA = clean.multiProjectA || state.multiProjectA;
+  state.multiProjectB = clean.multiProjectB || state.multiProjectB;
+  state.multiUserField = clean.multiUserField || state.multiUserField;
+  state.multiFlowMetricA = clean.multiFlowMetricA || state.multiFlowMetricA;
+  state.multiFlowMetricB = clean.multiFlowMetricB || state.multiFlowMetricB;
+  if (Number.isFinite(Number(clean.multiFlowThreshold))) state.multiFlowThreshold = Number(clean.multiFlowThreshold);
+  state.multiFlowMappings = Array.isArray(clean.multiFlowMappings) ? clean.multiFlowMappings : state.multiFlowMappings;
   state.userPhotoPositions = clean.userPhotoPositions || {};
   state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
   state.deviceOrderMode = clean.deviceOrderMode || "source";
@@ -2512,6 +2558,335 @@ function renderDetails(rows, groups) {
   observeDetailPhotos();
 }
 
+function projectOptions() {
+  saveActiveProjectTabSnapshot();
+  return state.projectTabs
+    .filter(tab => tab.snapshot?.rows?.length)
+    .map(tab => ({ id: tab.id, title: tab.title || projectTabTitle(tab.path), snapshot: tab.snapshot }));
+}
+
+function projectContext(projectId) {
+  const tab = state.projectTabs.find(item => item.id === projectId);
+  const snapshot = tab?.snapshot;
+  if (!snapshot) return null;
+  const rows = cloneStateData(snapshot.rows || []);
+  const headers = Object.keys(rows[0] || {});
+  const fieldRoleOverrides = cloneStateData(snapshot.fieldRoleOverrides || {});
+  const fieldRoles = Core.resolveFieldRoles(headers, rows, fieldRoleOverrides);
+  const roleOf = field => fieldRoles[field] || Core.inferFieldRole(field, rows);
+  const userIdField = headers.find(field => roleOf(field) === "user_id") || headers[0] || "";
+  const photoFields = headers.filter(field => roleOf(field) === "photo");
+  const layout = cloneStateData(snapshot.layout || defaultLayout());
+  if (!Array.isArray(layout.columns) || !layout.columns.length) {
+    layout.columns = headers.filter(field => field !== USER_NOTE_FIELD).map(field => ({
+      id: field,
+      label: fieldLabels[field] || field,
+      width: defaultColumnWidth(field),
+      visible: roleOf(field) !== "pressure" && roleOf(field) !== "photo" && roleOf(field) !== "ignore",
+      userLevel: false,
+      photo: photoFields.includes(field)
+    }));
+    if (photoFields.length) layout.columns.push({ id: "__photo_view", label: "照片", width: 360, visible: true, userLevel: true, photo: true, derived: true });
+    layout.columns.push({ id: "__user_note", label: "备注", width: 150, visible: true, userLevel: true, photo: false, derived: true });
+  }
+  return {
+    id: projectId,
+    title: tab.title || projectTabTitle(tab.path),
+    snapshot,
+    rows,
+    headers,
+    fieldRoles,
+    fieldRoleOverrides,
+    userIdField,
+    photoFields,
+    layout,
+    userViews: cloneStateData(snapshot.userViews || {}),
+    globalView: snapshot.globalView || "",
+    userNotes: cloneStateData(snapshot.userNotes || {}),
+    mappingFiles: cloneStateData(snapshot.mappingFiles || []),
+    photoRoot: snapshot.photoRoot || "",
+    metricFields: headers.filter(field => roleOf(field) === "metric" && isNumericField(field)),
+    deviceField: headers.find(field => roleOf(field) === "device") || headers.find(field => /device|condition|设备|条件|样机/i.test(field)) || ""
+  };
+}
+
+function withProjectContext(project, callback) {
+  const saved = {
+    rows: state.rows,
+    headers: state.headers,
+    fieldRoles: state.fieldRoles,
+    fieldRoleOverrides: state.fieldRoleOverrides,
+    userIdField: state.userIdField,
+    photoFields: state.photoFields,
+    layout: state.layout,
+    userViews: state.userViews,
+    globalView: state.globalView,
+    userNotes: state.userNotes,
+    mappingFiles: state.mappingFiles,
+    photoUrlByPath: state.photoUrlByPath,
+    photoRelativeByUrl: state.photoRelativeByUrl,
+    photoRoot: els.photoRootInput.value,
+    userFilter: state.userFilter,
+    deviceOrderMode: state.deviceOrderMode,
+    userOrder: state.userOrder
+  };
+  state.rows = project.rows;
+  state.headers = project.headers;
+  state.fieldRoles = project.fieldRoles;
+  state.fieldRoleOverrides = project.fieldRoleOverrides;
+  state.userIdField = project.userIdField;
+  state.photoFields = project.photoFields;
+  state.layout = project.layout;
+  state.userViews = project.userViews;
+  state.globalView = project.globalView;
+  state.userNotes = project.userNotes;
+  state.mappingFiles = project.mappingFiles;
+  state.userFilter = null;
+  state.deviceOrderMode = project.snapshot.deviceOrderMode || "source";
+  state.userOrder = cloneStateData(project.snapshot.userOrder || []);
+  els.photoRootInput.value = project.photoRoot || "";
+  rebuildPhotoPathIndex(project.mappingFiles);
+  try {
+    return callback();
+  } finally {
+    state.rows = saved.rows;
+    state.headers = saved.headers;
+    state.fieldRoles = saved.fieldRoles;
+    state.fieldRoleOverrides = saved.fieldRoleOverrides;
+    state.userIdField = saved.userIdField;
+    state.photoFields = saved.photoFields;
+    state.layout = saved.layout;
+    state.userViews = saved.userViews;
+    state.globalView = saved.globalView;
+    state.userNotes = saved.userNotes;
+    state.mappingFiles = saved.mappingFiles;
+    state.photoUrlByPath = saved.photoUrlByPath;
+    state.photoRelativeByUrl = saved.photoRelativeByUrl;
+    state.userFilter = saved.userFilter;
+    state.deviceOrderMode = saved.deviceOrderMode;
+    state.userOrder = saved.userOrder;
+    els.photoRootInput.value = saved.photoRoot;
+  }
+}
+
+function renderProjectDetailTable(project, rows, empty = "没有匹配记录。") {
+  if (!project || !rows.length) return `<div class="empty-state">${empty}</div>`;
+  return withProjectContext(project, () => {
+    const table = buildDetailTableParts(rows, rows, { showSort: false });
+    return `<div class="detail-table-wrap multi-detail-table-wrap">
+      <table class="detail-table multi-detail-table">
+        <colgroup>${table.colgroup}</colgroup>
+        <thead>${table.head}</thead>
+        <tbody>${table.body}</tbody>
+      </table>
+    </div>`;
+  });
+}
+
+function fillProjectSelect(select, selected = "") {
+  const projects = projectOptions();
+  if (!select) return;
+  select.innerHTML = projects.map(project =>
+    `<option value="${attrEscape(project.id)}" ${project.id === selected ? "selected" : ""}>${escapeHtml(project.title)}</option>`
+  ).join("");
+}
+
+function rowsByUser(project, userField) {
+  const map = new Map();
+  project.rows.forEach(row => {
+    const user = String(row[userField] || "").trim();
+    if (!user) return;
+    if (!map.has(user)) map.set(user, []);
+    map.get(user).push(row);
+  });
+  return map;
+}
+
+function multiProjectPair() {
+  const projects = projectOptions();
+  if (!state.multiProjectA && projects[0]) state.multiProjectA = projects[0].id;
+  if (!state.multiProjectB && projects[1]) state.multiProjectB = projects.find(project => project.id !== state.multiProjectA)?.id || "";
+  const projectA = projectContext(state.multiProjectA);
+  const projectB = projectContext(state.multiProjectB);
+  return { projects, projectA, projectB };
+}
+
+function commonUserFields(projectA, projectB) {
+  if (!projectA || !projectB) return [];
+  const b = new Set(projectB.headers);
+  const common = projectA.headers.filter(field => b.has(field));
+  return common.filter(field => /user|name|姓名|用户|subject|participant|id/i.test(field))
+    .concat(common.filter(field => !/user|name|姓名|用户|subject|participant|id/i.test(field)));
+}
+
+function matchMultiUsers(projectA, projectB, userField) {
+  const byA = rowsByUser(projectA, userField);
+  const byB = rowsByUser(projectB, userField);
+  const usersA = new Set(byA.keys());
+  const usersB = new Set(byB.keys());
+  const matched = [...usersA].filter(user => usersB.has(user)).sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+  const onlyA = [...usersA].filter(user => !usersB.has(user)).sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+  const onlyB = [...usersB].filter(user => !usersA.has(user)).sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+  return { byA, byB, matched, onlyA, onlyB };
+}
+
+function renderMultiProjectSelectors() {
+  fillProjectSelect(els.multiCompareProjectA, state.multiProjectA);
+  fillProjectSelect(els.multiCompareProjectB, state.multiProjectB);
+  fillProjectSelect(els.multiFlowProjectA, state.multiProjectA);
+  fillProjectSelect(els.multiFlowProjectB, state.multiProjectB);
+}
+
+function renderMultiComparePage() {
+  const { projects, projectA, projectB } = multiProjectPair();
+  renderMultiProjectSelectors();
+  if (!projectA || !projectB || projectA.id === projectB.id) {
+    els.multiCompareSummary.textContent = projects.length < 2 ? "请至少打开两个包含数据的项目。" : "请选择两个不同项目。";
+    els.multiMatchedDetails.innerHTML = '<div class="empty-state">等待项目选择。</div>';
+    els.multiOnlyA.innerHTML = "";
+    els.multiOnlyB.innerHTML = "";
+    return null;
+  }
+  const fields = commonUserFields(projectA, projectB);
+  if (!fields.includes(state.multiUserField)) state.multiUserField = fields.find(field => field === projectA.userIdField) || fields[0] || "";
+  els.multiCompareUserField.innerHTML = fields.map(field =>
+    `<option value="${attrEscape(field)}" ${field === state.multiUserField ? "selected" : ""}>${escapeHtml(fieldLabels[field] || field)}</option>`
+  ).join("");
+  if (!state.multiUserField) {
+    els.multiCompareSummary.textContent = "两个项目没有可共同匹配的用户字段。";
+    return null;
+  }
+  const match = matchMultiUsers(projectA, projectB, state.multiUserField);
+  els.multiCompareSummary.textContent = `${projectA.title} vs ${projectB.title}：匹配 ${match.matched.length} 人，仅项目 1 ${match.onlyA.length} 人，仅项目 2 ${match.onlyB.length} 人。`;
+  els.multiMatchedDetails.innerHTML = match.matched.length ? match.matched.map(user => `
+    <section class="multi-user-pair">
+      <h3>${escapeHtml(user)}</h3>
+      <div class="multi-user-columns">
+        <article><strong>${escapeHtml(projectA.title)}</strong>${renderProjectDetailTable(projectA, match.byA.get(user) || [])}</article>
+        <article><strong>${escapeHtml(projectB.title)}</strong>${renderProjectDetailTable(projectB, match.byB.get(user) || [])}</article>
+      </div>
+    </section>
+  `).join("") : '<div class="empty-state">没有匹配用户。</div>';
+  els.multiOnlyA.innerHTML = renderProjectDetailTable(projectA, match.onlyA.flatMap(user => match.byA.get(user) || []), "没有仅项目 1 用户。");
+  els.multiOnlyB.innerHTML = renderProjectDetailTable(projectB, match.onlyB.flatMap(user => match.byB.get(user) || []), "没有仅项目 2 用户。");
+  observeDetailPhotos();
+  return { projectA, projectB, match };
+}
+
+function uniqueDeviceValues(project) {
+  if (!project?.deviceField) return [];
+  return [...new Set(project.rows.map(row => row[project.deviceField]).filter(Boolean).map(String))]
+    .sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+}
+
+function fillMetricSelect(select, project, selected) {
+  if (!select) return "";
+  const metrics = project?.metricFields || [];
+  const value = metrics.includes(selected) ? selected : (metrics.includes(project?.snapshot?.comparisonMetric) ? project.snapshot.comparisonMetric : metrics[0] || "");
+  select.innerHTML = metrics.map(metric =>
+    `<option value="${attrEscape(metric)}" ${metric === value ? "selected" : ""}>${escapeHtml(fieldLabels[metric] || metric)}</option>`
+  ).join("");
+  return value;
+}
+
+function ensureFlowMappings(devicesA, devicesB) {
+  state.multiFlowMappings = (state.multiFlowMappings || []).filter(item => devicesA.includes(item.a) && devicesB.includes(item.b));
+  if (!state.multiFlowMappings.length && devicesA.length && devicesB.length) {
+    const count = Math.min(devicesA.length, devicesB.length);
+    state.multiFlowMappings = Array.from({ length: count }, (_, index) => ({ a: devicesA[index], b: devicesB[index] }));
+  }
+}
+
+function renderFlowMappingRows(projectA, projectB) {
+  const devicesA = uniqueDeviceValues(projectA);
+  const devicesB = uniqueDeviceValues(projectB);
+  ensureFlowMappings(devicesA, devicesB);
+  els.multiFlowDeviceMappings.innerHTML = state.multiFlowMappings.map((mapping, index) => `
+    <div class="flow-device-row" data-index="${index}">
+      <select class="flow-map-a">
+        ${devicesA.map(device => `<option value="${attrEscape(device)}" ${device === mapping.a ? "selected" : ""}>${escapeHtml(device)}</option>`).join("")}
+      </select>
+      <span>↔</span>
+      <select class="flow-map-b">
+        ${devicesB.map(device => `<option value="${attrEscape(device)}" ${device === mapping.b ? "selected" : ""}>${escapeHtml(device)}</option>`).join("")}
+      </select>
+      <button type="button" class="compact-button flow-map-remove">删除</button>
+    </div>
+  `).join("") || '<div class="empty-state">两个项目都需要可识别设备字段。</div>';
+}
+
+function deviceMeanForUser(rows, deviceField, metric, device) {
+  return Core.numericSummary(rows.filter(row => String(row[deviceField] || "") === String(device)), metric).mean;
+}
+
+function preferenceStateForRows(rows, project, metric, mappings, side, threshold) {
+  const devices = mappings.map(item => side === "a" ? item.a : item.b).filter(Boolean);
+  const scores = devices.map(device => ({ device, score: deviceMeanForUser(rows, project.deviceField, metric, device) }))
+    .filter(item => item.score != null);
+  if (!scores.length) return { label: "数据不完整", key: "incomplete", device: "" };
+  scores.sort((a, b) => b.score - a.score || a.device.localeCompare(b.device, "zh-CN"));
+  const best = scores[0];
+  const second = scores[1];
+  if (second && best.score - second.score <= threshold) return { label: "无明显差异", key: "close", device: "" };
+  const pair = mappings.find(item => String(side === "a" ? item.a : item.b) === String(best.device));
+  const equivalent = pair ? `${pair.a} ↔ ${pair.b}` : best.device;
+  return { label: equivalent, key: equivalent, device: best.device };
+}
+
+function renderMultiFlowPage() {
+  const compare = renderMultiComparePage();
+  const projectA = compare?.projectA;
+  const projectB = compare?.projectB;
+  renderMultiProjectSelectors();
+  if (!projectA || !projectB || !compare?.match) {
+    els.multiFlowSummary.textContent = "请先选择两个可对比项目。";
+    els.multiFlowChart.innerHTML = "";
+    els.multiFlowTable.innerHTML = "";
+    return;
+  }
+  state.multiFlowMetricA = fillMetricSelect(els.multiFlowMetricA, projectA, state.multiFlowMetricA);
+  state.multiFlowMetricB = fillMetricSelect(els.multiFlowMetricB, projectB, state.multiFlowMetricB || state.multiFlowMetricA);
+  els.multiFlowThreshold.value = state.multiFlowThreshold;
+  renderFlowMappingRows(projectA, projectB);
+  const threshold = Math.max(0, Number(state.multiFlowThreshold) || 0);
+  const flows = new Map();
+  const userRows = [];
+  compare.match.matched.forEach(user => {
+    const rowsA = compare.match.byA.get(user) || [];
+    const rowsB = compare.match.byB.get(user) || [];
+    const from = preferenceStateForRows(rowsA, projectA, state.multiFlowMetricA, state.multiFlowMappings, "a", threshold);
+    const to = preferenceStateForRows(rowsB, projectB, state.multiFlowMetricB, state.multiFlowMappings, "b", threshold);
+    const key = `${from.label}→${to.label}`;
+    if (!flows.has(key)) flows.set(key, { from: from.label, to: to.label, users: [] });
+    flows.get(key).users.push(user);
+    userRows.push({ user, from: from.label, to: to.label });
+  });
+  const flowList = [...flows.values()].sort((a, b) => b.users.length - a.users.length || a.from.localeCompare(b.from, "zh-CN"));
+  els.multiFlowSummary.textContent = `${projectA.title} → ${projectB.title}：${compare.match.matched.length} 位匹配用户，${flowList.length} 条流向。`;
+  const maxCount = Math.max(1, ...flowList.map(item => item.users.length));
+  els.multiFlowChart.innerHTML = flowList.length ? flowList.map(item => `
+    <div class="flow-bar-row">
+      <span>${escapeHtml(item.from)}</span>
+      <i style="--flow-width:${Math.max(8, item.users.length / maxCount * 100)}%"></i>
+      <strong>${escapeHtml(item.to)}</strong>
+      <b>${item.users.length}</b>
+    </div>
+  `).join("") : '<div class="empty-state">没有可展示流向。</div>';
+  els.multiFlowTable.innerHTML = flowList.length ? `<table class="summary-table">
+    <thead><tr><th>项目 1 偏好</th><th>项目 2 偏好</th><th>人数</th><th>用户</th></tr></thead>
+    <tbody>${flowList.map(item => `<tr><td>${escapeHtml(item.from)}</td><td>${escapeHtml(item.to)}</td><td>${item.users.length}</td><td>${escapeHtml(item.users.join("，"))}</td></tr>`).join("")}</tbody>
+  </table>
+  <h3 class="flow-user-heading">用户明细</h3>
+  <table class="summary-table"><thead><tr><th>用户</th><th>项目 1</th><th>项目 2</th></tr></thead>
+    <tbody>${userRows.map(row => `<tr><td>${escapeHtml(row.user)}</td><td>${escapeHtml(row.from)}</td><td>${escapeHtml(row.to)}</td></tr>`).join("")}</tbody>
+  </table>` : '<div class="empty-state">没有可展示流向。</div>';
+}
+
+function renderMultiProjectPages() {
+  renderMultiComparePage();
+  if (document.getElementById("multiFlowPage")?.classList.contains("active")) renderMultiFlowPage();
+}
+
 function render() {
   const rows = filteredRows();
   const groups = groupedRows(rows);
@@ -2523,9 +2898,23 @@ function render() {
   renderDetails(rows, groups);
   renderPressureMechanism();
   renderComparisonPreference();
+  if (state.analysisMode === "multi") renderMultiProjectPages();
 }
 
 function switchPage(page) {
+  const multiPages = new Set(["multiCompare", "multiFlow"]);
+  state.analysisMode = multiPages.has(page) ? "multi" : "single";
+  if (els.singlePageNav) els.singlePageNav.hidden = state.analysisMode !== "single";
+  if (els.multiPageNav) els.multiPageNav.hidden = state.analysisMode !== "multi";
+  els.singleModeTab?.classList.toggle("active", state.analysisMode === "single");
+  els.multiModeTab?.classList.toggle("active", state.analysisMode === "multi");
+  if (state.analysisMode === "single") {
+    els.singleModeTab?.setAttribute("aria-current", "page");
+    els.multiModeTab?.removeAttribute("aria-current");
+  } else {
+    els.multiModeTab?.setAttribute("aria-current", "page");
+    els.singleModeTab?.removeAttribute("aria-current");
+  }
   document.querySelectorAll(".app-page").forEach(element => element.classList.toggle("active", element.id === `${page}Page`));
   document.querySelectorAll(".page-tab").forEach(button => {
     const active = button.dataset.page === page;
@@ -2533,6 +2922,7 @@ function switchPage(page) {
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   });
+  if (state.analysisMode === "multi") renderMultiProjectPages();
 }
 
 function mappingViews() {
@@ -2939,7 +3329,7 @@ function unloadDetailPhoto(image) {
 
 function observeDetailPhotos() {
   state.detailPhotoObserver?.disconnect?.();
-  const roots = [els.detailBody, els.comparisonDetails].filter(Boolean);
+  const roots = [els.detailBody, els.comparisonDetails, els.multiMatchedDetails, els.multiOnlyA, els.multiOnlyB].filter(Boolean);
   const images = roots.flatMap(root => [...root.querySelectorAll("img.detail-photo-lazy[data-src], img[data-loaded-src]")]);
   if (!images.length) return;
   if (detailPhotoMode() === "capture") {
@@ -3527,6 +3917,71 @@ function finishColumnConfigDrag() {
 
 function bindEvents() {
   document.querySelectorAll(".page-tab").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
+  document.querySelectorAll(".mode-tab").forEach(button => button.addEventListener("click", () => {
+    if (button.dataset.mode === "multi") switchPage("multiCompare");
+    else switchPage("mapping");
+  }));
+  [els.multiCompareProjectA, els.multiFlowProjectA].forEach(select => select?.addEventListener("change", event => {
+    state.multiProjectA = event.target.value;
+    renderMultiProjectPages();
+    markProjectDirty();
+  }));
+  [els.multiCompareProjectB, els.multiFlowProjectB].forEach(select => select?.addEventListener("change", event => {
+    state.multiProjectB = event.target.value;
+    renderMultiProjectPages();
+    markProjectDirty();
+  }));
+  els.multiCompareUserField?.addEventListener("change", () => {
+    state.multiUserField = els.multiCompareUserField.value;
+    renderMultiProjectPages();
+    markProjectDirty();
+  });
+  els.multiCompareRefresh?.addEventListener("click", renderMultiProjectPages);
+  els.multiFlowMetricA?.addEventListener("change", () => {
+    state.multiFlowMetricA = els.multiFlowMetricA.value;
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
+  els.multiFlowMetricB?.addEventListener("change", () => {
+    state.multiFlowMetricB = els.multiFlowMetricB.value;
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
+  els.multiFlowThreshold?.addEventListener("change", () => {
+    state.multiFlowThreshold = Math.max(0, Number(els.multiFlowThreshold.value) || 0);
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
+  els.multiFlowAddMapping?.addEventListener("click", () => {
+    const projectA = projectContext(state.multiProjectA);
+    const projectB = projectContext(state.multiProjectB);
+    const devicesA = uniqueDeviceValues(projectA);
+    const devicesB = uniqueDeviceValues(projectB);
+    state.multiFlowMappings.push({ a: devicesA[0] || "", b: devicesB[0] || "" });
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
+  els.multiFlowDeviceMappings?.addEventListener("change", event => {
+    const row = event.target.closest(".flow-device-row");
+    if (!row) return;
+    const index = Number(row.dataset.index);
+    if (!state.multiFlowMappings[index]) return;
+    state.multiFlowMappings[index] = {
+      a: row.querySelector(".flow-map-a")?.value || "",
+      b: row.querySelector(".flow-map-b")?.value || ""
+    };
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
+  els.multiFlowDeviceMappings?.addEventListener("click", event => {
+    const button = event.target.closest(".flow-map-remove");
+    if (!button) return;
+    const row = button.closest(".flow-device-row");
+    state.multiFlowMappings.splice(Number(row.dataset.index), 1);
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
+  els.multiFlowRefresh?.addEventListener("click", renderMultiFlowPage);
   els.projectTabs.addEventListener("click", event => {
     const close = event.target.closest("[data-close-tab]");
     if (close) {

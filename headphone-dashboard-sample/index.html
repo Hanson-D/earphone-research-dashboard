@@ -49,11 +49,21 @@
     </aside>
 
     <div class="app-workspace">
-      <nav class="page-nav">
+      <nav class="mode-nav" aria-label="分析模式">
+        <button id="singleModeTab" class="mode-tab active" data-mode="single" aria-current="page">单项目分析</button>
+        <button id="multiModeTab" class="mode-tab" data-mode="multi">多项目分析</button>
+      </nav>
+
+      <nav id="singlePageNav" class="page-nav">
         <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
         <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
         <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
         <button class="page-tab" data-page="comparison">04 · 设备偏好</button>
+      </nav>
+
+      <nav id="multiPageNav" class="page-nav" hidden>
+        <button class="page-tab" data-page="multiCompare">01 · 项目详情对比</button>
+        <button class="page-tab" data-page="multiFlow">02 · 设备偏好流向</button>
       </nav>
 
   <main id="mappingPage" class="app-page active">
@@ -591,6 +601,131 @@
             </details>
           </div>
           <div id="comparisonDetails" class="preference-details"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <main id="multiComparePage" class="app-page">
+    <section class="multi-project-layout">
+      <aside class="control-panel">
+        <div class="section-heading">
+          <span>多项目配置</span>
+          <small>用户匹配</small>
+        </div>
+        <div class="control-block split-control">
+          <div>
+            <label for="multiCompareProjectA">项目 1</label>
+            <select id="multiCompareProjectA"></select>
+          </div>
+          <div>
+            <label for="multiCompareProjectB">项目 2</label>
+            <select id="multiCompareProjectB"></select>
+          </div>
+        </div>
+        <div class="control-block">
+          <label for="multiCompareUserField">用户匹配字段</label>
+          <select id="multiCompareUserField"></select>
+          <small>默认使用两个项目都存在的用户/姓名字段；匹配成功的用户会在顶部左右对齐展示。</small>
+        </div>
+        <button id="multiCompareRefresh" class="primary-button" type="button">刷新项目对比</button>
+        <p id="multiCompareSummary" class="pressure-note">请选择两个已打开项目。</p>
+      </aside>
+
+      <section class="multi-project-main">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">MATCHED USERS</p>
+              <h2>匹配用户详情对比</h2>
+              <p class="hint">同一用户在两个项目中水平对齐；表格格式沿用单项目详情页。</p>
+            </div>
+          </div>
+          <div id="multiMatchedDetails" class="multi-matched-details"></div>
+        </article>
+
+        <section class="multi-unmatched-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">PROJECT 1 ONLY</p>
+                <h2>仅项目 1 用户</h2>
+              </div>
+            </div>
+            <div id="multiOnlyA" class="multi-independent-details"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">PROJECT 2 ONLY</p>
+                <h2>仅项目 2 用户</h2>
+              </div>
+            </div>
+            <div id="multiOnlyB" class="multi-independent-details"></div>
+          </article>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <main id="multiFlowPage" class="app-page">
+    <section class="multi-project-layout">
+      <aside class="control-panel">
+        <div class="section-heading">
+          <span>设备偏好流向</span>
+          <small>基于匹配用户</small>
+        </div>
+        <div class="control-block split-control">
+          <div>
+            <label for="multiFlowProjectA">项目 1</label>
+            <select id="multiFlowProjectA"></select>
+          </div>
+          <div>
+            <label for="multiFlowProjectB">项目 2</label>
+            <select id="multiFlowProjectB"></select>
+          </div>
+        </div>
+        <div class="control-block split-control">
+          <div>
+            <label for="multiFlowMetricA">项目 1 指标</label>
+            <select id="multiFlowMetricA"></select>
+          </div>
+          <div>
+            <label for="multiFlowMetricB">项目 2 指标</label>
+            <select id="multiFlowMetricB"></select>
+          </div>
+        </div>
+        <div class="control-block">
+          <label for="multiFlowThreshold">无明显差异阈值</label>
+          <input id="multiFlowThreshold" type="number" min="0" max="10" step="0.5" value="1">
+        </div>
+        <div class="control-block">
+          <label>设备等价映射</label>
+          <div id="multiFlowDeviceMappings" class="flow-device-mappings"></div>
+          <button id="multiFlowAddMapping" class="outline-button" type="button">添加设备映射</button>
+        </div>
+        <button id="multiFlowRefresh" class="primary-button" type="button">生成流向</button>
+      </aside>
+
+      <section class="multi-project-main">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">FLOW SUMMARY</p>
+              <h2>设备偏好流向</h2>
+              <p id="multiFlowSummary" class="hint">请选择两个项目并配置设备映射。</p>
+            </div>
+          </div>
+          <div id="multiFlowChart" class="multi-flow-chart"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">FLOW TABLE</p>
+              <h2>流向明细</h2>
+            </div>
+          </div>
+          <div id="multiFlowTable" class="multi-flow-table"></div>
         </article>
       </section>
     </section>

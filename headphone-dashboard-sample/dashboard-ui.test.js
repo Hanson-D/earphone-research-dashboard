@@ -51,6 +51,18 @@ test("detail layout panel separates display settings from column configuration",
   assert.match(html, /id="columnConfigList"/);
 });
 
+test("multi-project analysis exposes detail comparison and flow pages", () => {
+  const html = read("index.html");
+  const css = read("styles.css");
+
+  assert.match(html, /id="singleModeTab"[\s\S]*单项目分析/);
+  assert.match(html, /id="multiModeTab"[\s\S]*多项目分析/);
+  assert.match(html, /id="multiComparePage"[\s\S]*匹配用户详情对比/);
+  assert.match(html, /id="multiFlowPage"[\s\S]*设备偏好流向/);
+  assert.match(html, /id="multiFlowDeviceMappings"/);
+  assert.match(css, /\.multi-user-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+});
+
 test("project load failures expose recovery actions without affecting sample data", () => {
   const html = read("index.html");
   const js = read("app.js");
