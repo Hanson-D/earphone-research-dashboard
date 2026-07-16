@@ -216,10 +216,13 @@ def list_server_projects():
 
 def list_local_project_files():
     root = project_root()
-    if not root.is_dir():
-        return []
+    root.mkdir(parents=True, exist_ok=True)
     projects = []
-    for path in sorted(root.glob("*.json")):
+    ignored_parts = {"exports", "photos", "bare_ears"}
+    for path in sorted(root.rglob("*.json")):
+        relative_parts = set(path.relative_to(root).parts[:-1])
+        if relative_parts & ignored_parts or any(part.endswith("_assets") for part in relative_parts):
+            continue
         try:
             project = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

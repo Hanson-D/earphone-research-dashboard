@@ -112,6 +112,31 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(projects[0]["rows"], 2)
         self.assertTrue(projects[0]["path"].endswith("我的项目.json"))
 
+    def test_list_local_project_files_recurses_project_folders(self):
+        root = Path(self.tmp.name)
+        project_dir = root / "项目A"
+        project_dir.mkdir()
+        (project_dir / "项目A.json").write_text(json.dumps({
+            "title": "项目A",
+            "rows": [{"user_id": "U001"}],
+        }), encoding="utf-8")
+        exports_dir = project_dir / "exports"
+        exports_dir.mkdir()
+        (exports_dir / "误导出.json").write_text(json.dumps({"title": "不应加载"}), encoding="utf-8")
+
+        projects = server.list_local_project_files()
+        self.assertEqual(len(projects), 1)
+        self.assertEqual(projects[0]["title"], "项目A")
+        self.assertTrue(projects[0]["path"].endswith("项目A/项目A.json"))
+
+    def test_list_local_project_files_creates_missing_projects_root(self):
+        root = Path(self.tmp.name) / "missing-projects"
+        os.environ["DASHBOARD_PROJECTS_ROOT"] = str(root)
+
+        projects = server.list_local_project_files()
+        self.assertEqual(projects, [])
+        self.assertTrue(root.is_dir())
+
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
             previous_root = os.environ.get("DASHBOARD_PROJECTS_ROOT")
