@@ -3,6 +3,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import socket
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -160,6 +161,65 @@ def safe_relative_photo_path(value):
     if path.suffix.lower() not in IMAGE_EXTENSIONS:
         raise ValueError("只支持图片文件。")
     return path
+
+
+def safe_relative_asset_path(value, allowed_suffixes=None):
+    parts = [part for part in Path(str(value or "")).parts if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        raise ValueError("资源路径无效。")
+    path = Path(*parts)
+    if allowed_suffixes and path.suffix.lower() not in allowed_suffixes:
+        raise ValueError("资源文件类型不支持。")
+    return path
+
+
+def local_project_path_from_payload(value):
+    project_path = resolve_client_path(value)
+    if not project_path.name.endswith(".json"):
+        raise ValueError("项目路径必须是 JSON 文件。")
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    return project_path
+
+
+def save_project_asset_file(project_path_value, kind, relative_value, data):
+    project_path = local_project_path_from_payload(project_path_value)
+    if kind == "csv":
+        relative = safe_relative_asset_path(relative_value or "source.csv", {".csv"})
+        target = (project_path.parent / "data" / relative.name).resolve()
+        project_relative = Path("data") / relative.name
+    elif kind == "photo":
+        relative = safe_relative_photo_path(relative_value)
+        target = (project_path.parent / "photos" / relative).resolve()
+        project_relative = Path("photos") / relative
+    else:
+        raise ValueError("未知资源类型。")
+    base = (project_path.parent / ("photos" if kind == "photo" else "data")).resolve()
+    if base != target.parent and base not in target.parents:
+        raise ValueError("资源保存路径无效。")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return {"path": project_relative.as_posix(), "bytes": len(data)}
+
+
+def copy_project_photos_from_root(project_path_value, root_value):
+    project_path = local_project_path_from_payload(project_path_value)
+    source_root = Path(str(root_value or "")).expanduser().resolve()
+    if not source_root.is_dir() or not is_within_allowed_root(source_root):
+        raise ValueError("照片根目录未授权或不存在。请先在照片映射页扫描该目录。")
+    target_root = (project_path.parent / "photos").resolve()
+    target_root.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for source in source_root.rglob("*"):
+        if not source.is_file() or source.suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        relative = source.relative_to(source_root)
+        target = (target_root / relative).resolve()
+        if target_root not in target.parents:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied += 1
+    return {"copied": copied, "photoRoot": "photos"}
 
 
 def project_title(project_id, project):
@@ -323,6 +383,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/server/projects/"):
             self.save_server_project_endpoint(parsed.path.rsplit("/", 1)[-1])
             return
+        if parsed.path == "/api/project-assets":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地项目资源写入接口。"}, 403)
+                return
+            self.save_project_asset(parsed)
+            return
+        if parsed.path == "/api/copy-project-photos":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地照片复制接口。"}, 403)
+                return
+            try:
+                payload = self.read_json_body()
+                result = copy_project_photos_from_root(payload.get("projectPath"), payload.get("root"))
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, 400)
+                return
+            self.send_json(result)
+            return
         if parsed.path == "/api/save-project":
             if not legacy_paths_enabled():
                 self.send_json({"error": "服务器部署已关闭本地路径保存接口。"}, 403)
@@ -396,6 +474,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
         project_path.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
         self.send_json({"path": display_path(project_path)})
+
+    def save_project_asset(self, parsed):
+        try:
+            query = parse_qs(parsed.query)
+            project_path = query.get("projectPath", [""])[0]
+            kind = query.get("kind", [""])[0]
+            path = query.get("path", [""])[0]
+            length = int(self.headers.get("Content-Length", "0"))
+            data = self.rfile.read(length)
+            result = save_project_asset_file(project_path, kind, path, data)
+        except ValueError as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+        self.send_json(result)
 
     def read_json_body(self):
         length = int(self.headers.get("Content-Length", "0"))

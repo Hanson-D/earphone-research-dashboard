@@ -93,6 +93,9 @@ const state = {
   mappingRows: [],
   mappedRows: [],
   mappingFiles: [],
+  sourceCsvFile: null,
+  sourceCsvName: "",
+  sourceCsvText: "",
   detailPhotoObserver: null,
   mappingObjectUrls: [],
   thumbnailUrls: {},
@@ -186,13 +189,13 @@ const els = Object.fromEntries([
   "globalCenterValue",
   "detailPhotoModeControl", "detailPhotoModeValue",
   "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
-  "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
+  "mappingPage", "dashboardPage", "mappingCsvInput", "mappingCsvStatus", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
   "bareEarToggleWrap", "includeBareEarPhotos", "bareEarConfigPanel", "bareEarSplitByEar", "bareEarGenericCountWrap",
   "bareEarGenericCount", "bareEarSideCounts", "bareEarLeftCount", "bareEarRightCount", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
-  "projectPathInput", "projectFileNameInput", "chooseProjectFolderButton", "projectFolderStatus", "exportProjectCsvButton",
+  "projectPathInput", "projectNameStatus", "chooseProjectFolderButton", "projectFolderStatus", "exportProjectCsvButton",
   "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
   "projectRecoveryActions", "useSampleProjectButton", "clearProjectPathButton", "projectTabs", "newProjectTabButton",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
@@ -463,6 +466,7 @@ function projectDocumentSnapshot() {
     title: state.projectTitle || projectTabTitle(state.projectPath || els.projectPathInput.value),
     rows: normalizeRowsForSave(state.rows),
     mappingRows: normalizeRowsForSave(state.mappingRows),
+    sourceCsv: state.sourceCsvName ? joinPath("data", state.sourceCsvName) : "",
     photoRoot: els.photoRootInput.value.trim() || "photos",
     mappingMode: els.mappingMode.value,
     mappingFields: {
@@ -524,6 +528,14 @@ function defaultProjectPath() {
   return "projects/我的耳机项目/我的耳机项目.json";
 }
 
+function sanitizeProjectName(name = "") {
+  const clean = String(name || "").trim()
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/^\.+/, "")
+    .trim();
+  return clean || "我的耳机项目";
+}
+
 function sanitizeProjectFileName(name = "") {
   const clean = String(name || "").trim()
     .replace(/[\\/:*?"<>|]+/g, "_")
@@ -547,26 +559,34 @@ function projectNameFromFileName(name = "") {
   return sanitizeProjectFileName(name).replace(/\.json$/i, "") || "我的耳机项目";
 }
 
-function projectPathFromFileName(name = els.projectFileNameInput?.value || "") {
-  const fileName = sanitizeProjectFileName(name);
-  return joinPath(joinPath(defaultProjectFolderPath(), projectNameFromFileName(fileName)), fileName);
-}
-
-function syncProjectFileNameFromPath(path = state.projectPath) {
-  if (els.projectFileNameInput) els.projectFileNameInput.value = projectFileNameFromPath(path);
+function activeProjectName() {
+  const tab = state.projectTabs.find(item => item.id === state.activeProjectTabId);
+  return sanitizeProjectName(state.projectTitle || tab?.title || projectNameFromFileName(projectFileNameFromPath(state.projectPath)) || "我的耳机项目");
 }
 
 function selectedProjectFileName() {
-  const name = sanitizeProjectFileName(els.projectFileNameInput?.value || projectFileNameFromPath(state.projectPath));
-  if (els.projectFileNameInput) els.projectFileNameInput.value = name;
-  return name;
+  return sanitizeProjectFileName(activeProjectName());
+}
+
+function projectPathFromProjectName(name = activeProjectName()) {
+  const projectName = sanitizeProjectName(name);
+  return joinPath(joinPath(defaultProjectFolderPath(), projectName), `${projectName}.json`);
+}
+
+function projectPathFromFileName(name = selectedProjectFileName()) {
+  const projectName = projectNameFromFileName(name);
+  return projectPathFromProjectName(projectName);
+}
+
+function syncProjectFileNameFromPath(path = state.projectPath) {
+  if (els.projectNameStatus) els.projectNameStatus.textContent = activeProjectName() || projectNameFromFileName(projectFileNameFromPath(path));
 }
 
 function selectedProjectPath() {
   const fileName = selectedProjectFileName();
   const currentPath = String(state.projectPath || "");
   if (currentPath && !currentPath.startsWith("browser-folder:") && projectFileNameFromPath(currentPath) === fileName) return currentPath;
-  return projectPathFromFileName(fileName);
+  return projectPathFromProjectName(activeProjectName());
 }
 
 function updateProjectFolderStatus(message = "") {
@@ -576,8 +596,8 @@ function updateProjectFolderStatus(message = "") {
     return;
   }
   els.projectFolderStatus.textContent = state.projectFolderHandle ?
-    `已选择项目文件夹：${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}` :
-    "默认保存到看板根目录下的 projects 文件夹。项目会保存 CSV、照片映射、布局、备注和用户排序。";
+    `已选择项目根目录：${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}` :
+    "默认保存到看板根目录下的 projects 文件夹。项目会保存 CSV、照片、映射、布局、备注和用户排序。";
 }
 
 async function chooseProjectFolder() {
@@ -593,7 +613,7 @@ async function chooseProjectFolder() {
   state.projectFolderHandle = handle;
   state.projectFolderLabel = handle.name || "本地文件夹";
   updateProjectFolderStatus();
-  setProjectPath(`browser-folder:${state.projectFolderLabel}/${selectedProjectFileName()}`);
+  setProjectPath(`browser-folder:${state.projectFolderLabel}/${activeProjectName()}/${selectedProjectFileName()}`);
 }
 
 function showProjectRecoveryActions(show = true) {
@@ -611,8 +631,12 @@ function setProjectUrlParam(path = "") {
 function useSampleProject() {
   state.projectPath = "";
   state.projectDirty = false;
+  state.sourceCsvFile = null;
+  state.sourceCsvName = "";
+  state.sourceCsvText = "";
   els.projectPathInput.value = "";
   syncProjectFileNameFromPath(defaultProjectPath());
+  if (els.mappingCsvStatus) els.mappingCsvStatus.textContent = "尚未选择 CSV。保存项目时会把当前 CSV 复制到项目 data 文件夹。";
   els.dataSourceLabel.textContent = "示例数据";
   showProjectRecoveryActions(false);
   setProjectUrlParam("");
@@ -626,7 +650,7 @@ function clearProjectPath() {
   syncProjectFileNameFromPath(defaultProjectPath());
   showProjectRecoveryActions(false);
   setProjectUrlParam("");
-  setProjectStatus("已清除项目位置；可继续使用示例数据，或选择项目文件夹并填写项目文件名。", state.projectDirty);
+  setProjectStatus("已清除项目位置；可继续使用示例数据，或用当前项目名保存到 projects 文件夹。", state.projectDirty);
 }
 
 function cloneStateData(value) {
@@ -738,6 +762,7 @@ function currentProjectTabSnapshot() {
     projectPath: state.projectPath,
     projectTitle: state.projectTitle,
     projectDirty: state.projectDirty,
+    sourceCsvName: state.sourceCsvName,
     protocolTemplate: cloneStateData(state.protocolTemplate),
     protocolValidation: cloneStateData(state.protocolValidation),
     projectRevision: state.projectRevision,
@@ -803,6 +828,7 @@ function renderProjectTabs() {
     renaming.focus({ preventScroll: true });
     renaming.select();
   }
+  updateProjectNameStatus();
   if (state.analysisMode === "multi") renderMultiProjectSelectors();
 }
 
@@ -852,6 +878,14 @@ function restoreProjectTabSnapshot(snapshot) {
   state.projectPath = snapshot.projectPath || "";
   state.projectTitle = snapshot.projectTitle || "";
   state.projectDirty = Boolean(snapshot.projectDirty);
+  state.sourceCsvFile = null;
+  state.sourceCsvName = snapshot.sourceCsvName || "";
+  state.sourceCsvText = "";
+  if (els.mappingCsvStatus) {
+    els.mappingCsvStatus.textContent = state.sourceCsvName ?
+      `项目内 CSV：data/${state.sourceCsvName}` :
+      "当前项目没有记录源 CSV；重新选择 CSV 后保存会复制到项目 data 文件夹。";
+  }
   state.protocolTemplate = cloneStateData(snapshot.protocolTemplate || null);
   state.protocolValidation = cloneStateData(snapshot.protocolValidation || null);
   state.projectRevision = snapshot.projectRevision || null;
@@ -956,6 +990,7 @@ function renameProjectTab(tabId, title, options = {}) {
   if (options.persist) tab.renaming = false;
   if (tab.id === state.activeProjectTabId) {
     state.projectTitle = cleanTitle;
+    updateProjectNameStatus();
     if (options.persist) {
       state.projectDirty = true;
       tab.dirty = true;
@@ -998,6 +1033,7 @@ function markProjectDirty() {
     renderProjectTabs();
   }
   setProjectStatus(label);
+  updateProjectNameStatus();
 }
 
 function markProjectSaved(message) {
@@ -1011,30 +1047,152 @@ function markProjectSaved(message) {
     renderProjectTabs();
   }
   setProjectStatus(message, false);
+  updateProjectNameStatus();
+}
+
+function updateProjectNameStatus() {
+  if (els.projectNameStatus) els.projectNameStatus.textContent = activeProjectName();
+}
+
+function selectedBrowserPhotoFiles() {
+  return [...(els.photoFolderChooser?.files || [])].filter(file => Core.isImagePath(file.name || file.webkitRelativePath || ""));
+}
+
+function relativePathForSelectedFile(file) {
+  const files = selectedBrowserPhotoFiles();
+  const rawPaths = files.map(item => item.webkitRelativePath || item.name || "");
+  const firstParts = rawPaths.map(path => path.split(/[\\/]/).filter(Boolean)[0]).filter(Boolean);
+  const stripSelectedRoot = firstParts.length > 0 && firstParts.every(part => part === firstParts[0]) &&
+    rawPaths.some(path => path.split(/[\\/]/).filter(Boolean).length > 1);
+  const rawPath = file.webkitRelativePath || file.name || "";
+  const parts = rawPath.split(/[\\/]/).filter(Boolean);
+  return normalizePathSlashes(stripSelectedRoot ? parts.slice(1).join("/") : parts.join("/"));
+}
+
+async function uploadProjectAsset(projectPath, kind, path, file, contentType = "application/octet-stream") {
+  const query = new URLSearchParams({ projectPath, kind, path });
+  const response = await fetch(`/api/project-assets?${query.toString()}`, {
+    method: "POST",
+    headers: { "Content-Type": contentType },
+    body: file
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "项目资源保存失败。");
+  return result;
+}
+
+async function copyProjectPhotosFromServerRoot(projectPath, root) {
+  const response = await fetch("/api/copy-project-photos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectPath, root })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "项目照片复制失败。");
+  return result;
+}
+
+async function writeFileToDirectory(directoryHandle, fileName, file) {
+  const handle = await directoryHandle.getFileHandle(fileName, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(file);
+  await writable.close();
+}
+
+async function ensureNestedDirectory(rootHandle, parts = []) {
+  let handle = rootHandle;
+  for (const part of parts.filter(Boolean)) {
+    handle = await handle.getDirectoryHandle(part, { create: true });
+  }
+  return handle;
+}
+
+async function persistProjectAssetsToSelectedFolder(projectDirHandle, project) {
+  if (state.sourceCsvFile) {
+    const dataDir = await projectDirHandle.getDirectoryHandle("data", { create: true });
+    await writeFileToDirectory(dataDir, state.sourceCsvName || state.sourceCsvFile.name || "source.csv", state.sourceCsvFile);
+    project.sourceCsv = joinPath("data", state.sourceCsvName || state.sourceCsvFile.name || "source.csv");
+  }
+  const files = selectedBrowserPhotoFiles();
+  if (files.length) {
+    for (const [index, file] of files.entries()) {
+      const relative = relativePathForSelectedFile(file);
+      if (!relative) continue;
+      const parts = relative.split("/").filter(Boolean);
+      const fileName = parts.pop();
+      const dir = await ensureNestedDirectory(projectDirHandle, ["photos", ...parts]);
+      await writeFileToDirectory(dir, fileName, file);
+      if ((index + 1) % 10 === 0 || index === files.length - 1) {
+        setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}`, true);
+      }
+    }
+    project.photoRoot = "photos";
+    els.photoRootInput.value = "photos";
+  }
+  return project;
+}
+
+async function persistProjectAssetsToServerProject(projectPath, project) {
+  if (state.sourceCsvFile) {
+    const csvName = state.sourceCsvName || state.sourceCsvFile.name || "source.csv";
+    const result = await uploadProjectAsset(projectPath, "csv", csvName, state.sourceCsvFile, state.sourceCsvFile.type || "text/csv");
+    project.sourceCsv = result.path || joinPath("data", csvName);
+  }
+  const files = selectedBrowserPhotoFiles();
+  if (files.length) {
+    for (const [index, file] of files.entries()) {
+      const relative = relativePathForSelectedFile(file);
+      if (!relative) continue;
+      await uploadProjectAsset(projectPath, "photo", relative, file, file.type || "application/octet-stream");
+      if ((index + 1) % 10 === 0 || index === files.length - 1) {
+        setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}`, true);
+      }
+    }
+    project.photoRoot = "photos";
+    els.photoRootInput.value = "photos";
+    return project;
+  }
+  const root = els.photoRootInput?.value?.trim?.() || "";
+  if (root && /^[A-Za-z]:[\\/]|^\//.test(root)) {
+    const result = await copyProjectPhotosFromServerRoot(projectPath, root);
+    if (result.copied > 0) {
+      project.photoRoot = "photos";
+      els.photoRootInput.value = "photos";
+    }
+  }
+  return project;
 }
 
 async function saveProject() {
+  state.projectTitle = activeProjectName();
+  updateProjectNameStatus();
+  let project = projectDocumentSnapshot();
+  project.title = state.projectTitle;
   if (state.serverProjectId) {
-    await writeServerProject(projectDocumentSnapshot(), "已保存完整项目");
+    await writeServerProject(project, "已保存项目");
     return;
   }
   if (state.projectFolderHandle) {
-    await writeProjectToSelectedFolder(projectDocumentSnapshot(), "已保存完整项目");
+    await writeProjectToSelectedFolder(project, "已保存项目");
     return;
   }
   const path = selectedProjectPath();
-  await writeProject(path, projectDocumentSnapshot(), "已保存完整项目");
+  project = await persistProjectAssetsToServerProject(path, project);
+  await writeProject(path, project, "已保存项目");
 }
 
 async function writeProjectToSelectedFolder(project, successPrefix) {
+  const projectName = activeProjectName();
   const fileName = selectedProjectFileName();
-  const handle = await state.projectFolderHandle.getFileHandle(fileName, { create: true });
+  const projectDir = await state.projectFolderHandle.getDirectoryHandle(projectName, { create: true });
+  await persistProjectAssetsToSelectedFolder(projectDir, project);
+  const handle = await projectDir.getFileHandle(fileName, { create: true });
   const writable = await handle.createWritable();
   await writable.write(JSON.stringify(project, null, 2));
   await writable.close();
   const folderLabel = state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹";
-  setProjectPath(`browser-folder:${folderLabel}/${fileName}`);
-  markProjectSaved(`${successPrefix}：${folderLabel}/${fileName}`);
+  setProjectPath(`browser-folder:${folderLabel}/${projectName}/${fileName}`);
+  markProjectSaved(`${successPrefix}：${folderLabel}/${projectName}/${fileName}`);
 }
 
 async function writeProject(path, project, successPrefix) {
@@ -1161,6 +1319,14 @@ async function applyLoadedProject(path, rawProject) {
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.protocolTemplate = project.protocolTemplate;
+  state.sourceCsvFile = null;
+  state.sourceCsvName = project.sourceCsv ? project.sourceCsv.split(/[\\/]/).pop() : "";
+  state.sourceCsvText = "";
+  if (els.mappingCsvStatus) {
+    els.mappingCsvStatus.textContent = project.sourceCsv ?
+      `项目内 CSV：${project.sourceCsv}` :
+      "当前项目没有记录源 CSV；重新选择 CSV 后保存会复制到项目 data 文件夹。";
+  }
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
@@ -1246,6 +1412,14 @@ async function loadServerProject() {
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.protocolTemplate = project.protocolTemplate;
+  state.sourceCsvFile = null;
+  state.sourceCsvName = project.sourceCsv ? project.sourceCsv.split(/[\\/]/).pop() : "";
+  state.sourceCsvText = "";
+  if (els.mappingCsvStatus) {
+    els.mappingCsvStatus.textContent = project.sourceCsv ?
+      `项目内 CSV：${project.sourceCsv}` :
+      "当前项目没有记录源 CSV；重新选择 CSV 后保存会复制到项目 data 文件夹。";
+  }
   els.photoRootInput.value = project.photoRoot;
   els.mappingMode.value = project.mappingMode;
   state.includeBareEarPhotos = Boolean(project.mappingFields.includeBareEarPhotos);
@@ -1274,7 +1448,6 @@ async function loadServerProject() {
   els.projectPathInput.value = state.serverProjectId;
   syncProjectFileNameFromPath(state.serverProjectId);
   if (els.chooseProjectFolderButton) els.chooseProjectFolderButton.disabled = true;
-  if (els.projectFileNameInput) els.projectFileNameInput.disabled = true;
   updateProjectFolderStatus("服务器项目模式：项目由服务器管理。");
   markProjectSaved(`已加载服务器项目：${state.projectTitle} · rev ${state.projectRevision}`);
   upsertProjectTab(state.serverProjectId, { title: state.projectTitle || state.serverProjectId });
@@ -3883,7 +4056,7 @@ function projectCsvPayload() {
   ])];
   if (Object.values(state.userNotes || {}).some(Boolean) && !headers.includes(USER_NOTE_FIELD)) headers.push(USER_NOTE_FIELD);
   const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
-  const label = projectNameFromFileName(selectedProjectFileName());
+  const label = activeProjectName();
   return { csv, label };
 }
 
@@ -4363,16 +4536,7 @@ function bindEvents() {
       setProjectStatus(`项目文件夹选择失败：${error.message}`);
     }
   });
-  els.projectFileNameInput?.addEventListener("change", () => {
-    const fileName = selectedProjectFileName();
-    if (state.projectFolderHandle) setProjectPath(`browser-folder:${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}/${fileName}`);
-    else setProjectPath(projectPathFromFileName(fileName));
-  });
-  els.projectFileNameInput?.addEventListener("input", () => {
-    if (state.projectFolderHandle) return;
-    els.projectPathInput.value = projectPathFromFileName(els.projectFileNameInput.value);
-  });
-  els.loadProjectButton.addEventListener("click", async () => {
+  els.loadProjectButton?.addEventListener("click", async () => {
     els.loadProjectButton.disabled = true;
     setProjectStatus("正在加载项目…");
     try {
@@ -4387,7 +4551,7 @@ function bindEvents() {
   });
   els.saveProjectButton.addEventListener("click", async () => {
     els.saveProjectButton.disabled = true;
-    setProjectStatus("正在保存完整项目…");
+    setProjectStatus("正在保存项目…");
     try {
       await saveProject();
     } catch (error) {
@@ -4396,7 +4560,7 @@ function bindEvents() {
       els.saveProjectButton.disabled = false;
     }
   });
-  els.saveProjectConfigButton.addEventListener("click", async () => {
+  els.saveProjectConfigButton?.addEventListener("click", async () => {
     els.saveProjectConfigButton.disabled = true;
     setProjectStatus("正在保存当前配置…");
     try {
@@ -4434,14 +4598,18 @@ function bindEvents() {
   els.mappingCsvInput.addEventListener("change", event => {
     const file = event.target.files[0];
     if (!file) return;
+    state.sourceCsvFile = file;
+    state.sourceCsvName = file.name || "source.csv";
     const reader = new FileReader();
     reader.onload = () => {
-      state.mappingRows = parseCSV(reader.result);
+      state.sourceCsvText = String(reader.result || "");
+      state.mappingRows = parseCSV(state.sourceCsvText);
       resetMappingOutputs();
       initializeMappingFields();
       validateProtocolRows();
       renderProtocolStatus();
       els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录`;
+      if (els.mappingCsvStatus) els.mappingCsvStatus.textContent = `已选择：${file.name}。保存项目时会复制到项目 data 文件夹。`;
       markProjectDirty();
     };
     reader.readAsText(file, "UTF-8");
@@ -4992,7 +5160,6 @@ async function start() {
     els.projectPathInput.value = state.serverProjectId;
     syncProjectFileNameFromPath(state.serverProjectId);
     if (els.chooseProjectFolderButton) els.chooseProjectFolderButton.disabled = true;
-    if (els.projectFileNameInput) els.projectFileNameInput.disabled = true;
     updateProjectFolderStatus("服务器项目模式：项目由服务器管理。");
     setProjectStatus(`正在加载服务器项目：${state.serverProjectId}`);
     try {

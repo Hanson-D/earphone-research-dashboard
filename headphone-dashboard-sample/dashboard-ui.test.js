@@ -81,17 +81,23 @@ test("project config uses folder selection instead of manual path entry", () => 
   const js = read("app.js");
 
   assert.match(html, /id="projectPathInput"[^>]*type="hidden"/);
-  assert.match(html, /id="chooseProjectFolderButton"[\s\S]*选择项目文件夹/);
-  assert.match(html, /id="projectFileNameInput"/);
+  assert.match(html, /id="chooseProjectFolderButton"[\s\S]*选择项目根目录/);
+  assert.match(html, /id="projectNameStatus"/);
+  assert.doesNotMatch(html, /id="projectFileNameInput"/);
+  assert.doesNotMatch(html, /id="loadProjectButton"/);
+  assert.doesNotMatch(html, /id="saveProjectConfigButton"/);
+  assert.match(html, /id="saveProjectButton"[\s\S]*保存项目/);
   assert.match(html, /id="exportProjectCsvButton"[\s\S]*导出项目 CSV/);
   assert.match(html, /projects\/我的耳机项目\/我的耳机项目\.json/);
   assert.doesNotMatch(html, /项目文件路径/);
   assert.doesNotMatch(html, /下载更新后的 CSV/);
   assert.match(js, /showDirectoryPicker/);
   assert.match(js, /selectedProjectPath/);
+  assert.match(js, /activeProjectName/);
   assert.match(js, /function exportProjectCsv/);
   assert.match(js, /\/api\/export-project-csv/);
   assert.match(js, /getDirectoryHandle\("exports"/);
+  assert.match(js, /\/api\/project-assets/);
 });
 
 test("detail photos can load from sibling photos folder through project-photo api", () => {

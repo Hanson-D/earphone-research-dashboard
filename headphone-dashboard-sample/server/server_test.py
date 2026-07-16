@@ -173,6 +173,39 @@ class ServerProjectTests(unittest.TestCase):
         self.assertTrue(export_path.name.startswith("项目A_"))
         self.assertTrue(export_path.read_text(encoding="utf-8").startswith("\ufeffuser_id"))
 
+    def test_project_asset_csv_is_written_to_project_data_folder(self):
+        project_dir = Path(self.tmp.name) / "项目A"
+        project_path = project_dir / "项目A.json"
+
+        result = server.save_project_asset_file(str(project_path), "csv", "source.csv", b"user_id\nU001")
+        target = project_dir / result["path"]
+
+        self.assertEqual(result["path"], "data/source.csv")
+        self.assertEqual(target.read_bytes(), b"user_id\nU001")
+
+    def test_project_asset_photo_is_written_to_project_photos_folder(self):
+        project_dir = Path(self.tmp.name) / "项目A"
+        project_path = project_dir / "项目A.json"
+
+        result = server.save_project_asset_file(str(project_path), "photo", "U001/front.jpg", b"image")
+        target = project_dir / result["path"]
+
+        self.assertEqual(result["path"], "photos/U001/front.jpg")
+        self.assertEqual(target.read_bytes(), b"image")
+
+    def test_copy_project_photos_from_scanned_root(self):
+        source_root = Path(self.tmp.name) / "source"
+        source_root.mkdir()
+        (source_root / "U001").mkdir()
+        (source_root / "U001" / "front.jpg").write_bytes(b"image")
+        server.ALLOWED_ROOTS.add(source_root.resolve())
+        project_path = Path(self.tmp.name) / "项目A" / "项目A.json"
+
+        result = server.copy_project_photos_from_root(str(project_path), str(source_root))
+
+        self.assertEqual(result["copied"], 1)
+        self.assertEqual((project_path.parent / "photos" / "U001" / "front.jpg").read_bytes(), b"image")
+
     def test_save_requires_matching_revision(self):
         server.save_server_project("study-01", {"version": 1, "rows": []}, create=True)
         ok = server.save_server_project("study-01", {"version": 1, "rows": []}, expected_revision=1)

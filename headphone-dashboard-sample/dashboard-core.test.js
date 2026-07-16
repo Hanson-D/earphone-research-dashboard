@@ -942,6 +942,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
     title: "佩戴舒适性 A 轮",
     rows: [{ user_id: "U001", comfort_score: "8" }],
     mappingRows: [{ user_id: "U001" }],
+    sourceCsv: "data/source.csv",
     photoRoot: "/photos",
     mappingMode: "folders",
     mappingFields: { userField: "user_id", earField: "ear_side", deviceField: "device_name" },
@@ -956,6 +957,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
   });
   assert.equal(project.version, 1);
   assert.equal(project.title, "佩戴舒适性 A 轮");
+  assert.equal(project.sourceCsv, "data/source.csv");
   assert.equal(project.photoRoot, "/photos");
   assert.equal(project.mappingMode, "folders");
   assert.equal(project.mappingFields.earField, "ear_side");
@@ -969,6 +971,7 @@ test("project documents keep rows, mapping state, and dashboard config together"
     dashboardConfig: { fieldRoleOverrides: { old: "metric", comfort_score: "metric" }, metric: "comfort_score" }
   });
   assert.equal(clean.title, "佩戴舒适性 A 轮");
+  assert.equal(clean.sourceCsv, "data/source.csv");
   assert.deepEqual(clean.rows, []);
   assert.deepEqual(clean.dashboardConfig.fieldRoleOverrides, {});
 });
