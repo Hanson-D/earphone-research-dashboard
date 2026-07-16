@@ -64,6 +64,9 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(html, /class="panel multi-config-card"/);
   assert.match(css, /\.multi-user-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(js, /function renderSankeyChart/);
+  assert.match(js, /fromOffsets/);
+  assert.match(js, /toOffsets/);
+  assert.match(js, /nodeHeightFor/);
   assert.match(js, /function renderFlowDetailCards/);
   assert.match(css, /\.sankey-chart/);
   assert.match(css, /\.flow-detail-card/);

@@ -895,9 +895,10 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .multi-flow-chart { display: grid; gap: 10px; padding: 16px 18px 18px; }
 .sankey-shell { overflow-x: auto; padding: 8px; background: linear-gradient(180deg, #fffaf6, #fff); border: 1px solid var(--line); }
 .sankey-chart { display: block; width: 100%; min-width: 760px; height: auto; }
-.sankey-link { fill: none; stroke-linecap: round; opacity: .34; transition: opacity .16s ease, stroke-width .16s ease; }
-.sankey-link:hover { opacity: .62; }
+.sankey-link { fill: none; stroke-linecap: butt; opacity: .42; transition: opacity .16s ease, stroke-width .16s ease; }
+.sankey-link:hover { opacity: .68; }
 .sankey-node text { fill: var(--accent-dark); font-size: 10px; font-weight: 800; pointer-events: none; }
+.sankey-node-count { fill: var(--muted) !important; font-size: 9px !important; }
 .flow-bar-row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) minmax(140px, 2fr) minmax(120px, 1fr) 42px;

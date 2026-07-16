@@ -3465,34 +3465,62 @@ function renderSankeyChart(flowList = []) {
   const toLabels = [...new Set(flowList.map(item => item.to))];
   const maxSideCount = Math.max(fromLabels.length, toLabels.length, 1);
   const width = 940;
-  const height = Math.max(260, maxSideCount * 58 + 70);
+  const height = Math.max(280, maxSideCount * 72 + 80);
   const leftX = 120;
   const rightX = width - 120;
   const nodeWidth = 120;
-  const nodeHeight = 32;
+  const minNodeHeight = 28;
+  const maxNodeHeight = 96;
+  const totalsFrom = new Map(fromLabels.map(label => [label, flowList.filter(item => item.from === label).reduce((sum, item) => sum + item.users.length, 0)]));
+  const totalsTo = new Map(toLabels.map(label => [label, flowList.filter(item => item.to === label).reduce((sum, item) => sum + item.users.length, 0)]));
+  const maxTotal = Math.max(1, ...totalsFrom.values(), ...totalsTo.values());
+  const nodeHeightFor = (label, side) => minNodeHeight + ((side === "from" ? totalsFrom.get(label) : totalsTo.get(label)) || 0) / maxTotal * (maxNodeHeight - minNodeHeight);
   const yFor = (labels, label) => {
     const index = labels.indexOf(label);
-    const gap = labels.length <= 1 ? 0 : (height - 100) / (labels.length - 1);
-    return 50 + index * gap;
+    const gap = labels.length <= 1 ? 0 : (height - 110) / (labels.length - 1);
+    return 55 + index * gap;
   };
-  const maxCount = Math.max(1, ...flowList.map(item => item.users.length));
-  const links = flowList.map((item, index) => {
-    const y1 = yFor(fromLabels, item.from);
-    const y2 = yFor(toLabels, item.to);
-    const stroke = Math.max(8, item.users.length / maxCount * 34);
-    const color = flowColor(index);
-    return `<path class="sankey-link" d="M ${leftX + nodeWidth / 2} ${y1} C ${leftX + 280} ${y1}, ${rightX - 280} ${y2}, ${rightX - nodeWidth / 2} ${y2}" stroke="${color}" stroke-width="${stroke}" data-flow-index="${index}">
+  const fromOffsets = new Map(fromLabels.map(label => [label, 0]));
+  const toOffsets = new Map(toLabels.map(label => [label, 0]));
+  const linkMetrics = flowList.map((item, index) => ({
+    item,
+    index,
+    value: item.users.length,
+    stroke: Math.max(6, item.users.length / maxTotal * (maxNodeHeight - 8)),
+    color: flowColor(index)
+  }));
+  linkMetrics.forEach(link => {
+    const { item, value } = link;
+    const fromTotal = totalsFrom.get(item.from) || 1;
+    const toTotal = totalsTo.get(item.to) || 1;
+    const fromHeight = nodeHeightFor(item.from, "from");
+    const toHeight = nodeHeightFor(item.to, "to");
+    const fromTop = yFor(fromLabels, item.from) - fromHeight / 2;
+    const toTop = yFor(toLabels, item.to) - toHeight / 2;
+    const fromOffset = fromOffsets.get(item.from) || 0;
+    const toOffset = toOffsets.get(item.to) || 0;
+    const fromBand = value / fromTotal * fromHeight;
+    const toBand = value / toTotal * toHeight;
+    link.y1 = fromTop + fromOffset + fromBand / 2;
+    link.y2 = toTop + toOffset + toBand / 2;
+    link.stroke = Math.max(5, Math.min(fromBand, toBand) * 0.86);
+    fromOffsets.set(item.from, fromOffset + fromBand);
+    toOffsets.set(item.to, toOffset + toBand);
+  });
+  const links = linkMetrics.map(({ item, index, y1, y2, stroke, color }) => {
+    return `<path class="sankey-link" d="M ${leftX + nodeWidth / 2} ${y1.toFixed(1)} C ${leftX + 280} ${y1.toFixed(1)}, ${rightX - 280} ${y2.toFixed(1)}, ${rightX - nodeWidth / 2} ${y2.toFixed(1)}" stroke="${color}" stroke-width="${stroke.toFixed(1)}" data-flow-index="${index}">
       <title>${escapeHtml(item.from)} → ${escapeHtml(item.to)}：${item.users.length} 人</title>
     </path>`;
   }).join("");
   const nodes = [
-    ...fromLabels.map((label, index) => ({ label, x: leftX, y: yFor(fromLabels, label), side: "项目 1", color: flowColor(index) })),
-    ...toLabels.map((label, index) => ({ label, x: rightX, y: yFor(toLabels, label), side: "项目 2", color: flowColor(index + fromLabels.length) }))
+    ...fromLabels.map((label, index) => ({ label, x: leftX, y: yFor(fromLabels, label), height: nodeHeightFor(label, "from"), side: "项目 1", color: flowColor(index), total: totalsFrom.get(label) || 0 })),
+    ...toLabels.map((label, index) => ({ label, x: rightX, y: yFor(toLabels, label), height: nodeHeightFor(label, "to"), side: "项目 2", color: flowColor(index + fromLabels.length), total: totalsTo.get(label) || 0 }))
   ].map(node => `
-    <g class="sankey-node" transform="translate(${node.x - nodeWidth / 2}, ${node.y - nodeHeight / 2})">
-      <rect width="${nodeWidth}" height="${nodeHeight}" rx="3" fill="#fffaf6" stroke="${node.color}" stroke-width="1.5"></rect>
-      <text x="${nodeWidth / 2}" y="13" text-anchor="middle">${escapeHtml(node.side)}</text>
-      <text x="${nodeWidth / 2}" y="26" text-anchor="middle">${escapeHtml(node.label)}</text>
+    <g class="sankey-node" transform="translate(${node.x - nodeWidth / 2}, ${(node.y - node.height / 2).toFixed(1)})">
+      <rect width="${nodeWidth}" height="${node.height.toFixed(1)}" rx="3" fill="#fffaf6" stroke="${node.color}" stroke-width="1.5"></rect>
+      <text x="${nodeWidth / 2}" y="14" text-anchor="middle">${escapeHtml(node.side)}</text>
+      <text x="${nodeWidth / 2}" y="${Math.min(node.height - 8, 29).toFixed(1)}" text-anchor="middle">${escapeHtml(node.label)}</text>
+      <text class="sankey-node-count" x="${nodeWidth / 2}" y="${Math.max(44, node.height - 8).toFixed(1)}" text-anchor="middle">${node.total} 人</text>
     </g>
   `).join("");
   return `<div class="sankey-shell">
