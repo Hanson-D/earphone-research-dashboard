@@ -614,6 +614,108 @@ async function chooseProjectFolder() {
   state.projectFolderLabel = handle.name || "本地文件夹";
   updateProjectFolderStatus();
   setProjectPath(`browser-folder:${state.projectFolderLabel}/${activeProjectName()}/${selectedProjectFileName()}`);
+  await loadProjectsFromSelectedFolder();
+}
+
+async function browserDirectoryEntries(directoryHandle) {
+  const entries = [];
+  for await (const entry of directoryHandle.entries()) entries.push(entry);
+  return entries.sort(([nameA], [nameB]) => nameA.localeCompare(nameB, "zh-CN", { numeric: true }));
+}
+
+function shouldSkipProjectDirectory(parts = []) {
+  const ignored = new Set(["exports", "photos", "bare_ears"]);
+  return parts.some(part => ignored.has(part) || String(part).endsWith("_assets"));
+}
+
+async function listProjectJsonFiles(directoryHandle, parts = []) {
+  if (shouldSkipProjectDirectory(parts)) return [];
+  const files = [];
+  for (const [name, handle] of await browserDirectoryEntries(directoryHandle)) {
+    const nextParts = [...parts, name];
+    if (handle.kind === "directory") {
+      files.push(...await listProjectJsonFiles(handle, nextParts));
+    } else if (/\.json$/i.test(name)) {
+      files.push({ handle, relativePath: nextParts.join("/") });
+    }
+  }
+  return files;
+}
+
+async function browserDirectoryByParts(rootHandle, parts = []) {
+  let handle = rootHandle;
+  for (const part of parts.filter(Boolean)) {
+    handle = await handle.getDirectoryHandle(part);
+  }
+  return handle;
+}
+
+async function browserPhotoFilesFromDirectory(directoryHandle, parts = []) {
+  const photos = [];
+  for (const [name, handle] of await browserDirectoryEntries(directoryHandle)) {
+    const nextParts = [...parts, name];
+    if (handle.kind === "directory") {
+      photos.push(...await browserPhotoFilesFromDirectory(handle, nextParts));
+    } else if (Core.isImagePath(name)) {
+      const file = await handle.getFile();
+      const relativePath = nextParts.join("/");
+      const url = URL.createObjectURL(file);
+      state.mappingObjectUrls.push(url);
+      photos.push({
+        name,
+        relative_path: relativePath,
+        absolute_path: url,
+        user_folder: nextParts.length > 1 ? nextParts[0] : "",
+        url,
+        source: "browser_project"
+      });
+    }
+  }
+  return photos;
+}
+
+async function browserProjectPhotoFiles(projectRelativePath, project) {
+  if (!state.projectFolderHandle) return [];
+  const root = safeRelativeRootForProjectPhoto(project.photoRoot || "photos");
+  if (!root) return [];
+  const projectDirParts = projectRelativePath.split("/").filter(Boolean).slice(0, -1);
+  const photoRootParts = root.split("/").filter(Boolean);
+  try {
+    const photoDir = await browserDirectoryByParts(state.projectFolderHandle, [...projectDirParts, ...photoRootParts]);
+    return await browserPhotoFilesFromDirectory(photoDir);
+  } catch {
+    return [];
+  }
+}
+
+async function loadProjectsFromSelectedFolder() {
+  if (!state.projectFolderHandle) return false;
+  const files = await listProjectJsonFiles(state.projectFolderHandle);
+  if (!files.length) {
+    setProjectStatus(`已选择项目根目录：${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}，但没有发现项目 JSON。`);
+    return false;
+  }
+  let loaded = 0;
+  const errors = [];
+  saveActiveProjectTabSnapshot();
+  for (const file of files) {
+    try {
+      const raw = JSON.parse(await (await file.handle.getFile()).text());
+      const photos = await browserProjectPhotoFiles(file.relativePath, raw);
+      await applyLoadedProject(`browser-folder:${state.projectFolderLabel || state.projectFolderHandle.name || "本地文件夹"}/${file.relativePath}`, raw, {
+        mappingFiles: photos,
+        skipPhotoScan: true
+      });
+      loaded += 1;
+    } catch (error) {
+      errors.push(`${file.relativePath}：${error.message}`);
+    }
+  }
+  setProjectStatus(errors.length ?
+    `已从所选项目根目录加载 ${loaded} 个项目，${errors.length} 个失败。` :
+    `已从所选项目根目录加载 ${loaded} 个项目。`, false);
+  showProjectRecoveryActions(errors.length > 0);
+  return loaded > 0;
 }
 
 function showProjectRecoveryActions(show = true) {
@@ -1308,7 +1410,7 @@ async function loadProject(path) {
   await applyLoadedProject(result.path, result.project);
 }
 
-async function applyLoadedProject(path, rawProject) {
+async function applyLoadedProject(path, rawProject, options = {}) {
   const project = Core.sanitizeProjectDocument(rawProject);
   state.activeProjectTabId = "";
   setProjectPath(path);
@@ -1316,6 +1418,7 @@ async function applyLoadedProject(path, rawProject) {
   state.rows = project.rows.map(row => ({ ...row }));
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
+  state.mappingFiles = cloneStateData(options.mappingFiles || []);
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.protocolTemplate = project.protocolTemplate;
@@ -1351,7 +1454,8 @@ async function applyLoadedProject(path, rawProject) {
   if (project.mappingFields.userField && [...els.mappingUserField.options].some(option => option.value === project.mappingFields.userField)) els.mappingUserField.value = project.mappingFields.userField;
   if (project.mappingFields.earField && [...els.mappingEarField.options].some(option => option.value === project.mappingFields.earField)) els.mappingEarField.value = project.mappingFields.earField;
   if (project.mappingFields.deviceField && [...els.mappingDeviceField.options].some(option => option.value === project.mappingFields.deviceField)) els.mappingDeviceField.value = project.mappingFields.deviceField;
-  if (project.photoRoot && !project.photoRoot.startsWith("browser-folder:")) {
+  rebuildPhotoPathIndex(state.mappingFiles);
+  if (!options.skipPhotoScan && project.photoRoot && !project.photoRoot.startsWith("browser-folder:")) {
     try {
       await scanPhotoRoot();
     } catch (error) {

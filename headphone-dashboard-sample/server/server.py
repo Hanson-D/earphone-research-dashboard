@@ -30,6 +30,16 @@ def project_root():
     return path.resolve()
 
 
+def project_scan_roots():
+    roots = [project_root()]
+    if os.environ.get("DASHBOARD_PROJECTS_ROOT"):
+        return roots
+    sibling = (app_root().parent / "projects").resolve()
+    if sibling != roots[0]:
+        roots.append(sibling)
+    return roots
+
+
 def display_path(path):
     resolved = Path(path).expanduser().resolve()
     try:
@@ -279,24 +289,32 @@ def list_server_projects():
 
 
 def list_local_project_files():
-    root = project_root()
-    root.mkdir(parents=True, exist_ok=True)
+    roots = project_scan_roots()
+    roots[0].mkdir(parents=True, exist_ok=True)
     projects = []
     ignored_parts = {"exports", "photos", "bare_ears"}
-    for path in sorted(root.rglob("*.json")):
-        relative_parts = set(path.relative_to(root).parts[:-1])
-        if relative_parts & ignored_parts or any(part.endswith("_assets") for part in relative_parts):
+    seen = set()
+    for root in roots:
+        if not root.is_dir():
             continue
-        try:
-            project = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        projects.append({
-            "path": display_path(path),
-            "title": project.get("title") or path.stem,
-            "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
-            "updatedAt": __import__("datetime").datetime.fromtimestamp(path.stat().st_mtime, __import__("datetime").timezone.utc).isoformat(),
-        })
+        for path in sorted(root.rglob("*.json")):
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            relative_parts = set(path.relative_to(root).parts[:-1])
+            if relative_parts & ignored_parts or any(part.endswith("_assets") for part in relative_parts):
+                continue
+            try:
+                project = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            projects.append({
+                "path": display_path(path),
+                "title": project.get("title") or path.stem,
+                "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
+                "updatedAt": __import__("datetime").datetime.fromtimestamp(path.stat().st_mtime, __import__("datetime").timezone.utc).isoformat(),
+            })
     return projects
 
 

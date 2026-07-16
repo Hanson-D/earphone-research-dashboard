@@ -144,6 +144,14 @@ class ServerProjectTests(unittest.TestCase):
 
         self.assertEqual(root, (server.app_root() / "projects").resolve())
 
+    def test_default_project_scan_roots_include_sibling_projects(self):
+        os.environ.pop("DASHBOARD_PROJECTS_ROOT", None)
+
+        roots = server.project_scan_roots()
+
+        self.assertIn((server.app_root() / "projects").resolve(), roots)
+        self.assertIn((server.app_root().parent / "projects").resolve(), roots)
+
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
             previous_root = os.environ.get("DASHBOARD_PROJECTS_ROOT")

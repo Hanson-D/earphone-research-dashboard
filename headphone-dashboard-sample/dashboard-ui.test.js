@@ -102,6 +102,8 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.match(js, /showDirectoryPicker/);
   assert.match(js, /id:\s*"hp-projects"/);
   assert.doesNotMatch(js, /headphone-dashboard-project-folder/);
+  assert.match(js, /function loadProjectsFromSelectedFolder/);
+  assert.match(js, /listProjectJsonFiles/);
   assert.match(js, /selectedProjectPath/);
   assert.match(js, /activeProjectName/);
   assert.match(js, /function exportProjectCsv/);
