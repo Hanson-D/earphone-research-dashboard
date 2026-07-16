@@ -73,6 +73,24 @@ def safe_library_part(value, fallback="unknown"):
     return clean[:80] or fallback
 
 
+def export_timestamp():
+    return __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def save_project_csv_export(project_path_value, csv_text, project_name="project"):
+    project_path = resolve_client_path(project_path_value)
+    if not project_path.name.endswith(".json"):
+        raise ValueError("项目路径必须是 JSON 文件。")
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        raise ValueError("CSV 内容不能为空。")
+    export_dir = project_path.parent / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    name = safe_library_part(project_name, project_path.stem)
+    target = export_dir / f"{name}_{export_timestamp()}.csv"
+    target.write_text("\ufeff" + csv_text, encoding="utf-8")
+    return {"path": display_path(target)}
+
+
 def bare_ear_library_index():
     root = bare_ear_library_root()
     if not root.is_dir():
@@ -307,6 +325,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "服务器部署已关闭本地路径保存接口。"}, 403)
                 return
             self.save_project()
+            return
+        if parsed.path == "/api/export-project-csv":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地路径导出接口。"}, 403)
+                return
+            try:
+                payload = self.read_json_body()
+                result = save_project_csv_export(payload.get("projectPath"), payload.get("csv"), payload.get("projectName") or "project")
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self.send_json({"error": str(error)}, 400)
+                return
+            self.send_json(result)
             return
         if parsed.path != "/api/scan-photos":
             self.send_error(404)

@@ -3871,12 +3871,11 @@ function escapeHtml(value) {
   return attrEscape(value);
 }
 
-function exportProjectCsv() {
+function projectCsvPayload() {
   const sourceRows = state.mappedRows.length ? state.mappedRows : state.rows;
   const rows = rowsWithUserNotes(sourceRows);
   if (!rows.length) {
-    alert("当前没有可导出的项目数据。");
-    return;
+    return null;
   }
   const headers = [...new Set([
     ...state.headers.filter(header => header !== USER_NOTE_FIELD),
@@ -3884,12 +3883,64 @@ function exportProjectCsv() {
   ])];
   if (Object.values(state.userNotes || {}).some(Boolean) && !headers.includes(USER_NOTE_FIELD)) headers.push(USER_NOTE_FIELD);
   const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
-  const link = document.createElement("a");
   const label = projectNameFromFileName(selectedProjectFileName());
+  return { csv, label };
+}
+
+function csvTimestamp(date = new Date()) {
+  const pad = value => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function downloadProjectCsv(csv, label) {
+  const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
-  link.download = `${label}_data.csv`;
+  link.download = `${label}_${csvTimestamp()}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+async function exportProjectCsvToSelectedFolder(csv, label) {
+  const exportsDir = await state.projectFolderHandle.getDirectoryHandle("exports", { create: true });
+  const fileName = `${label}_${csvTimestamp()}.csv`;
+  const handle = await exportsDir.getFileHandle(fileName, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(`\ufeff${csv}`);
+  await writable.close();
+  return `exports/${fileName}`;
+}
+
+async function exportProjectCsv() {
+  const payload = projectCsvPayload();
+  if (!payload) {
+    alert("当前没有可导出的项目数据。");
+    return;
+  }
+  const { csv, label } = payload;
+  if (state.projectFolderHandle) {
+    try {
+      const path = await exportProjectCsvToSelectedFolder(csv, label);
+      setProjectStatus(`已导出项目 CSV：${path}`, state.projectDirty);
+      return;
+    } catch (error) {
+      downloadProjectCsv(csv, label);
+      setProjectStatus(`无法写入项目 exports 文件夹，已改为浏览器下载：${error.message}`, state.projectDirty);
+      return;
+    }
+  }
+  try {
+    const response = await fetch("/api/export-project-csv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectPath: selectedProjectPath(), projectName: label, csv })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "项目 CSV 导出失败。");
+    setProjectStatus(`已导出项目 CSV：${result.path}`, state.projectDirty);
+  } catch (error) {
+    downloadProjectCsv(csv, label);
+    setProjectStatus(`无法写入项目 exports 文件夹，已改为浏览器下载：${error.message}`, state.projectDirty);
+  }
 }
 
 function downloadPhotoAuditCsv() {

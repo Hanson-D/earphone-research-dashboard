@@ -133,6 +133,21 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(projects[0]["path"], project_path.relative_to(server.app_root()).as_posix())
         self.assertNotIn(str(server.app_root()), projects[0]["path"])
 
+    def test_project_csv_export_is_written_to_project_exports_folder(self):
+        project_dir = Path(self.tmp.name) / "项目A"
+        project_dir.mkdir()
+        project_path = project_dir / "项目A.json"
+        project_path.write_text("{}", encoding="utf-8")
+
+        result = server.save_project_csv_export(str(project_path), "user_id\nU001", "项目A")
+        export_path = Path(result["path"])
+        if not export_path.is_absolute():
+            export_path = server.app_root() / export_path
+
+        self.assertEqual(export_path.parent.name, "exports")
+        self.assertTrue(export_path.name.startswith("项目A_"))
+        self.assertTrue(export_path.read_text(encoding="utf-8").startswith("\ufeffuser_id"))
+
     def test_save_requires_matching_revision(self):
         server.save_server_project("study-01", {"version": 1, "rows": []}, create=True)
         ok = server.save_server_project("study-01", {"version": 1, "rows": []}, expected_revision=1)

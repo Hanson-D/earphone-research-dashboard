@@ -90,6 +90,8 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.match(js, /showDirectoryPicker/);
   assert.match(js, /selectedProjectPath/);
   assert.match(js, /function exportProjectCsv/);
+  assert.match(js, /\/api\/export-project-csv/);
+  assert.match(js, /getDirectoryHandle\("exports"/);
 });
 
 test("detail photos can load from sibling photos folder through project-photo api", () => {
