@@ -30,21 +30,22 @@
       <section class="project-panel">
         <p class="panel-kicker">PROJECT CONFIG</p>
         <h2>项目配置</h2>
-        <input id="projectPathInput" name="projectPath" type="hidden" value="projects/我的耳机项目.json">
+        <input id="projectPathInput" name="projectPath" type="hidden" value="projects/我的耳机项目/我的耳机项目.json">
         <div class="project-folder-picker">
           <span>项目保存文件夹</span>
           <button id="chooseProjectFolderButton" class="outline-button" type="button">选择项目文件夹</button>
-          <small id="projectFolderStatus">默认保存到看板根目录下的 projects 文件夹。项目会保存 CSV、照片映射、布局、备注和用户排序。</small>
+          <small id="projectFolderStatus">默认保存到 projects/项目名/项目名.json；照片建议放在同项目目录下的 photos 文件夹。</small>
         </div>
         <label class="mapping-input">
           <span>项目文件名</span>
           <input id="projectFileNameInput" name="projectFileName" type="text" autocomplete="off" value="我的耳机项目.json" placeholder="例如：耳机研究01.json">
-          <small>无需输入路径，只填写文件名；未选择文件夹时默认使用 projects 文件夹。</small>
+          <small>无需输入路径，只填写文件名；未选择文件夹时默认使用 projects/项目名/项目名.json。</small>
         </label>
         <div class="project-actions">
           <button id="loadProjectButton" class="outline-button" type="button">加载项目</button>
           <button id="saveProjectConfigButton" class="outline-button" type="button">保存当前配置</button>
           <button id="saveProjectButton" class="primary-button" type="button">保存完整项目</button>
+          <button id="exportProjectCsvButton" class="outline-button" type="button">导出项目 CSV</button>
         </div>
         <div id="projectStatus" class="project-status" aria-live="polite">未加载项目文件</div>
         <div id="projectRecoveryActions" class="project-recovery-actions" hidden>
@@ -180,7 +181,6 @@
               <button id="runMappingButton" class="primary-button">生成照片映射</button>
               <div class="mapping-actions">
                 <button id="applyMappingButton" class="primary-button" disabled>应用到数据看板</button>
-                <button id="downloadMappedCsvButton" class="outline-button" disabled>下载更新后的 CSV</button>
                 <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
               </div>
             </div>
@@ -334,7 +334,6 @@
         <label id="globalViewControl" class="view-control">全局视角<select id="globalViewSelect"></select></label>
         <button id="resetViewsButton" type="button" class="compact-button">重置视角</button>
         <button id="clearColumnFilters" type="button" class="compact-button">清除表头筛选</button>
-        <button id="exportDetailCsvButton" type="button" class="compact-button">导出当前详情 CSV</button>
         <details class="layout-config">
           <summary>显示与布局</summary>
           <div class="layout-config-panel">

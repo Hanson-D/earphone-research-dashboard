@@ -69,9 +69,7 @@ test("detail dashboard exposes csv export and click-to-center photo controls", (
   const js = read("app.js");
   const css = read("styles.css");
 
-  assert.match(html, /id="exportDetailCsvButton"[\s\S]*导出当前详情 CSV/);
   assert.match(html, /id="photoZoomControl"[\s\S]*全局照片缩放/);
-  assert.match(js, /function downloadCurrentDetailCsv/);
   assert.match(js, /data-photo-center-user/);
   assert.match(js, /!event\.ctrlKey && !event\.metaKey/);
   assert.match(js, /addEventListener\("dblclick"/);
@@ -85,9 +83,13 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.match(html, /id="projectPathInput"[^>]*type="hidden"/);
   assert.match(html, /id="chooseProjectFolderButton"[\s\S]*选择项目文件夹/);
   assert.match(html, /id="projectFileNameInput"/);
+  assert.match(html, /id="exportProjectCsvButton"[\s\S]*导出项目 CSV/);
+  assert.match(html, /projects\/我的耳机项目\/我的耳机项目\.json/);
   assert.doesNotMatch(html, /项目文件路径/);
+  assert.doesNotMatch(html, /下载更新后的 CSV/);
   assert.match(js, /showDirectoryPicker/);
   assert.match(js, /selectedProjectPath/);
+  assert.match(js, /function exportProjectCsv/);
 });
 
 test("detail photos can load from sibling photos folder through project-photo api", () => {
@@ -95,6 +97,7 @@ test("detail photos can load from sibling photos folder through project-photo ap
 
   assert.match(js, /function projectPhotoUrl/);
   assert.match(js, /\/api\/project-photo\?root=/);
+  assert.match(js, /project=\$\{encodeURIComponent\(project\)\}/);
   assert.match(js, /photoRoot: els\.photoRootInput\.value\.trim\(\) \|\| "photos"/);
 });
 

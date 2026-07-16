@@ -55,6 +55,11 @@ class ServerProjectTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.safe_relative_root("/tmp/photos")
 
+    def test_project_photo_root_can_be_resolved_from_project_directory(self):
+        project = server.resolve_client_path("projects/研究A/研究A.json")
+        root = (project.parent / server.safe_relative_root("photos")).as_posix()
+        self.assertTrue(root.endswith("projects/研究A/photos"))
+
     def test_bare_ear_library_saves_allowed_photos(self):
         root = Path(self.tmp.name)
         source_root = root / "photos"

@@ -530,7 +530,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             query = parse_qs(parsed.query)
             root = safe_relative_root(query.get("root", ["photos"])[0])
             relative_path = safe_relative_photo_path(query.get("path", [""])[0])
-            base = (app_root() / root).resolve()
+            project_values = query.get("project", [])
+            if project_values:
+                project_path = resolve_client_path(project_values[0])
+                if not project_path.name.endswith(".json"):
+                    raise ValueError("项目路径必须是 JSON 文件。")
+                base = (project_path.parent / root).resolve()
+            else:
+                base = (app_root() / root).resolve()
             path = (base / relative_path).resolve()
             if base not in path.parents or not path.is_file():
                 self.send_error(404, "Project photo not found")

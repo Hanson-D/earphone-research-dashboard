@@ -183,16 +183,16 @@ const els = Object.fromEntries([
   "dataQualitySummary", "dataQualityList", "groupStats", "detailSearch", "detailCount", "detailBody", "detailHead",
   "detailColgroup", "fontSizeControl", "fontSizeValue", "photoSizeControl",
   "photoSizeValue", "photoZoomControl", "photoZoomValue", "photoPositionXControl", "photoPositionXValue", "photoPositionYControl", "photoPositionYValue",
-  "globalCenterValue", "exportDetailCsvButton",
+  "globalCenterValue",
   "detailPhotoModeControl", "detailPhotoModeValue",
   "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
   "mappingPage", "dashboardPage", "mappingCsvInput", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
   "bareEarToggleWrap", "includeBareEarPhotos", "bareEarConfigPanel", "bareEarSplitByEar", "bareEarGenericCountWrap",
   "bareEarGenericCount", "bareEarSideCounts", "bareEarLeftCount", "bareEarRightCount", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
-  "mappingModeNote", "applyMappingButton", "downloadMappedCsvButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
+  "mappingModeNote", "applyMappingButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
   "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
-  "projectPathInput", "projectFileNameInput", "chooseProjectFolderButton", "projectFolderStatus",
+  "projectPathInput", "projectFileNameInput", "chooseProjectFolderButton", "projectFolderStatus", "exportProjectCsvButton",
   "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
   "projectRecoveryActions", "useSampleProjectButton", "clearProjectPathButton", "projectTabs", "newProjectTabButton",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
@@ -521,7 +521,7 @@ function setProjectPath(path) {
 }
 
 function defaultProjectPath() {
-  return "projects/我的耳机项目.json";
+  return "projects/我的耳机项目/我的耳机项目.json";
 }
 
 function sanitizeProjectFileName(name = "") {
@@ -543,8 +543,13 @@ function defaultProjectFolderPath() {
   return "projects";
 }
 
+function projectNameFromFileName(name = "") {
+  return sanitizeProjectFileName(name).replace(/\.json$/i, "") || "我的耳机项目";
+}
+
 function projectPathFromFileName(name = els.projectFileNameInput?.value || "") {
-  return joinPath(defaultProjectFolderPath(), sanitizeProjectFileName(name));
+  const fileName = sanitizeProjectFileName(name);
+  return joinPath(joinPath(defaultProjectFolderPath(), projectNameFromFileName(fileName)), fileName);
 }
 
 function syncProjectFileNameFromPath(path = state.projectPath) {
@@ -876,7 +881,6 @@ function restoreProjectTabSnapshot(snapshot) {
   if (state.mappingReviews.length) {
     renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
     els.applyMappingButton.disabled = !state.mappedRows.length;
-    els.downloadMappedCsvButton.disabled = !state.mappedRows.length;
     els.downloadPhotoAuditButton.disabled = !state.mappingPhotoFields.length;
   } else {
     resetMappingOutputs();
@@ -1567,7 +1571,9 @@ function projectPhotoUrl(relativePath) {
   if (state.photoUrlByPath[relativePath]) return "";
   const root = safeRelativeRootForProjectPhoto(els.photoRootInput?.value?.trim?.() || "photos");
   if (!root) return "";
-  return `/api/project-photo?root=${encodeURIComponent(root)}&path=${encodeURIComponent(normalizePathSlashes(relativePath))}`;
+  const project = state.projectPath && !String(state.projectPath).startsWith("browser-folder:") ? normalizePathSlashes(state.projectPath) : "";
+  const projectQuery = project ? `&project=${encodeURIComponent(project)}` : "";
+  return `/api/project-photo?root=${encodeURIComponent(root)}&path=${encodeURIComponent(normalizePathSlashes(relativePath))}${projectQuery}`;
 }
 
 function rootedPhotoPath(relativePath) {
@@ -3472,7 +3478,6 @@ async function buildPhotoMapping() {
   const libraryResult = await syncBareEarLibraryAndFallbacks();
   renderMappingPreview(reviews, userField, deviceField, photoFields);
   els.applyMappingButton.disabled = false;
-  els.downloadMappedCsvButton.disabled = false;
   els.downloadPhotoAuditButton.disabled = false;
   if (libraryResult.filled) {
     els.mappingSummary.textContent = `映射完成，并从空耳库补齐 ${libraryResult.filled} 个空耳照片。`;
@@ -3866,35 +3871,23 @@ function escapeHtml(value) {
   return attrEscape(value);
 }
 
-function downloadMappedCsv() {
-  const rows = rowsWithUserNotes(state.mappedRows);
-  const headers = [...new Set(rows.flatMap(row => Object.keys(row)))];
-  const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
-  link.download = "headphone_data_with_photos.csv";
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-function downloadCurrentDetailCsv() {
-  const rows = rowsWithUserNotes(filteredRows());
+function exportProjectCsv() {
+  const sourceRows = state.mappedRows.length ? state.mappedRows : state.rows;
+  const rows = rowsWithUserNotes(sourceRows);
   if (!rows.length) {
-    alert("当前没有可导出的详情数据。");
+    alert("当前没有可导出的项目数据。");
     return;
   }
-  const headers = [...state.headers.filter(header => header !== USER_NOTE_FIELD)];
+  const headers = [...new Set([
+    ...state.headers.filter(header => header !== USER_NOTE_FIELD),
+    ...rows.flatMap(row => Object.keys(row).filter(header => header !== USER_NOTE_FIELD))
+  ])];
   if (Object.values(state.userNotes || {}).some(Boolean) && !headers.includes(USER_NOTE_FIELD)) headers.push(USER_NOTE_FIELD);
-  rows.forEach(row => {
-    Object.keys(row).forEach(header => {
-      if (!headers.includes(header)) headers.push(header);
-    });
-  });
   const csv = [headers.join(","), ...rows.map(row => headers.map(header => csvEscape(row[header])).join(","))].join("\r\n");
   const link = document.createElement("a");
-  const label = state.selectedGroup ? state.selectedGroup.replace(/[\\/:*?"<>|]+/g, "_") : "current_detail";
+  const label = projectNameFromFileName(selectedProjectFileName());
   link.href = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
-  link.download = `headphone_dashboard_${label}.csv`;
+  link.download = `${label}_data.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -3950,7 +3943,6 @@ function resetMappingOutputs() {
   state.mappingPhotoFields = [];
   state.photoMappingOverrides = {};
   els.applyMappingButton.disabled = true;
-  els.downloadMappedCsvButton.disabled = true;
   els.downloadPhotoAuditButton.disabled = true;
 }
 
@@ -4444,7 +4436,6 @@ function bindEvents() {
     }
   });
   els.applyMappingButton.addEventListener("click", applyMappedRows);
-  els.downloadMappedCsvButton.addEventListener("click", downloadMappedCsv);
   els.downloadPhotoAuditButton.addEventListener("click", downloadPhotoAuditCsv);
   els.mappingMode.addEventListener("change", () => {
     resetMappingOutputs();
@@ -4815,7 +4806,7 @@ function bindEvents() {
     render();
     markProjectDirty();
   });
-  els.exportDetailCsvButton?.addEventListener("click", downloadCurrentDetailCsv);
+  els.exportProjectCsvButton?.addEventListener("click", exportProjectCsv);
   els.globalViewSelect.addEventListener("change", () => {
     state.globalView = els.globalViewSelect.value;
     render();
