@@ -1985,14 +1985,15 @@ function clampPercent(value, fallback = 50) {
 function clampPhotoZoom(value, fallback = 100) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
-  return Math.max(100, Math.min(240, Math.round(number)));
+  return Math.max(50, Math.min(250, Math.round(number)));
 }
 
 function userPhotoPosition(user) {
   const custom = state.userPhotoPositions[user];
   return {
     x: clampPercent(custom?.x, clampPercent(state.layout.photoPositionX, 50)),
-    y: clampPercent(custom?.y, clampPercent(state.layout.photoPositionY, 50))
+    y: clampPercent(custom?.y, clampPercent(state.layout.photoPositionY, 50)),
+    zoom: clampPhotoZoom(custom?.zoom, clampPhotoZoom(state.layout.photoZoom, 100))
   };
 }
 
@@ -2001,7 +2002,8 @@ function updateUserPhotoCenter(user, x, y) {
   const current = userPhotoPosition(user);
   const next = {
     x: clampPercent(x, current.x),
-    y: clampPercent(y, current.y)
+    y: clampPercent(y, current.y),
+    zoom: current.zoom
   };
   state.userPhotoPositions[user] = next;
   document.querySelectorAll(`[data-photo-user="${CSS.escape(user)}"]`).forEach(gallery => {
@@ -2016,6 +2018,30 @@ function updateUserPhotoCenter(user, x, y) {
     });
     const hint = controls.querySelector(".photo-center-hint");
     if (hint) hint.textContent = `中心 ${next.x}%, ${next.y}%`;
+    controls.querySelector(".photo-position-reset")?.removeAttribute("disabled");
+  });
+}
+
+function updateUserPhotoZoom(user, value) {
+  if (!user) return;
+  const current = userPhotoPosition(user);
+  const next = {
+    x: current.x,
+    y: current.y,
+    zoom: clampPhotoZoom(value, current.zoom)
+  };
+  state.userPhotoPositions[user] = next;
+  document.querySelectorAll(`[data-photo-user="${CSS.escape(user)}"]`).forEach(gallery => {
+    gallery.style.setProperty("--user-photo-position-x", `${next.x}%`);
+    gallery.style.setProperty("--user-photo-position-y", `${next.y}%`);
+    gallery.style.setProperty("--user-photo-zoom", `${next.zoom / 100}`);
+  });
+  document.querySelectorAll(`.photo-position-controls[data-user="${CSS.escape(user)}"]`).forEach(controls => {
+    controls.querySelectorAll(".user-photo-zoom").forEach(input => {
+      input.value = next.zoom;
+      const output = controls.querySelector(".user-photo-zoom-value");
+      if (output) output.value = `${next.zoom}%`;
+    });
     controls.querySelector(".photo-position-reset")?.removeAttribute("disabled");
   });
 }
@@ -2063,6 +2089,7 @@ function resetUserPhotoPosition(user) {
   document.querySelectorAll(`[data-photo-user="${CSS.escape(user)}"]`).forEach(gallery => {
     gallery.style.removeProperty("--user-photo-position-x");
     gallery.style.removeProperty("--user-photo-position-y");
+    gallery.style.removeProperty("--user-photo-zoom");
   });
   const globalPosition = userPhotoPosition(user);
   document.querySelectorAll(`.photo-position-controls[data-user="${CSS.escape(user)}"]`).forEach(controls => {
@@ -2073,6 +2100,11 @@ function resetUserPhotoPosition(user) {
     });
     const hint = controls.querySelector(".photo-center-hint");
     if (hint) hint.textContent = `中心 ${globalPosition.x}%, ${globalPosition.y}%`;
+    controls.querySelectorAll(".user-photo-zoom").forEach(input => {
+      input.value = globalPosition.zoom;
+      const output = controls.querySelector(".user-photo-zoom-value");
+      if (output) output.value = `${globalPosition.zoom}%`;
+    });
     controls.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
   });
 }
@@ -2784,6 +2816,9 @@ function photoGalleryContent(column, userRows) {
   const selectedView = parsePhotoViewValue(selectedValue);
   const position = userPhotoPosition(user);
   const customPosition = Boolean(state.userPhotoPositions[user]);
+  const customStyle = customPosition ?
+    `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;--user-photo-zoom:${position.zoom / 100};` :
+    "";
   const items = userRows.filter(row => rowMatchesPhotoView(row, selectedView)).map(row => {
     const caption = [earField ? row[earField] : "", row[deviceField] || column.label].filter(Boolean).join(" · ");
     const src = photoUrl(row[selectedView.field]);
@@ -2799,13 +2834,17 @@ function photoGalleryContent(column, userRows) {
     `<option value="${attrEscape(option.value)}" ${state.userViews[user] === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`
   ).join("");
   return `<div class="photo-cell-layout">
-      <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customPosition ? `--user-photo-position-x:${position.x}%;--user-photo-position-y:${position.y}%;` : ""}">${items || "—"}</div>
+      <div class="photo-gallery" data-photo-user="${attrEscape(user)}" style="--photo-count:${Math.max(1, userRows.length)};${customStyle}">${items || "—"}</div>
       <aside class="photo-cell-controls" aria-label="${attrEscape(user)}照片显示控制">
         <select class="user-view-select" data-user="${attrEscape(user)}" aria-label="${attrEscape(user)}照片视角">
           <option value="">跟随全局</option>${options}
         </select>
         <div class="photo-position-controls" data-user="${attrEscape(user)}">
           <span class="photo-center-hint">中心 ${position.x}%, ${position.y}%</span>
+          <label>缩放
+            <input class="user-photo-zoom" data-user="${attrEscape(user)}" type="range" min="50" max="250" step="5" value="${position.zoom}">
+            <output class="user-photo-zoom-value">${position.zoom}%</output>
+          </label>
           <small>点击照片设为该用户中心；Shift 点击设为全局。</small>
           <button type="button" class="photo-position-reset" data-user="${attrEscape(user)}" ${customPosition ? "" : "disabled"}>跟随全局</button>
         </div>
@@ -3230,6 +3269,79 @@ function preferenceStateForRows(rows, project, metric, mappings, side, threshold
   return { label: equivalent, key: equivalent, device: best.device };
 }
 
+function flowColor(index) {
+  const colors = ["#8c1d23", "#b64b52", "#d07a4f", "#7c5d87", "#4d708c", "#9b6b2f", "#6f7d43", "#a54f77"];
+  return colors[index % colors.length];
+}
+
+function renderSankeyChart(flowList = []) {
+  if (!flowList.length) return '<div class="empty-state">没有可展示流向。</div>';
+  const fromLabels = [...new Set(flowList.map(item => item.from))];
+  const toLabels = [...new Set(flowList.map(item => item.to))];
+  const maxSideCount = Math.max(fromLabels.length, toLabels.length, 1);
+  const width = 940;
+  const height = Math.max(260, maxSideCount * 58 + 70);
+  const leftX = 120;
+  const rightX = width - 120;
+  const nodeWidth = 120;
+  const nodeHeight = 32;
+  const yFor = (labels, label) => {
+    const index = labels.indexOf(label);
+    const gap = labels.length <= 1 ? 0 : (height - 100) / (labels.length - 1);
+    return 50 + index * gap;
+  };
+  const maxCount = Math.max(1, ...flowList.map(item => item.users.length));
+  const links = flowList.map((item, index) => {
+    const y1 = yFor(fromLabels, item.from);
+    const y2 = yFor(toLabels, item.to);
+    const stroke = Math.max(8, item.users.length / maxCount * 34);
+    const color = flowColor(index);
+    return `<path class="sankey-link" d="M ${leftX + nodeWidth / 2} ${y1} C ${leftX + 280} ${y1}, ${rightX - 280} ${y2}, ${rightX - nodeWidth / 2} ${y2}" stroke="${color}" stroke-width="${stroke}" data-flow-index="${index}">
+      <title>${escapeHtml(item.from)} → ${escapeHtml(item.to)}：${item.users.length} 人</title>
+    </path>`;
+  }).join("");
+  const nodes = [
+    ...fromLabels.map((label, index) => ({ label, x: leftX, y: yFor(fromLabels, label), side: "项目 1", color: flowColor(index) })),
+    ...toLabels.map((label, index) => ({ label, x: rightX, y: yFor(toLabels, label), side: "项目 2", color: flowColor(index + fromLabels.length) }))
+  ].map(node => `
+    <g class="sankey-node" transform="translate(${node.x - nodeWidth / 2}, ${node.y - nodeHeight / 2})">
+      <rect width="${nodeWidth}" height="${nodeHeight}" rx="3" fill="#fffaf6" stroke="${node.color}" stroke-width="1.5"></rect>
+      <text x="${nodeWidth / 2}" y="13" text-anchor="middle">${escapeHtml(node.side)}</text>
+      <text x="${nodeWidth / 2}" y="26" text-anchor="middle">${escapeHtml(node.label)}</text>
+    </g>
+  `).join("");
+  return `<div class="sankey-shell">
+    <svg class="sankey-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="设备偏好流向桑基图">
+      <defs><filter id="sankeyShadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#6b1c22" flood-opacity=".16"/></filter></defs>
+      <g filter="url(#sankeyShadow)">${links}</g>
+      ${nodes}
+    </svg>
+  </div>`;
+}
+
+function renderFlowDetailCards(flowList, projectA, projectB, match) {
+  if (!flowList.length) return '<div class="empty-state">没有可展示流向。</div>';
+  return flowList.map((item, index) => {
+    const color = flowColor(index);
+    const rowsA = item.users.flatMap(user => match.byA.get(user) || []);
+    const rowsB = item.users.flatMap(user => match.byB.get(user) || []);
+    return `<section class="flow-detail-card" style="--flow-accent:${color}">
+      <div class="flow-detail-heading">
+        <div>
+          <span>FLOW ${index + 1}</span>
+          <h3>${escapeHtml(item.from)} → ${escapeHtml(item.to)}</h3>
+        </div>
+        <strong>${item.users.length} 人</strong>
+      </div>
+      <p class="flow-user-list">${escapeHtml(item.users.join("，"))}</p>
+      <div class="multi-user-columns flow-detail-columns">
+        <article><strong>${escapeHtml(projectA.title)}</strong>${renderProjectDetailTable(projectA, rowsA)}</article>
+        <article><strong>${escapeHtml(projectB.title)}</strong>${renderProjectDetailTable(projectB, rowsB)}</article>
+      </div>
+    </section>`;
+  }).join("");
+}
+
 function renderMultiFlowPage() {
   const compare = renderMultiComparePage();
   const projectA = compare?.projectA;
@@ -3247,7 +3359,6 @@ function renderMultiFlowPage() {
   renderFlowMappingRows(projectA, projectB);
   const threshold = Math.max(0, Number(state.multiFlowThreshold) || 0);
   const flows = new Map();
-  const userRows = [];
   compare.match.matched.forEach(user => {
     const rowsA = compare.match.byA.get(user) || [];
     const rowsB = compare.match.byB.get(user) || [];
@@ -3256,27 +3367,17 @@ function renderMultiFlowPage() {
     const key = `${from.label}→${to.label}`;
     if (!flows.has(key)) flows.set(key, { from: from.label, to: to.label, users: [] });
     flows.get(key).users.push(user);
-    userRows.push({ user, from: from.label, to: to.label });
   });
   const flowList = [...flows.values()].sort((a, b) => b.users.length - a.users.length || a.from.localeCompare(b.from, "zh-CN"));
   els.multiFlowSummary.textContent = `${projectA.title} → ${projectB.title}：${compare.match.matched.length} 位匹配用户，${flowList.length} 条流向。`;
-  const maxCount = Math.max(1, ...flowList.map(item => item.users.length));
-  els.multiFlowChart.innerHTML = flowList.length ? flowList.map(item => `
-    <div class="flow-bar-row">
-      <span>${escapeHtml(item.from)}</span>
-      <i style="--flow-width:${Math.max(8, item.users.length / maxCount * 100)}%"></i>
-      <strong>${escapeHtml(item.to)}</strong>
-      <b>${item.users.length}</b>
-    </div>
-  `).join("") : '<div class="empty-state">没有可展示流向。</div>';
-  els.multiFlowTable.innerHTML = flowList.length ? `<table class="summary-table">
+  els.multiFlowChart.innerHTML = renderSankeyChart(flowList);
+  els.multiFlowTable.innerHTML = flowList.length ? `<div class="flow-summary-strip"><table class="summary-table">
     <thead><tr><th>项目 1 偏好</th><th>项目 2 偏好</th><th>人数</th><th>用户</th></tr></thead>
-    <tbody>${flowList.map(item => `<tr><td>${escapeHtml(item.from)}</td><td>${escapeHtml(item.to)}</td><td>${item.users.length}</td><td>${escapeHtml(item.users.join("，"))}</td></tr>`).join("")}</tbody>
-  </table>
-  <h3 class="flow-user-heading">用户明细</h3>
-  <table class="summary-table"><thead><tr><th>用户</th><th>项目 1</th><th>项目 2</th></tr></thead>
-    <tbody>${userRows.map(row => `<tr><td>${escapeHtml(row.user)}</td><td>${escapeHtml(row.from)}</td><td>${escapeHtml(row.to)}</td></tr>`).join("")}</tbody>
-  </table>` : '<div class="empty-state">没有可展示流向。</div>';
+    <tbody>${flowList.map((item, index) => `<tr style="--flow-accent:${flowColor(index)}"><td><span class="flow-dot"></span>${escapeHtml(item.from)}</td><td>${escapeHtml(item.to)}</td><td>${item.users.length}</td><td>${escapeHtml(item.users.join("，"))}</td></tr>`).join("")}</tbody>
+  </table></div>
+  <h3 class="flow-user-heading">按流向分块的用户明细</h3>
+  <div class="flow-detail-list">${renderFlowDetailCards(flowList, projectA, projectB, compare.match)}</div>` : '<div class="empty-state">没有可展示流向。</div>';
+  observeDetailPhotos();
 }
 
 function renderMultiProjectPages() {
@@ -4888,6 +4989,10 @@ function bindEvents() {
       setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target });
       return;
     }
+    if (event.target.classList.contains("user-photo-zoom")) {
+      updateUserPhotoZoom(event.target.dataset.user || "", event.target.value);
+      return;
+    }
     if (!event.target.classList.contains("user-photo-position")) return;
     updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
   });
@@ -4914,6 +5019,11 @@ function bindEvents() {
     }
     if (event.target.classList.contains("user-photo-position")) {
       updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+      markProjectDirty();
+      return;
+    }
+    if (event.target.classList.contains("user-photo-zoom")) {
+      updateUserPhotoZoom(event.target.dataset.user || "", event.target.value);
       markProjectDirty();
       return;
     }
@@ -5051,6 +5161,10 @@ function bindEvents() {
       setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target });
       return;
     }
+    if (event.target.classList.contains("user-photo-zoom")) {
+      updateUserPhotoZoom(event.target.dataset.user || "", event.target.value);
+      return;
+    }
     if (!event.target.classList.contains("user-photo-position")) return;
     updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
   });
@@ -5059,8 +5173,13 @@ function bindEvents() {
       setUserNote(event.target.dataset.user || "", event.target.value, { source: event.target, dirty: true });
       return;
     }
-    if (!event.target.classList.contains("user-photo-position")) return;
-    updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+    if (event.target.classList.contains("user-photo-position")) {
+      updateUserPhotoPosition(event.target.dataset.user || "", event.target.dataset.axis || "", event.target.value);
+      markProjectDirty();
+      return;
+    }
+    if (!event.target.classList.contains("user-photo-zoom")) return;
+    updateUserPhotoZoom(event.target.dataset.user || "", event.target.value);
     markProjectDirty();
   });
   els.detailBody.addEventListener("click", event => {

@@ -893,6 +893,11 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .flow-device-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .flow-device-row select { min-width: 0; }
 .multi-flow-chart { display: grid; gap: 10px; padding: 16px 18px 18px; }
+.sankey-shell { overflow-x: auto; padding: 8px; background: linear-gradient(180deg, #fffaf6, #fff); border: 1px solid var(--line); }
+.sankey-chart { display: block; width: 100%; min-width: 760px; height: auto; }
+.sankey-link { fill: none; stroke-linecap: round; opacity: .34; transition: opacity .16s ease, stroke-width .16s ease; }
+.sankey-link:hover { opacity: .62; }
+.sankey-node text { fill: var(--accent-dark); font-size: 10px; font-weight: 800; pointer-events: none; }
 .flow-bar-row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) minmax(140px, 2fr) minmax(120px, 1fr) 42px;
@@ -910,7 +915,18 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 }
 .flow-bar-row b { color: var(--accent-dark); font-family: Georgia, serif; font-size: 18px; }
 .multi-flow-table { padding: 16px 18px 18px; }
+.flow-summary-strip { overflow-x: auto; margin-bottom: 14px; }
+.flow-summary-strip tr { border-left: 4px solid var(--flow-accent, var(--accent)); }
+.flow-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; background: var(--flow-accent, var(--accent)); border-radius: 999px; vertical-align: middle; }
 .flow-user-heading { margin: 18px 0 8px; color: var(--accent-dark); font-size: 14px; }
+.flow-detail-list { display: grid; gap: 16px; }
+.flow-detail-card { padding: 12px; background: #fff; border: 1px solid var(--line); border-left: 5px solid var(--flow-accent, var(--accent)); box-shadow: 0 8px 24px rgba(67,30,32,.07); }
+.flow-detail-heading { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 8px; }
+.flow-detail-heading span { color: var(--flow-accent, var(--accent)); font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+.flow-detail-heading h3 { margin: 2px 0 0; color: var(--accent-dark); font-size: 15px; }
+.flow-detail-heading strong { min-width: 58px; color: var(--flow-accent, var(--accent)); font-family: Georgia, serif; font-size: 22px; text-align: right; }
+.flow-user-list { margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+.flow-detail-columns { align-items: start; }
 .preference-config-panel {
   position: absolute;
   z-index: 10;
@@ -956,7 +972,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
   outline: 1px solid #dbc8c8;
   box-shadow: 0 3px 10px rgba(67,30,32,.14);
   cursor: crosshair;
-  transform: scale(var(--photo-zoom, 1));
+  transform: scale(var(--user-photo-zoom, var(--photo-zoom, 1)));
   transform-origin: var(--user-photo-position-x, var(--photo-position-x, 50%)) var(--user-photo-position-y, var(--photo-position-y, 50%));
 }
 .photo-cell-layout { display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 6px; align-items: start; }

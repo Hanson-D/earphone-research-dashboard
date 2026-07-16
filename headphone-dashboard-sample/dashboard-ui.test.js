@@ -53,6 +53,7 @@ test("detail layout panel separates display settings from column configuration",
 
 test("multi-project analysis exposes detail comparison and flow pages", () => {
   const html = read("index.html");
+  const js = read("app.js");
   const css = read("styles.css");
 
   assert.match(html, /id="singleModeTab"[\s\S]*单项目分析/);
@@ -62,6 +63,10 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(html, /id="multiFlowDeviceMappings"/);
   assert.match(html, /class="panel multi-config-card"/);
   assert.match(css, /\.multi-user-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(js, /function renderSankeyChart/);
+  assert.match(js, /function renderFlowDetailCards/);
+  assert.match(css, /\.sankey-chart/);
+  assert.match(css, /\.flow-detail-card/);
 });
 
 test("detail dashboard exposes csv export and click-to-center photo controls", () => {
@@ -70,10 +75,13 @@ test("detail dashboard exposes csv export and click-to-center photo controls", (
   const css = read("styles.css");
 
   assert.match(html, /id="photoZoomControl"[\s\S]*全局照片缩放/);
+  assert.match(html, /id="photoZoomControl"[^>]*min="50"[^>]*max="250"/);
   assert.match(js, /data-photo-center-user/);
+  assert.match(js, /class="user-photo-zoom"/);
+  assert.match(js, /function updateUserPhotoZoom/);
   assert.match(js, /!event\.ctrlKey && !event\.metaKey/);
   assert.match(js, /addEventListener\("dblclick"/);
-  assert.match(css, /--photo-zoom/);
+  assert.match(css, /--user-photo-zoom, var\(--photo-zoom/);
 });
 
 test("project config uses folder selection instead of manual path entry", () => {
