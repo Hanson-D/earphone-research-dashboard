@@ -34,9 +34,11 @@ def project_scan_roots():
     roots = [project_root()]
     if os.environ.get("DASHBOARD_PROJECTS_ROOT"):
         return roots
-    sibling = (app_root().parent / "projects").resolve()
-    if sibling != roots[0]:
-        roots.append(sibling)
+    base = app_root().resolve()
+    for parent in [base, *base.parents][:6]:
+        candidate = (parent / "projects").resolve()
+        if candidate not in roots:
+            roots.append(candidate)
     return roots
 
 

@@ -151,6 +151,7 @@ class ServerProjectTests(unittest.TestCase):
 
         self.assertIn((server.app_root() / "projects").resolve(), roots)
         self.assertIn((server.app_root().parent / "projects").resolve(), roots)
+        self.assertIn((server.app_root().parent.parent / "projects").resolve(), roots)
 
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:

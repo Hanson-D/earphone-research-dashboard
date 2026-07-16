@@ -79,6 +79,8 @@ test("detail dashboard exposes csv export and click-to-center photo controls", (
   assert.match(js, /data-photo-center-user/);
   assert.match(js, /class="user-photo-zoom"/);
   assert.match(js, /function updateUserPhotoZoom/);
+  assert.match(js, /zoomRatio/);
+  assert.match(js, /clickX - current\.x/);
   assert.match(js, /!event\.ctrlKey && !event\.metaKey/);
   assert.match(js, /addEventListener\("dblclick"/);
   assert.match(css, /--user-photo-zoom, var\(--photo-zoom/);
@@ -104,6 +106,8 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.doesNotMatch(js, /headphone-dashboard-project-folder/);
   assert.match(js, /function loadProjectsFromSelectedFolder/);
   assert.match(js, /listProjectJsonFiles/);
+  assert.match(js, /function autoLoadStoredProjectFolder/);
+  assert.match(js, /indexedDB\.open\(PROJECT_FOLDER_DB/);
   assert.match(js, /selectedProjectPath/);
   assert.match(js, /activeProjectName/);
   assert.match(js, /function exportProjectCsv/);

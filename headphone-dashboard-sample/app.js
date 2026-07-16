@@ -177,6 +177,9 @@ let mappingDragImage = null;
 let columnDragScrollFrame = 0;
 const columnDragScroll = { list: 0, page: 0 };
 let photoLightboxReturnFocus = null;
+const PROJECT_FOLDER_DB = "hp-project-folder";
+const PROJECT_FOLDER_STORE = "handles";
+const PROJECT_FOLDER_KEY = "last-project-root";
 
 const els = Object.fromEntries([
   "resetButton", "singleModeTab", "multiModeTab", "singlePageNav", "multiPageNav",
@@ -600,6 +603,61 @@ function updateProjectFolderStatus(message = "") {
     "默认保存到看板根目录下的 projects 文件夹。项目会保存 CSV、照片、映射、布局、备注和用户排序。";
 }
 
+function openProjectFolderDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("当前浏览器不支持记住项目根目录。"));
+      return;
+    }
+    const request = indexedDB.open(PROJECT_FOLDER_DB, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(PROJECT_FOLDER_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("项目根目录缓存打开失败。"));
+  });
+}
+
+async function saveStoredProjectFolderHandle(handle) {
+  try {
+    const db = await openProjectFolderDb();
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(PROJECT_FOLDER_STORE, "readwrite");
+      transaction.objectStore(PROJECT_FOLDER_STORE).put(handle, PROJECT_FOLDER_KEY);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error("项目根目录缓存保存失败。"));
+    });
+    db.close();
+  } catch {
+    // 保存目录句柄只是启动体验优化；失败不影响本次加载。
+  }
+}
+
+async function loadStoredProjectFolderHandle() {
+  try {
+    const db = await openProjectFolderDb();
+    const handle = await new Promise((resolve, reject) => {
+      const transaction = db.transaction(PROJECT_FOLDER_STORE, "readonly");
+      const request = transaction.objectStore(PROJECT_FOLDER_STORE).get(PROJECT_FOLDER_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("项目根目录缓存读取失败。"));
+    });
+    db.close();
+    return handle;
+  } catch {
+    return null;
+  }
+}
+
+async function hasDirectoryPermission(handle, mode = "read") {
+  if (!handle?.queryPermission) return false;
+  try {
+    return await handle.queryPermission({ mode }) === "granted";
+  } catch {
+    return false;
+  }
+}
+
 async function chooseProjectFolder() {
   if (!window.showDirectoryPicker) {
     updateProjectFolderStatus("当前浏览器不支持直接授权项目文件夹；将默认保存到看板根目录下的 projects 文件夹。");
@@ -612,9 +670,24 @@ async function chooseProjectFolder() {
   });
   state.projectFolderHandle = handle;
   state.projectFolderLabel = handle.name || "本地文件夹";
+  await saveStoredProjectFolderHandle(handle);
   updateProjectFolderStatus();
   setProjectPath(`browser-folder:${state.projectFolderLabel}/${activeProjectName()}/${selectedProjectFileName()}`);
   await loadProjectsFromSelectedFolder();
+}
+
+async function autoLoadStoredProjectFolder() {
+  if (!window.showDirectoryPicker) return false;
+  const handle = await loadStoredProjectFolderHandle();
+  if (!handle) return false;
+  if (!await hasDirectoryPermission(handle, "read")) {
+    setProjectStatus("已记住项目根目录，但浏览器尚未授权读取；请点“选择项目根目录”重新授权一次。", false);
+    return false;
+  }
+  state.projectFolderHandle = handle;
+  state.projectFolderLabel = handle.name || "已授权项目根目录";
+  updateProjectFolderStatus(`已自动使用上次授权的项目根目录：${state.projectFolderLabel}`);
+  return loadProjectsFromSelectedFolder();
 }
 
 async function browserDirectoryEntries(directoryHandle) {
@@ -2170,9 +2243,14 @@ function photoCenterFromPointer(event, image) {
   const frame = image.closest(".photo-image-frame") || image;
   const rect = frame.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
+  const user = image.dataset.photoCenterUser || "";
+  const current = userPhotoPosition(user);
+  const zoomRatio = Math.max(0.01, current.zoom / 100);
+  const clickX = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
+  const clickY = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
   return {
-    x: clampPercent(((event.clientX - rect.left) / rect.width) * 100),
-    y: clampPercent(((event.clientY - rect.top) / rect.height) * 100)
+    x: clampPercent(current.x + (clickX - current.x) / zoomRatio),
+    y: clampPercent(current.y + (clickY - current.y) / zoomRatio)
   };
 }
 
@@ -5413,7 +5491,8 @@ async function start() {
   } else if (window.location.protocol === "file:") {
     setProjectStatus("当前是 file:// 打开；保存项目和扫描照片需要通过启动器打开看板。");
   } else {
-    await autoLoadProjectsFolder();
+    const loaded = await autoLoadProjectsFolder();
+    if (!loaded) await autoLoadStoredProjectFolder();
   }
 }
 
