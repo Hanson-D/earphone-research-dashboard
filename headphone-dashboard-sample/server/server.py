@@ -23,7 +23,11 @@ def app_root():
 
 
 def project_root():
-    return Path(os.environ.get("DASHBOARD_PROJECTS_ROOT", "projects")).expanduser().resolve()
+    configured = os.environ.get("DASHBOARD_PROJECTS_ROOT", "projects")
+    path = Path(configured).expanduser()
+    if not path.is_absolute():
+        path = app_root() / path
+    return path.resolve()
 
 
 def display_path(path):

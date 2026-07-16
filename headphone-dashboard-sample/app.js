@@ -606,7 +606,7 @@ async function chooseProjectFolder() {
     return;
   }
   const handle = await window.showDirectoryPicker({
-    id: "headphone-dashboard-project-folder",
+    id: "hp-projects",
     mode: "readwrite",
     startIn: "documents"
   });
@@ -1371,7 +1371,10 @@ async function autoLoadProjectsFolder() {
     if (!response.ok) return false;
     const result = await response.json();
     const projects = Array.isArray(result.projects) ? result.projects : [];
-    if (!projects.length) return false;
+    if (!projects.length) {
+      setProjectStatus("未在 projects 文件夹发现项目 JSON；保存项目后会自动创建 projects/项目名/项目名.json。", false);
+      return false;
+    }
     let loaded = 0;
     const errors = [];
     for (const project of projects) {

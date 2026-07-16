@@ -100,6 +100,8 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.doesNotMatch(html, /项目文件路径/);
   assert.doesNotMatch(html, /下载更新后的 CSV/);
   assert.match(js, /showDirectoryPicker/);
+  assert.match(js, /id:\s*"hp-projects"/);
+  assert.doesNotMatch(js, /headphone-dashboard-project-folder/);
   assert.match(js, /selectedProjectPath/);
   assert.match(js, /activeProjectName/);
   assert.match(js, /function exportProjectCsv/);

@@ -137,6 +137,13 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(projects, [])
         self.assertTrue(root.is_dir())
 
+    def test_relative_projects_root_is_under_app_root(self):
+        os.environ["DASHBOARD_PROJECTS_ROOT"] = "projects"
+
+        root = server.project_root()
+
+        self.assertEqual(root, (server.app_root() / "projects").resolve())
+
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
             previous_root = os.environ.get("DASHBOARD_PROJECTS_ROOT")
