@@ -725,16 +725,20 @@
               <p id="multiFlowSummary" class="hint">请选择两个项目并配置设备映射。</p>
             </div>
           </div>
-          <div id="multiFlowChart" class="multi-flow-chart"></div>
+          <div class="multi-flow-overview">
+            <div id="multiFlowChart" class="multi-flow-chart"></div>
+            <div id="multiFlowTable" class="multi-flow-table"></div>
+          </div>
         </article>
         <article class="panel">
           <div class="panel-heading">
             <div>
-              <p class="panel-kicker">FLOW TABLE</p>
-              <h2>流向明细</h2>
+              <p class="panel-kicker">FLOW DRILL-DOWN</p>
+              <h2>用户明细</h2>
             </div>
+            <button id="multiFlowClearSelection" class="compact-button" type="button" hidden>取消筛选</button>
           </div>
-          <div id="multiFlowTable" class="multi-flow-table"></div>
+          <div id="multiFlowDetails" class="multi-flow-details"></div>
         </article>
       </section>
     </section>

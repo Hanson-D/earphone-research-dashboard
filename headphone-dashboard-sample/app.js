@@ -164,7 +164,8 @@ const state = {
   multiFlowMetricA: "",
   multiFlowMetricB: "",
   multiFlowThreshold: 1,
-  multiFlowMappings: []
+  multiFlowMappings: [],
+  multiFlowSelectedKey: ""
 };
 
 let draggedColumnId = "";
@@ -210,7 +211,7 @@ const els = Object.fromEntries([
   "multiComparePage", "multiCompareProjectA", "multiCompareProjectB", "multiCompareUserField", "multiCompareRefresh",
   "multiCompareSummary", "multiMatchedDetails", "multiOnlyA", "multiOnlyB",
   "multiFlowPage", "multiFlowProjectA", "multiFlowProjectB", "multiFlowMetricA", "multiFlowMetricB",
-  "multiFlowThreshold", "multiFlowDeviceMappings", "multiFlowAddMapping", "multiFlowRefresh", "multiFlowSummary", "multiFlowChart", "multiFlowTable",
+  "multiFlowThreshold", "multiFlowDeviceMappings", "multiFlowAddMapping", "multiFlowRefresh", "multiFlowSummary", "multiFlowChart", "multiFlowTable", "multiFlowDetails", "multiFlowClearSelection",
   "photoLightbox", "photoLightboxImage", "photoLightboxCaption", "photoLightboxClose"
 ].map(id => [id, document.getElementById(id)]));
 
@@ -404,7 +405,8 @@ function dashboardConfigSnapshot() {
     multiFlowMetricA: state.multiFlowMetricA,
     multiFlowMetricB: state.multiFlowMetricB,
     multiFlowThreshold: state.multiFlowThreshold,
-    multiFlowMappings: state.multiFlowMappings
+    multiFlowMappings: state.multiFlowMappings,
+    multiFlowSelectedKey: state.multiFlowSelectedKey
   };
 }
 
@@ -925,6 +927,7 @@ function currentProjectTabSnapshot() {
     multiFlowMetricB: state.multiFlowMetricB,
     multiFlowThreshold: state.multiFlowThreshold,
     multiFlowMappings: cloneStateData(state.multiFlowMappings),
+    multiFlowSelectedKey: state.multiFlowSelectedKey,
     userPhotoPositions: cloneStateData(state.userPhotoPositions),
     userFilter: cloneStateData(state.userFilter),
     deviceOrderMode: state.deviceOrderMode,
@@ -1041,6 +1044,7 @@ function restoreProjectTabSnapshot(snapshot) {
   state.multiFlowMetricB = snapshot.multiFlowMetricB || "";
   state.multiFlowThreshold = Number.isFinite(Number(snapshot.multiFlowThreshold)) ? Number(snapshot.multiFlowThreshold) : 1;
   state.multiFlowMappings = cloneStateData(snapshot.multiFlowMappings || []);
+  state.multiFlowSelectedKey = snapshot.multiFlowSelectedKey || "";
   state.userPhotoPositions = cloneStateData(snapshot.userPhotoPositions || {});
   state.userFilter = cloneStateData(snapshot.userFilter || null);
   state.deviceOrderMode = snapshot.deviceOrderMode || "source";
@@ -1665,6 +1669,7 @@ function applyDashboardConfig(config) {
   state.multiFlowMetricB = clean.multiFlowMetricB || state.multiFlowMetricB;
   if (Number.isFinite(Number(clean.multiFlowThreshold))) state.multiFlowThreshold = Number(clean.multiFlowThreshold);
   state.multiFlowMappings = Array.isArray(clean.multiFlowMappings) ? clean.multiFlowMappings : state.multiFlowMappings;
+  state.multiFlowSelectedKey = clean.multiFlowSelectedKey || state.multiFlowSelectedKey;
   state.userPhotoPositions = clean.userPhotoPositions || {};
   state.userFilter = Array.isArray(clean.userFilter) ? clean.userFilter : null;
   state.deviceOrderMode = clean.deviceOrderMode || "source";
@@ -3463,7 +3468,7 @@ function flowColor(index) {
   return colors[index % colors.length];
 }
 
-function renderSankeyChart(flowList = []) {
+function renderSankeyChart(flowList = [], selectedKey = "") {
   if (!flowList.length) return '<div class="empty-state">没有可展示流向。</div>';
   const fromLabels = [...new Set(flowList.map(item => item.from))];
   const toLabels = [...new Set(flowList.map(item => item.to))];
@@ -3489,6 +3494,7 @@ function renderSankeyChart(flowList = []) {
   const linkMetrics = flowList.map((item, index) => ({
     item,
     index,
+    key: item.key,
     value: item.users.length,
     stroke: Math.max(6, item.users.length / maxTotal * (maxNodeHeight - 8)),
     color: flowColor(index)
@@ -3511,8 +3517,8 @@ function renderSankeyChart(flowList = []) {
     fromOffsets.set(item.from, fromOffset + fromBand);
     toOffsets.set(item.to, toOffset + toBand);
   });
-  const links = linkMetrics.map(({ item, index, y1, y2, stroke, color }) => {
-    return `<path class="sankey-link" d="M ${leftX + nodeWidth / 2} ${y1.toFixed(1)} C ${leftX + 280} ${y1.toFixed(1)}, ${rightX - 280} ${y2.toFixed(1)}, ${rightX - nodeWidth / 2} ${y2.toFixed(1)}" stroke="${color}" stroke-width="${stroke.toFixed(1)}" data-flow-index="${index}">
+  const links = linkMetrics.map(({ item, index, key, y1, y2, stroke, color }) => {
+    return `<path class="sankey-link ${selectedKey === key ? "active" : ""} ${selectedKey && selectedKey !== key ? "muted" : ""}" d="M ${leftX + nodeWidth / 2} ${y1.toFixed(1)} C ${leftX + 280} ${y1.toFixed(1)}, ${rightX - 280} ${y2.toFixed(1)}, ${rightX - nodeWidth / 2} ${y2.toFixed(1)}" stroke="${color}" stroke-width="${stroke.toFixed(1)}" data-flow-index="${index}" data-flow-key="${attrEscape(key)}" tabindex="0" role="button">
       <title>${escapeHtml(item.from)} → ${escapeHtml(item.to)}：${item.users.length} 人</title>
     </path>`;
   }).join("");
@@ -3568,6 +3574,8 @@ function renderMultiFlowPage() {
     els.multiFlowSummary.textContent = "请先选择两个可对比项目。";
     els.multiFlowChart.innerHTML = "";
     els.multiFlowTable.innerHTML = "";
+    if (els.multiFlowDetails) els.multiFlowDetails.innerHTML = "";
+    if (els.multiFlowClearSelection) els.multiFlowClearSelection.hidden = true;
     return;
   }
   state.multiFlowMetricA = fillMetricSelect(els.multiFlowMetricA, projectA, state.multiFlowMetricA);
@@ -3582,18 +3590,24 @@ function renderMultiFlowPage() {
     const from = preferenceStateForRows(rowsA, projectA, state.multiFlowMetricA, state.multiFlowMappings, "a", threshold);
     const to = preferenceStateForRows(rowsB, projectB, state.multiFlowMetricB, state.multiFlowMappings, "b", threshold);
     const key = `${from.label}→${to.label}`;
-    if (!flows.has(key)) flows.set(key, { from: from.label, to: to.label, users: [] });
+    if (!flows.has(key)) flows.set(key, { key, from: from.label, to: to.label, users: [] });
     flows.get(key).users.push(user);
   });
   const flowList = [...flows.values()].sort((a, b) => b.users.length - a.users.length || a.from.localeCompare(b.from, "zh-CN"));
-  els.multiFlowSummary.textContent = `${projectA.title} → ${projectB.title}：${compare.match.matched.length} 位匹配用户，${flowList.length} 条流向。`;
-  els.multiFlowChart.innerHTML = renderSankeyChart(flowList);
-  els.multiFlowTable.innerHTML = flowList.length ? `<div class="flow-summary-strip"><table class="summary-table">
+  if (state.multiFlowSelectedKey && !flowList.some(item => item.key === state.multiFlowSelectedKey)) state.multiFlowSelectedKey = "";
+  const selectedFlow = flowList.find(item => item.key === state.multiFlowSelectedKey) || null;
+  const detailFlows = selectedFlow ? [selectedFlow] : flowList;
+  els.multiFlowSummary.textContent = selectedFlow ?
+    `${projectA.title} → ${projectB.title}：当前筛选 ${selectedFlow.from} → ${selectedFlow.to}，${selectedFlow.users.length} 人。` :
+    `${projectA.title} → ${projectB.title}：${compare.match.matched.length} 位匹配用户，${flowList.length} 条流向。`;
+  if (els.multiFlowClearSelection) els.multiFlowClearSelection.hidden = !selectedFlow;
+  els.multiFlowChart.innerHTML = renderSankeyChart(flowList, state.multiFlowSelectedKey);
+  els.multiFlowTable.innerHTML = flowList.length ? `<div class="flow-summary-strip"><table class="summary-table flow-summary-table">
     <thead><tr><th>项目 1 偏好</th><th>项目 2 偏好</th><th>人数</th><th>用户</th></tr></thead>
-    <tbody>${flowList.map((item, index) => `<tr style="--flow-accent:${flowColor(index)}"><td><span class="flow-dot"></span>${escapeHtml(item.from)}</td><td>${escapeHtml(item.to)}</td><td>${item.users.length}</td><td>${escapeHtml(item.users.join("，"))}</td></tr>`).join("")}</tbody>
-  </table></div>
-  <h3 class="flow-user-heading">按流向分块的用户明细</h3>
-  <div class="flow-detail-list">${renderFlowDetailCards(flowList, projectA, projectB, compare.match)}</div>` : '<div class="empty-state">没有可展示流向。</div>';
+    <tbody>${flowList.map((item, index) => `<tr class="flow-summary-row ${state.multiFlowSelectedKey === item.key ? "active" : ""} ${state.multiFlowSelectedKey && state.multiFlowSelectedKey !== item.key ? "muted" : ""}" style="--flow-accent:${flowColor(index)}" data-flow-key="${attrEscape(item.key)}" tabindex="0"><td><span class="flow-dot"></span>${escapeHtml(item.from)}</td><td>${escapeHtml(item.to)}</td><td>${item.users.length}</td><td>${escapeHtml(item.users.join("，"))}</td></tr>`).join("")}</tbody>
+  </table></div>` : '<div class="empty-state">没有可展示流向。</div>';
+  els.multiFlowDetails.innerHTML = detailFlows.length ? `<h3 class="flow-user-heading">${selectedFlow ? "当前流向用户明细" : "按流向分块的用户明细"}</h3>
+  <div class="flow-detail-list">${renderFlowDetailCards(detailFlows, projectA, projectB, compare.match)}</div>` : '<div class="empty-state">没有可展示流向。</div>';
   observeDetailPhotos();
 }
 
@@ -4758,6 +4772,39 @@ function bindEvents() {
     markProjectDirty();
   });
   els.multiFlowRefresh?.addEventListener("click", renderMultiFlowPage);
+  const selectMultiFlow = key => {
+    if (!key) return;
+    state.multiFlowSelectedKey = key;
+    renderMultiFlowPage();
+    markProjectDirty();
+  };
+  els.multiFlowChart?.addEventListener("click", event => {
+    const target = event.target.closest("[data-flow-key]");
+    if (target) selectMultiFlow(target.dataset.flowKey || "");
+  });
+  els.multiFlowChart?.addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target.closest("[data-flow-key]");
+    if (!target) return;
+    event.preventDefault();
+    selectMultiFlow(target.dataset.flowKey || "");
+  });
+  els.multiFlowTable?.addEventListener("click", event => {
+    const row = event.target.closest("[data-flow-key]");
+    if (row) selectMultiFlow(row.dataset.flowKey || "");
+  });
+  els.multiFlowTable?.addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const row = event.target.closest("[data-flow-key]");
+    if (!row) return;
+    event.preventDefault();
+    selectMultiFlow(row.dataset.flowKey || "");
+  });
+  els.multiFlowClearSelection?.addEventListener("click", () => {
+    state.multiFlowSelectedKey = "";
+    renderMultiFlowPage();
+    markProjectDirty();
+  });
   els.projectTabs.addEventListener("click", event => {
     const close = event.target.closest("[data-close-tab]");
     if (close) {
