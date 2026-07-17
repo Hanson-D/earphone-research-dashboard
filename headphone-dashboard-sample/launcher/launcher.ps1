@@ -98,6 +98,7 @@ $script:LogPath = Join-Path $logsRoot "launcher.log"
 Write-LauncherLog "Launcher started."
 
 $releaseRoot = Expand-ConfigPath $config.releaseRoot
+$projectsRoot = Expand-ConfigPath $config.projectsRoot
 $preferredPort = 7362
 if ($config.preferredPort) {
   $preferredPort = [int]$config.preferredPort
@@ -149,6 +150,19 @@ if (!(Test-Path -LiteralPath (Join-Path $appPath "server\server.py"))) {
   throw "server/server.py was not found in selected version: $appPath"
 }
 
+if (-not $projectsRoot) {
+  $releaseProjects = Join-Path $releaseRoot "projects"
+  if (Test-Path -LiteralPath $releaseProjects) {
+    $projectsRoot = $releaseProjects
+  }
+}
+if (-not $projectsRoot) {
+  $sourceProjects = Join-Path $selectedVersionPath "projects"
+  if (Test-Path -LiteralPath $sourceProjects) {
+    $projectsRoot = $sourceProjects
+  }
+}
+
 $port = Get-FreePort -PreferredPort $preferredPort -Limit $portSearchLimit
 $url = "http://127.0.0.1:$port"
 Write-LauncherLog "Starting local dashboard service on port $port."
@@ -166,6 +180,13 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
 
 $env:PORT = [string]$port
 $env:HOST = "0.0.0.0"
+if ($projectsRoot -and (Test-Path -LiteralPath $projectsRoot)) {
+  $env:DASHBOARD_PROJECTS_ROOT = $projectsRoot
+  Write-LauncherLog "Using projects root: $projectsRoot"
+} else {
+  Remove-Item Env:DASHBOARD_PROJECTS_ROOT -ErrorAction SilentlyContinue
+  Write-LauncherLog "No shared projects root configured; service will scan local fallback roots."
+}
 $process = Start-Process -FilePath $pythonCommand `
   -ArgumentList $pythonArgs `
   -WorkingDirectory $appPath `

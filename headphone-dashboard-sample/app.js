@@ -1549,7 +1549,8 @@ async function autoLoadProjectsFolder() {
     const result = await response.json();
     const projects = Array.isArray(result.projects) ? result.projects : [];
     if (!projects.length) {
-      setProjectStatus("未在 projects 文件夹发现项目 JSON；保存项目后会自动创建 projects/项目名/项目名.json。", false);
+      const roots = Array.isArray(result.roots) ? result.roots.map(root => `${root.path}${root.exists ? "" : "（不存在）"}`).join("；") : "未返回扫描目录";
+      setProjectStatus(`未发现项目 JSON。当前扫描目录：${roots}。也可以点“选择项目根目录”直接加载。`, false);
       return false;
     }
     let loaded = 0;
@@ -3325,8 +3326,11 @@ function rowsByUser(project, userField) {
 
 function multiProjectPair() {
   const projects = projectOptions();
-  if (!state.multiProjectA && projects[0]) state.multiProjectA = projects[0].id;
-  if (!state.multiProjectB && projects[1]) state.multiProjectB = projects.find(project => project.id !== state.multiProjectA)?.id || "";
+  const validIds = new Set(projects.map(project => project.id));
+  if (!validIds.has(state.multiProjectA)) state.multiProjectA = projects[0]?.id || "";
+  if (!validIds.has(state.multiProjectB) || state.multiProjectB === state.multiProjectA) {
+    state.multiProjectB = projects.find(project => project.id !== state.multiProjectA)?.id || "";
+  }
   const projectA = projectContext(state.multiProjectA);
   const projectB = projectContext(state.multiProjectB);
   return { projects, projectA, projectB };

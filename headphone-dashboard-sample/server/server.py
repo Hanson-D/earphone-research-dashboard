@@ -320,6 +320,10 @@ def list_local_project_files():
     return projects
 
 
+def list_local_project_scan_root_info():
+    return [{"path": display_path(root), "exists": root.is_dir()} for root in project_scan_roots()]
+
+
 def save_server_project(project_id, project, expected_revision=None, title=None, create=False):
     if not isinstance(project, dict):
         raise TypeError("项目内容必须是 JSON 对象。")
@@ -602,7 +606,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if not legacy_paths_enabled():
                 self.send_json({"error": "服务器部署已关闭本地项目列表接口。"}, 403)
                 return
-            self.send_json({"projects": list_local_project_files()})
+            self.send_json({"projects": list_local_project_files(), "roots": list_local_project_scan_root_info()})
             return
         if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
             self.serve_server_project_photo(parsed)

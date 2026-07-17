@@ -1,5 +1,6 @@
 {
   "releaseRoot": "\\\\server\\earphone-dashboard-release",
+  "projectsRoot": "\\\\server\\earphone-dashboard-release\\projects",
   "localRoot": "%LOCALAPPDATA%\\EarphoneDashboard",
   "preferredPort": 7362,
   "portSearchLimit": 100

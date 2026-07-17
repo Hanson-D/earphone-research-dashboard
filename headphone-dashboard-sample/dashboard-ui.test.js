@@ -70,6 +70,8 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(js, /function renderFlowDetailCards/);
   assert.match(css, /\.sankey-chart/);
   assert.match(css, /\.flow-detail-card/);
+  assert.match(js, /validIds\.has\(state\.multiProjectA\)/);
+  assert.match(js, /state\.multiProjectB === state\.multiProjectA/);
 });
 
 test("detail dashboard exposes csv export and click-to-center photo controls", () => {
@@ -117,6 +119,16 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.match(js, /\/api\/export-project-csv/);
   assert.match(js, /getDirectoryHandle\("exports"/);
   assert.match(js, /\/api\/project-assets/);
+  assert.match(js, /当前扫描目录/);
+});
+
+test("windows launcher passes shared projects root to server", () => {
+  const config = read("launcher/launcher-config.example.json");
+  const ps1 = read("launcher/launcher.ps1");
+
+  assert.match(config, /"projectsRoot"/);
+  assert.match(ps1, /DASHBOARD_PROJECTS_ROOT/);
+  assert.match(ps1, /Using projects root/);
 });
 
 test("detail photos can load from sibling photos folder through project-photo api", () => {
