@@ -132,10 +132,17 @@ test("project config uses folder selection instead of manual path entry", () => 
 test("windows launcher passes shared projects root to server", () => {
   const config = read("launcher/launcher-config.example.json");
   const ps1 = read("launcher/launcher.ps1");
+  const bat = read("打开耳机数据看板.bat");
+  const launcherReadme = read("launcher/README_自动更新启动器.txt");
 
   assert.match(config, /"projectsRoot"/);
   assert.match(ps1, /DASHBOARD_PROJECTS_ROOT/);
   assert.match(ps1, /Using projects root/);
+  assert.match(ps1, /Auto-detected projects root/);
+  assert.match(ps1, /Join-Path \$scriptDir "projects"/);
+  assert.match(ps1, /Join-Path \(Split-Path -Parent \$scriptDir\) "projects"/);
+  assert.match(bat, /DASHBOARD_PROJECTS_ROOT=%~dp0projects/);
+  assert.match(launcherReadme, /projectsRoot 是看板自动扫描项目 JSON 的目录/);
 });
 
 test("detail photos can load from sibling photos folder through project-photo api", () => {

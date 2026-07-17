@@ -151,15 +151,19 @@ if (!(Test-Path -LiteralPath (Join-Path $appPath "server\server.py"))) {
 }
 
 if (-not $projectsRoot) {
-  $releaseProjects = Join-Path $releaseRoot "projects"
-  if (Test-Path -LiteralPath $releaseProjects) {
-    $projectsRoot = $releaseProjects
-  }
-}
-if (-not $projectsRoot) {
-  $sourceProjects = Join-Path $selectedVersionPath "projects"
-  if (Test-Path -LiteralPath $sourceProjects) {
-    $projectsRoot = $sourceProjects
+  $projectCandidates = @(
+    (Join-Path $scriptDir "projects"),
+    (Join-Path (Split-Path -Parent $scriptDir) "projects"),
+    (Join-Path $releaseRoot "projects"),
+    (Join-Path $selectedVersionPath "projects"),
+    (Join-Path $appPath "projects")
+  )
+  foreach ($candidate in $projectCandidates) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+      $projectsRoot = $candidate
+      Write-LauncherLog "Auto-detected projects root: $projectsRoot"
+      break
+    }
   }
 }
 

@@ -56,14 +56,23 @@
 
 launcher-config.json
 
-然后修改 releaseRoot：
+然后修改 releaseRoot 和 projectsRoot：
 
 {
   "releaseRoot": "\\\\server\\earphone-dashboard-release",
+  "projectsRoot": "\\\\server\\earphone-dashboard-release\\projects",
   "localRoot": "%LOCALAPPDATA%\\EarphoneDashboard",
   "preferredPort": 7362,
   "portSearchLimit": 100
 }
+
+projectsRoot 是看板自动扫描项目 JSON 的目录。建议显式填写。
+如果不填写，启动器会依次尝试：
+
+1. 启动器同目录下的 projects
+2. 启动器上一级目录下的 projects
+3. releaseRoot 下的 projects
+4. 本机缓存版本下的 projects
 
 
 五、本机缓存位置

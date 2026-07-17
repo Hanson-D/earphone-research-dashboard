@@ -46,6 +46,10 @@ echo Browser will open: %URL%
 echo Other devices on the same LAN can open: http://YOUR_COMPUTER_IP:%PORT%
 echo Keep this window open while using the dashboard.
 echo.
+if "%DASHBOARD_PROJECTS_ROOT%"=="" (
+  if exist "%~dp0projects\" set "DASHBOARD_PROJECTS_ROOT=%~dp0projects"
+)
+if not "%DASHBOARD_PROJECTS_ROOT%"=="" echo Projects root: %DASHBOARD_PROJECTS_ROOT%
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1; Start-Process '%URL%'"
 set "PORT=%PORT%"
 %PYTHON_CMD% server\server.py
