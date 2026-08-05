@@ -23,10 +23,17 @@ test("pressure fields support English suffix and Chinese column names", () => {
   assert.equal(core.isPressureField("tragus_pressure_score"), true);
   assert.equal(core.isPressureField("tragus_pressure_relief_score"), true);
   assert.equal(core.isPressureField("耳屏挤压"), true);
+  assert.equal(core.isPressureField("耳廓前侧"), true);
+  assert.equal(core.isPressureField("耳廓上侧"), true);
+  assert.equal(core.isPressureField("耳后中侧"), true);
+  assert.equal(core.isPressureField("耳垂后侧"), true);
+  assert.equal(core.isPressureField("耳廓外侧"), true);
   assert.equal(core.isPressureField("comfort_score"), false);
   assert.equal(core.pressureSiteLabel("耳屏挤压程度"), "耳屏");
   assert.equal(core.pressureSiteLabel("对耳屏挤压分数"), "对耳屏");
   assert.equal(core.pressureSiteLabel("helix_pressure_score"), "耳轮");
+  assert.equal(core.pressureSiteLabel("auricle_front_pressure_score"), "耳廓前侧");
+  assert.equal(core.pressureSiteLabel("postauricular_middle_pressure_score"), "耳后中侧");
   assert.equal(core.pressureSiteLabel("custom_part_pressure_score"), "custom part");
 });
 
@@ -68,6 +75,31 @@ test("aggregatePressureSites summarizes fixed standard ear regions", () => {
   assert.equal(upper.value, 7);
   assert.equal(rear.view, "rear");
   assert.equal(rear.n, 1);
+});
+
+test("aggregatePressureSites maps added auricle pressure sites to stable standard-ear regions", () => {
+  const rows = [{
+    "耳廓前侧": "8",
+    auricle_upper_pressure_score: "7",
+    postauricular_middle_pressure_score: "6",
+    lobe_rear_pressure_score: "5",
+    auricle_outer_pressure_score: "4"
+  }];
+  const summaries = core.aggregatePressureSites(rows, [
+    "耳廓前侧",
+    "auricle_upper_pressure_score",
+    "postauricular_middle_pressure_score",
+    "lobe_rear_pressure_score",
+    "auricle_outer_pressure_score"
+  ], { pressureWorst: "high" });
+
+  assert.deepEqual(summaries.map(item => [item.siteKey, item.label, item.view]), [
+    ["auricle-front", "耳廓前侧", "front"],
+    ["auricle-upper", "耳廓上侧", "top"],
+    ["postauricular-middle", "耳后中侧", "rear"],
+    ["lobe-rear", "耳垂后侧", "rear"],
+    ["auricle-outer", "耳廓外侧", "front"]
+  ]);
 });
 
 test("aggregatePressureSites can show high pressure rate", () => {

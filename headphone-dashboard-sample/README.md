@@ -16,7 +16,7 @@
 - 人口学：`gender`、`age`、`age_group`
 - 耳型：`ear_side`、`concha_size`、`concha_length_mm`、`concha_width_mm`、`ear_canal_size`、`ear_protrusion`、`helix_shape`
 - 评分：`satisfaction_score`、`comfort_score`、`stability_score`，均为 1-10 分
-- 挤压：固定位置作为独立表头，当前包括 `tragus_pressure_score`（耳屏）、`antitragus_pressure_score`（对耳屏）和 `helix_pressure_score`（耳轮）
+- 挤压：固定位置作为独立表头，当前包括 `tragus_pressure_score`（耳屏）、`antitragus_pressure_score`（对耳屏）、`helix_pressure_score`（耳轮）、`auricle_front_pressure_score`（耳廓前侧）、`auricle_upper_pressure_score`（耳廓上侧）、`postauricular_middle_pressure_score`（耳后中侧）、`lobe_rear_pressure_score`（耳垂后侧）和 `auricle_outer_pressure_score`（耳廓外侧）
 - 挤压分数：均为 1-10 分，`1` 表示基本无挤压，分数越高表示挤压越明显
 - 其他：`fit_result`、`original_sound_score`、`comments`
 - 照片：`photo_path`，位于每行最后，供看板直接显示在详情行后面

@@ -35,6 +35,11 @@ const fieldLabels = {
   tragus_pressure_relief_score: "耳屏",
   antitragus_pressure_relief_score: "对耳屏",
   helix_pressure_relief_score: "耳轮",
+  auricle_front_pressure_score: "耳廓前侧",
+  auricle_upper_pressure_score: "耳廓上侧",
+  postauricular_middle_pressure_score: "耳后中侧",
+  lobe_rear_pressure_score: "耳垂后侧",
+  auricle_outer_pressure_score: "耳廓外侧",
   original_sound_score: "原声评分",
   comments: "备注",
   photo_path: "照片"
@@ -2512,19 +2517,34 @@ function pressureSpotPosition(siteKey, view) {
       canal: [150, 194],
       lobe: [151, 282],
       "upper-ear": [175, 78],
-      postauricular: [206, 165]
+      postauricular: [206, 165],
+      "auricle-front": [116, 135],
+      "auricle-upper": [176, 70],
+      "postauricular-middle": [205, 172],
+      "lobe-rear": [172, 286],
+      "auricle-outer": [226, 156]
     },
     rear: {
       postauricular: [148, 175],
       helix: [188, 94],
       "upper-ear": [170, 78],
-      lobe: [150, 280]
+      lobe: [150, 280],
+      "auricle-front": [118, 145],
+      "auricle-upper": [176, 78],
+      "postauricular-middle": [154, 178],
+      "lobe-rear": [155, 286],
+      "auricle-outer": [198, 152]
     },
     top: {
       "upper-ear": [158, 116],
       helix: [210, 130],
       postauricular: [145, 186],
-      concha: [160, 158]
+      concha: [160, 158],
+      "auricle-front": [174, 128],
+      "auricle-upper": [158, 100],
+      "postauricular-middle": [144, 184],
+      "lobe-rear": [150, 242],
+      "auricle-outer": [214, 144]
     }
   };
   return positions[view]?.[siteKey] || positions.front[siteKey] || [160, 170];

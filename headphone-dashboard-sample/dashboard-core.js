@@ -53,7 +53,7 @@
   }
 
   function isPressureField(field) {
-    return /pressure_(?:score|relief_score)$|挤压/i.test(field);
+    return /pressure_(?:score|relief_score)$|挤压|耳廓前侧|耳廓上侧|耳后中侧|耳垂后侧|耳廓外侧/i.test(field);
   }
 
   function pressureSiteLabel(field, label = "") {
@@ -63,7 +63,17 @@
       antitragus: "对耳屏",
       helix: "耳轮",
       concha: "耳甲腔",
-      canal: "耳道"
+      canal: "耳道",
+      auricle_front: "耳廓前侧",
+      "auricle front": "耳廓前侧",
+      auricle_upper: "耳廓上侧",
+      "auricle upper": "耳廓上侧",
+      postauricular_middle: "耳后中侧",
+      "postauricular middle": "耳后中侧",
+      lobe_rear: "耳垂后侧",
+      "lobe rear": "耳垂后侧",
+      auricle_outer: "耳廓外侧",
+      "auricle outer": "耳廓外侧"
     };
     const token = source
       .toLowerCase()
@@ -94,6 +104,21 @@
     const text = `${field || ""} ${label || ""} ${pressureSiteLabel(field, label)}`.toLowerCase();
     const source = `${field || ""} ${label || ""} ${pressureSiteLabel(field, label)}`;
     const includes = (...patterns) => patterns.some(pattern => pattern.test(source) || pattern.test(text));
+    if (includes(/耳廓前侧|auricle[_\-\s]?front|front[_\-\s]?auricle|anterior[_\-\s]?auricle/i)) {
+      return { siteKey: "auricle-front", label: "耳廓前侧", view: "front" };
+    }
+    if (includes(/耳廓上侧|auricle[_\-\s]?upper|upper[_\-\s]?auricle|superior[_\-\s]?auricle/i)) {
+      return { siteKey: "auricle-upper", label: "耳廓上侧", view: "top" };
+    }
+    if (includes(/耳后中侧|postauricular[_\-\s]?middle|middle[_\-\s]?postauricular|rear[_\-\s]?middle|behind[_\-\s]?middle/i)) {
+      return { siteKey: "postauricular-middle", label: "耳后中侧", view: "rear" };
+    }
+    if (includes(/耳垂后侧|lobe[_\-\s]?rear|rear[_\-\s]?lobe|posterior[_\-\s]?lobe/i)) {
+      return { siteKey: "lobe-rear", label: "耳垂后侧", view: "rear" };
+    }
+    if (includes(/耳廓外侧|auricle[_\-\s]?outer|outer[_\-\s]?auricle|lateral[_\-\s]?auricle/i)) {
+      return { siteKey: "auricle-outer", label: "耳廓外侧", view: "front" };
+    }
     if (includes(/耳后|后耳|耳背|后脑|后侧|夹持|耳夹|rear|back|behind|postauricular|clip/i)) {
       return { siteKey: "postauricular", label: "耳后", view: "rear" };
     }
