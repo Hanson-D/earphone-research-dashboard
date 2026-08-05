@@ -198,6 +198,7 @@ const els = Object.fromEntries([
   "globalCenterValue",
   "detailPhotoModeControl", "detailPhotoModeValue",
   "resetLayoutButton", "exportConfigButton", "importConfigInput", "columnConfigList", "clearColumnFilters",
+  "resetPhotoPositionsButton",
   "mappingPage", "dashboardPage", "mappingCsvInput", "mappingCsvStatus", "photoRootInput", "photoRootInputWrap", "photoFolderChooser", "photoFolderStatus", "photoFolderInput", "photoFolderInputWrap",
   "mappingMode", "mappingUserField", "mappingEarField", "mappingEarFieldWrap", "mappingDeviceField", "viewNamesInput", "viewNamesInputWrap",
   "bareEarToggleWrap", "includeBareEarPhotos", "bareEarConfigPanel", "bareEarSplitByEar", "bareEarGenericCountWrap",
@@ -2303,6 +2304,18 @@ function resetUserPhotoPosition(user) {
     });
     controls.querySelector(".photo-position-reset")?.setAttribute("disabled", "");
   });
+}
+
+function resetAllUserPhotoPositions() {
+  if (!Object.keys(state.userPhotoPositions || {}).length) return false;
+  state.userPhotoPositions = {};
+  document.querySelectorAll("[data-photo-user]").forEach(gallery => {
+    gallery.style.removeProperty("--user-photo-position-x");
+    gallery.style.removeProperty("--user-photo-position-y");
+    gallery.style.removeProperty("--user-photo-zoom");
+  });
+  render();
+  return true;
 }
 
 function selectedUsersFromHeader(root = els.detailHead) {
@@ -5368,6 +5381,10 @@ function bindEvents() {
     if (importInput) importDashboardConfigFile(importInput.files[0], importInput);
   });
   comparisonPage?.addEventListener("click", event => {
+    if (event.target.closest(".reset-photo-positions-trigger")) {
+      if (resetAllUserPhotoPositions()) markProjectDirty();
+      return;
+    }
     if (event.target.closest(".export-config-trigger")) {
       exportDashboardConfig();
       return;
@@ -5431,6 +5448,9 @@ function bindEvents() {
     renderViewControls();
     render();
     markProjectDirty();
+  });
+  els.resetPhotoPositionsButton?.addEventListener("click", () => {
+    if (resetAllUserPhotoPositions()) markProjectDirty();
   });
   els.detailBody.addEventListener("change", event => {
     if (!event.target.classList.contains("user-view-select")) return;

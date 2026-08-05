@@ -88,9 +88,15 @@ test("detail dashboard exposes csv export and click-to-center photo controls", (
 
   assert.match(html, /id="photoZoomControl"[\s\S]*全局照片缩放/);
   assert.match(html, /id="photoZoomControl"[^>]*min="50"[^>]*max="250"/);
+  assert.match(html, /id="resetPhotoPositionsButton"[\s\S]*全部跟随全局/);
+  assert.match(html, /class="photo-position-reset all-photo-position-reset reset-photo-positions-trigger"[\s\S]*全部跟随全局/);
   assert.match(js, /data-photo-center-user/);
   assert.match(js, /class="user-photo-zoom"/);
   assert.match(js, /function updateUserPhotoZoom/);
+  assert.match(js, /function resetAllUserPhotoPositions/);
+  assert.match(js, /state\.userPhotoPositions = \{\}/);
+  assert.match(js, /resetPhotoPositionsButton\?\./);
+  assert.match(js, /reset-photo-positions-trigger/);
   assert.match(js, /zoomRatio/);
   assert.match(js, /clickX - current\.x/);
   assert.match(js, /!event\.ctrlKey && !event\.metaKey/);
