@@ -5554,10 +5554,9 @@ async function start() {
     }
     return;
   }
-  setProjectPath(defaultProjectPath());
-  setProjectStatus(`默认项目路径：${state.projectPath}`);
   const projectFromUrl = new URL(window.location.href).searchParams.get("project");
-  if (projectFromUrl) {
+  const explicitProjectFromUrl = projectFromUrl && projectFromUrl !== defaultProjectPath();
+  if (explicitProjectFromUrl) {
     els.projectPathInput.value = projectFromUrl;
     syncProjectFileNameFromPath(projectFromUrl);
     try {
@@ -5568,10 +5567,15 @@ async function start() {
       showProjectRecoveryActions(true);
     }
   } else if (window.location.protocol === "file:") {
+    setProjectPath(defaultProjectPath());
     setProjectStatus("当前是 file:// 打开；保存项目和扫描照片需要通过启动器打开看板。");
   } else {
     const loaded = await autoLoadProjectsFolder();
-    if (!loaded) await autoLoadStoredProjectFolder();
+    const loadedStoredFolder = loaded ? false : await autoLoadStoredProjectFolder();
+    if (!loaded && !loadedStoredFolder) {
+      setProjectPath(defaultProjectPath());
+      setProjectStatus(`默认项目路径：${state.projectPath}`);
+    }
   }
 }
 

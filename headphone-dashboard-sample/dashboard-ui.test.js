@@ -129,6 +129,23 @@ test("project config uses folder selection instead of manual path entry", () => 
   assert.match(js, /当前扫描目录/);
 });
 
+test("startup scans projects folder before falling back to the default project path", () => {
+  const js = read("app.js");
+  const startBody = js.match(/async function start\(\) \{([\s\S]*?)\n\}\n\nstart\(\)\.catch/)?.[1] || "";
+
+  assert.ok(startBody.includes("const loaded = await autoLoadProjectsFolder();"));
+  assert.ok(startBody.includes("projectFromUrl !== defaultProjectPath();"));
+  assert.ok(startBody.includes("setProjectPath(defaultProjectPath());"));
+  assert.ok(
+    startBody.indexOf("const projectFromUrl") < startBody.indexOf("setProjectPath(defaultProjectPath());"),
+    "startup must read the original URL before setting the default project path"
+  );
+  assert.ok(
+    startBody.indexOf("const loaded = await autoLoadProjectsFolder();") < startBody.lastIndexOf("setProjectPath(defaultProjectPath());"),
+    "startup must try projects folder auto-load before falling back to the default project path"
+  );
+});
+
 test("windows launcher passes shared projects root to server", () => {
   const config = read("launcher/launcher-config.example.json");
   const ps1 = read("launcher/launcher.ps1");
