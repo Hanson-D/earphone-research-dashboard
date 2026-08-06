@@ -102,13 +102,12 @@ test("aggregatePressureSites maps added auricle pressure sites to stable standar
   ]);
 });
 
-test("pressureRadarByDevice summarizes mean and max reversed pressure risk per device", () => {
+test("pressureRadarByDevice summarizes mean and max raw pressure scores per device", () => {
   const radar = core.pressureRadarByDevice([
     { user_id: "U001", name: "张三", device_name: "A", tragus_pressure_score: "10", helix_pressure_score: "6" },
     { user_id: "U002", name: "李四", device_name: "A", tragus_pressure_score: "8", helix_pressure_score: "4" },
     { user_id: "U003", name: "王五", device_name: "B", tragus_pressure_score: "3", helix_pressure_score: "" }
   ], ["tragus_pressure_score", "helix_pressure_score"], "device_name", {
-    pressureWorst: "low",
     userField: "user_id",
     userNameField: "name"
   });
@@ -116,11 +115,11 @@ test("pressureRadarByDevice summarizes mean and max reversed pressure risk per d
   const deviceA = radar.find(item => item.device === "A");
   const tragus = deviceA.sites.find(item => item.siteKey === "tragus");
   const helix = deviceA.sites.find(item => item.siteKey === "helix");
-  assert.equal(tragus.meanRisk, 1);
-  assert.equal(tragus.maxRisk, 2);
-  assert.equal(helix.meanRisk, 5);
-  assert.equal(helix.maxRisk, 6);
-  assert.deepEqual(tragus.samples.map(sample => [sample.risk, sample.user]), [[0, "张三"], [2, "李四"]]);
+  assert.equal(tragus.meanScore, 9);
+  assert.equal(tragus.maxScore, 10);
+  assert.equal(helix.meanScore, 5);
+  assert.equal(helix.maxScore, 6);
+  assert.deepEqual(tragus.samples.map(sample => [sample.score, sample.user]), [[10, "张三"], [8, "李四"]]);
   assert.deepEqual(radar.find(item => item.device === "B").sites.map(item => item.siteKey), ["tragus"]);
 });
 

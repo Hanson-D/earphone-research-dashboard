@@ -2636,18 +2636,18 @@ function radarPolygonPoints(sites, metric) {
 function pressureRadarSampleGroups(site) {
   const groups = new Map();
   (site.samples || []).forEach(sample => {
-    const key = Number(sample.risk).toFixed(1);
-    if (!groups.has(key)) groups.set(key, { risk: Number(sample.risk), users: [] });
+    const key = Number(sample.score).toFixed(1);
+    if (!groups.has(key)) groups.set(key, { score: Number(sample.score), users: [] });
     if (sample.user) groups.get(key).users.push(sample.user);
   });
-  return [...groups.values()].sort((a, b) => a.risk - b.risk);
+  return [...groups.values()].sort((a, b) => a.score - b.score);
 }
 
 function renderPressureRadarCard(deviceRadar) {
   const sites = deviceRadar.sites;
   const center = 150;
   const radius = 92;
-  const maxSite = [...sites].sort((a, b) => b.maxRisk - a.maxRisk || b.meanRisk - a.meanRisk)[0];
+  const maxSite = [...sites].sort((a, b) => b.maxScore - a.maxScore || b.meanScore - a.meanScore)[0];
   const grid = [2, 4, 6, 8, 10].map(value =>
     `<circle class="pressure-radar-ring" cx="${center}" cy="${center}" r="${radius * value / 10}"></circle>`
   ).join("");
@@ -2661,40 +2661,39 @@ function renderPressureRadarCard(deviceRadar) {
     </g>`;
   }).join("");
   const points = sites.map((site, index) => {
-    const [x, y] = radarPoint(center, radius, index, sites.length, site.maxRisk);
+    const [x, y] = radarPoint(center, radius, index, sites.length, site.maxScore);
     return `<circle class="pressure-radar-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4">
-      <title>${escapeHtml(site.label)}：平均 ${site.meanRisk.toFixed(1)}，最高 ${site.maxRisk.toFixed(1)}，n=${site.n}</title>
+      <title>${escapeHtml(site.label)}：平均 ${site.meanScore.toFixed(1)}，最高 ${site.maxScore.toFixed(1)}，n=${site.n}</title>
     </circle>`;
   }).join("");
   const samples = sites.map((site, index) =>
     pressureRadarSampleGroups(site).map(group => {
-      const plotRisk = Math.max(0.5, group.risk);
-      const [x, y] = radarPoint(center, radius, index, sites.length, plotRisk);
+      const [x, y] = radarPoint(center, radius, index, sites.length, group.score);
       const users = [...new Set(group.users.filter(Boolean))];
       const names = users.length ? users.join("，") : "未记录姓名";
       const dotRadius = Math.min(6.5, 2.5 + Math.sqrt(Math.max(1, group.users.length)) * 1.15);
       return `<circle class="pressure-radar-sample" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${dotRadius.toFixed(1)}">
-        <title>${escapeHtml(site.label)} · 风险 ${group.risk.toFixed(1)}：${group.users.length} 人 · ${escapeHtml(names)}</title>
+        <title>${escapeHtml(site.label)} · 原始分数 ${group.score.toFixed(1)}：${group.users.length} 人 · ${escapeHtml(names)}</title>
       </circle>`;
     }).join("")
   ).join("");
   return `<article class="pressure-radar-card">
     <div class="pressure-radar-title">
       <strong>${escapeHtml(deviceRadar.device)}</strong>
-      <small>${sites.length} 个位点 · 峰值 ${maxSite ? `${escapeHtml(maxSite.label)} ${maxSite.maxRisk.toFixed(1)}` : "无数据"}</small>
+      <small>${sites.length} 个位点 · 峰值 ${maxSite ? `${escapeHtml(maxSite.label)} ${maxSite.maxScore.toFixed(1)}` : "无数据"}</small>
     </div>
     <svg viewBox="0 0 300 300" role="img" aria-label="${attrEscape(`${deviceRadar.device}挤压雷达图`)}">
       ${grid}
       ${axes}
-      <polygon class="pressure-radar-mean" points="${radarPolygonPoints(sites, "meanRisk")}"></polygon>
-      <polygon class="pressure-radar-max" points="${radarPolygonPoints(sites, "maxRisk")}"></polygon>
+      <polygon class="pressure-radar-mean" points="${radarPolygonPoints(sites, "meanScore")}"></polygon>
+      <polygon class="pressure-radar-max" points="${radarPolygonPoints(sites, "maxScore")}"></polygon>
       ${samples}
       ${points}
       <text class="pressure-radar-scale" x="150" y="54" text-anchor="middle">10</text>
     </svg>
     <div class="pressure-radar-legend">
-      <span><i class="mean"></i>平均挤压风险</span>
-      <span><i class="max"></i>最高挤压风险</span>
+      <span><i class="mean"></i>平均原始分数</span>
+      <span><i class="max"></i>最高原始分数</span>
     </div>
   </article>`;
 }
@@ -2703,7 +2702,6 @@ function renderPressureRadar(rows, fields) {
   if (!els.pressureRadar) return;
   const radar = Core.pressureRadarByDevice(rows, fields, deviceField(), {
     labels: fieldLabels,
-    pressureWorst: state.pressureWorst,
     userField: state.userIdField,
     userNameField: pressureUserNameField()
   });

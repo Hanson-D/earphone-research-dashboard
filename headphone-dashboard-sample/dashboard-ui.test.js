@@ -81,20 +81,21 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(js, /state\.multiProjectB === state\.multiProjectA/);
 });
 
-test("pressure page exposes device radar for mean and peak pressure risk", () => {
+test("pressure page exposes device radar for mean and peak raw pressure scores", () => {
   const html = read("index.html");
   const js = read("app.js");
   const css = read("styles.css");
 
   assert.match(html, /id="pressureRadar"/);
   assert.match(html, /设备挤压雷达/);
-  assert.match(html, /平均风险 \/ 最高风险/);
+  assert.match(html, /平均原始分数 \/ 最高原始分数/);
   assert.match(js, /function renderPressureRadar/);
   assert.match(js, /Core\.pressureRadarByDevice/);
-  assert.match(js, /meanRisk/);
-  assert.match(js, /maxRisk/);
+  assert.match(js, /meanScore/);
+  assert.match(js, /maxScore/);
   assert.match(js, /function pressureRadarSampleGroups/);
-  assert.match(js, /Math\.max\(0\.5, group\.risk\)/);
+  assert.match(js, /Core\.pressureRadarByDevice\(rows, fields, deviceField\(\), \{[\s\S]*labels: fieldLabels,[\s\S]*userField: state\.userIdField/);
+  assert.doesNotMatch(js, /Math\.max\(0\.5, group\.score\)/);
   assert.match(js, /group\.users\.length/);
   assert.match(js, /userNameField: pressureUserNameField\(\)/);
   assert.match(js, /renderPressureRadar\(rows, fields\)/);

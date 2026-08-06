@@ -187,7 +187,6 @@
     if (!deviceField || !pressureFields.length) return [];
     const {
       labels = {},
-      pressureWorst = "low",
       userField = "",
       userNameField = ""
     } = options;
@@ -208,13 +207,16 @@
       const deviceSites = byDevice.get(device);
       siteOrder.forEach(siteKey => {
         const meta = siteMeta.get(siteKey);
-        const risks = meta.fields
-          .map(field => pressureRiskScore(row[field], pressureWorst))
-          .filter(value => value != null);
-        if (!risks.length) return;
+        const scores = meta.fields
+          .map(field => row[field])
+          .filter(value => value !== "" && value != null)
+          .map(Number)
+          .filter(Number.isFinite)
+          .map(score => Math.max(0, Math.min(10, score)));
+        if (!scores.length) return;
         if (!deviceSites.has(siteKey)) deviceSites.set(siteKey, []);
         const user = String(row[userNameField] || row[userField] || "").trim();
-        deviceSites.get(siteKey).push(...risks.map(risk => ({ risk, user })));
+        deviceSites.get(siteKey).push(...scores.map(score => ({ score, user })));
       });
     });
     return [...byDevice.entries()].map(([device, deviceSites]) => ({
@@ -222,15 +224,15 @@
       sites: siteOrder.map(siteKey => {
         const meta = siteMeta.get(siteKey);
         const samples = deviceSites.get(siteKey) || [];
-        const risks = samples.map(sample => sample.risk);
-        const meanRisk = risks.length ? risks.reduce((sum, value) => sum + value, 0) / risks.length : 0;
-        const maxRisk = risks.length ? Math.max(...risks) : 0;
+        const scores = samples.map(sample => sample.score);
+        const meanScore = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : 0;
+        const maxScore = scores.length ? Math.max(...scores) : 0;
         return {
           siteKey,
           label: meta.label,
-          n: risks.length,
-          meanRisk,
-          maxRisk,
+          n: scores.length,
+          meanScore,
+          maxScore,
           samples
         };
       }).filter(site => site.n > 0)
