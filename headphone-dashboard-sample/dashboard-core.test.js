@@ -22,13 +22,19 @@ test("full axis only forces 0-10 for score-like metrics", () => {
 test("pressure fields support English suffix and Chinese column names", () => {
   assert.equal(core.isPressureField("tragus_pressure_score"), true);
   assert.equal(core.isPressureField("tragus_pressure_relief_score"), true);
+  assert.equal(core.isPressureField("tragus"), true);
+  assert.equal(core.isPressureField("耳屏"), true);
   assert.equal(core.isPressureField("耳屏挤压"), true);
+  assert.equal(core.isPressureField("耳屏挤压分数"), true);
   assert.equal(core.isPressureField("耳廓前侧"), true);
   assert.equal(core.isPressureField("耳廓上侧"), true);
+  assert.equal(core.isPressureField("耳廓上侧挤压分数"), true);
   assert.equal(core.isPressureField("耳后中侧"), true);
   assert.equal(core.isPressureField("耳垂后侧"), true);
   assert.equal(core.isPressureField("耳廓外侧"), true);
   assert.equal(core.isPressureField("comfort_score"), false);
+  assert.equal(core.inferFieldRole("耳廓上侧", [{ "耳廓上侧": "7" }]), "pressure");
+  assert.equal(core.inferFieldRole("耳廓上侧挤压分数", [{ "耳廓上侧挤压分数": "7" }]), "pressure");
   assert.equal(core.pressureSiteLabel("耳屏挤压程度"), "耳屏");
   assert.equal(core.pressureSiteLabel("对耳屏挤压分数"), "对耳屏");
   assert.equal(core.pressureSiteLabel("helix_pressure_score"), "耳轮");

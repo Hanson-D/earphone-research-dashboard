@@ -27,6 +27,31 @@
     return /score$|rating$|satisfaction|comfort|stability|满意|舒适|稳定|评分|得分/i.test(field);
   }
 
+  const PRESSURE_SITE_TERMS = [
+    "tragus", "antitragus", "helix", "concha", "canal", "lobe",
+    "auricle_front", "auricle front", "front auricle", "anterior auricle",
+    "auricle_upper", "auricle upper", "upper auricle", "superior auricle",
+    "postauricular_middle", "postauricular middle", "middle postauricular", "rear middle", "behind middle",
+    "lobe_rear", "lobe rear", "rear lobe", "posterior lobe",
+    "auricle_outer", "auricle outer", "outer auricle", "lateral auricle",
+    "postauricular", "rear clip", "ear hook",
+    "耳屏", "对耳屏", "耳轮", "耳甲", "耳甲腔", "耳道", "耳道口", "耳塞", "耳垂",
+    "耳廓前侧", "耳廓上侧", "耳后中侧", "耳垂后侧", "耳廓外侧",
+    "耳后", "后耳", "耳背", "后侧", "夹持", "耳夹", "耳上", "上耳", "耳挂", "挂钩", "挂耳"
+  ];
+
+  const PRESSURE_FIELD_SUFFIX_PATTERN = /(?:^|[_\-\s])(?:pressure|relief|score|rating|degree|level|value)(?=$|[_\-\s])|(?:挤压程度|挤压分数|挤压评分|挤压得分|挤压|压力程度|压力分数|压力评分|压力得分|压力|分数|评分|得分|程度)$/i;
+
+  function normalizePressureFieldToken(field) {
+    return String(field || "")
+      .replace(PRESSURE_FIELD_SUFFIX_PATTERN, " ")
+      .replace(PRESSURE_FIELD_SUFFIX_PATTERN, " ")
+      .replace(/[_\-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
   function computeAxisRange(values, mode, metric) {
     const finiteValues = values.map(Number).filter(Number.isFinite);
     if (!finiteValues.length) return { axisMin: 0, axisMax: isScoreMetric(metric) ? 10 : 1 };
@@ -53,7 +78,10 @@
   }
 
   function isPressureField(field) {
-    return /pressure_(?:score|relief_score)$|挤压|耳廓前侧|耳廓上侧|耳后中侧|耳垂后侧|耳廓外侧/i.test(field);
+    const source = String(field || "");
+    if (/pressure_(?:score|relief_score)$|挤压|压力/i.test(source)) return true;
+    const token = normalizePressureFieldToken(source);
+    return PRESSURE_SITE_TERMS.some(term => token === term.toLowerCase());
   }
 
   function pressureSiteLabel(field, label = "") {
