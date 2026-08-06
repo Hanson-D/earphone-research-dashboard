@@ -117,8 +117,10 @@ test("pressureRadarByDevice summarizes mean and max raw pressure scores per devi
   const helix = deviceA.sites.find(item => item.siteKey === "helix");
   assert.equal(tragus.meanScore, 9);
   assert.equal(tragus.maxScore, 10);
+  assert.equal(tragus.minScore, 8);
   assert.equal(helix.meanScore, 5);
   assert.equal(helix.maxScore, 6);
+  assert.equal(helix.minScore, 4);
   assert.deepEqual(tragus.samples.map(sample => [sample.score, sample.user]), [[10, "张三"], [8, "李四"]]);
   assert.deepEqual(radar.find(item => item.device === "B").sites.map(item => item.siteKey), ["tragus"]);
 });

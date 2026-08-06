@@ -227,12 +227,14 @@
         const scores = samples.map(sample => sample.score);
         const meanScore = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : 0;
         const maxScore = scores.length ? Math.max(...scores) : 0;
+        const minScore = scores.length ? Math.min(...scores) : 0;
         return {
           siteKey,
           label: meta.label,
           n: scores.length,
           meanScore,
           maxScore,
+          minScore,
           samples
         };
       }).filter(site => site.n > 0)

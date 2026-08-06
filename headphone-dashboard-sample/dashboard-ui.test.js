@@ -81,18 +81,20 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(js, /state\.multiProjectB === state\.multiProjectA/);
 });
 
-test("pressure page exposes device radar for mean and peak raw pressure scores", () => {
+test("pressure page exposes larger device radar for mean and minimum raw pressure scores", () => {
   const html = read("index.html");
   const js = read("app.js");
   const css = read("styles.css");
 
   assert.match(html, /id="pressureRadar"/);
   assert.match(html, /设备挤压雷达/);
-  assert.match(html, /平均原始分数 \/ 最高原始分数/);
+  assert.match(html, /平均原始分数 \/ 最低原始分数/);
   assert.match(js, /function renderPressureRadar/);
   assert.match(js, /Core\.pressureRadarByDevice/);
   assert.match(js, /meanScore/);
-  assert.match(js, /maxScore/);
+  assert.match(js, /minScore/);
+  assert.match(js, /viewBox="0 0 420 420"/);
+  assert.match(js, /\[0, \.\.\.gridValues\]/);
   assert.match(js, /function pressureRadarSampleGroups/);
   assert.match(js, /Core\.pressureRadarByDevice\(rows, fields, deviceField\(\), \{[\s\S]*labels: fieldLabels,[\s\S]*userField: state\.userIdField/);
   assert.doesNotMatch(js, /Math\.max\(0\.5, group\.score\)/);
@@ -101,7 +103,8 @@ test("pressure page exposes device radar for mean and peak raw pressure scores",
   assert.match(js, /renderPressureRadar\(rows, fields\)/);
   assert.match(css, /\.pressure-radar-grid/);
   assert.match(css, /\.pressure-radar-mean/);
-  assert.match(css, /\.pressure-radar-max/);
+  assert.match(css, /\.pressure-radar-min/);
+  assert.match(css, /height:\s*420px/);
   assert.match(css, /\.pressure-radar-sample/);
 });
 

@@ -2625,8 +2625,8 @@ function radarPoint(center, radius, index, total, value) {
 }
 
 function radarPolygonPoints(sites, metric) {
-  const center = 150;
-  const radius = 92;
+  const center = 210;
+  const radius = 130;
   return sites.map((site, index) => {
     const [x, y] = radarPoint(center, radius, index, sites.length, site[metric]);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -2645,26 +2645,25 @@ function pressureRadarSampleGroups(site) {
 
 function renderPressureRadarCard(deviceRadar) {
   const sites = deviceRadar.sites;
-  const center = 150;
-  const radius = 92;
-  const maxSite = [...sites].sort((a, b) => b.maxScore - a.maxScore || b.meanScore - a.meanScore)[0];
-  const grid = [2, 4, 6, 8, 10].map(value =>
+  const center = 210;
+  const radius = 130;
+  const minSite = [...sites].sort((a, b) => a.minScore - b.minScore || a.meanScore - b.meanScore)[0];
+  const gridValues = [2, 4, 6, 8, 10];
+  const grid = gridValues.map(value =>
     `<circle class="pressure-radar-ring" cx="${center}" cy="${center}" r="${radius * value / 10}"></circle>`
   ).join("");
+  const scaleLabels = [0, ...gridValues].map(value => {
+    const y = center - radius * value / 10;
+    return `<text class="pressure-radar-scale" x="${center + 8}" y="${y.toFixed(1)}" text-anchor="start">${value}</text>`;
+  }).join("");
   const axes = sites.map((site, index) => {
     const [x, y] = radarPoint(center, radius, index, sites.length, 10);
-    const [labelX, labelY] = radarPoint(center, radius + 22, index, sites.length, 10);
+    const [labelX, labelY] = radarPoint(center, radius + 32, index, sites.length, 10);
     const anchor = Math.abs(labelX - center) < 8 ? "middle" : labelX > center ? "start" : "end";
     return `<g>
       <line class="pressure-radar-axis" x1="${center}" y1="${center}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"></line>
       <text class="pressure-radar-label" x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="${anchor}">${escapeHtml(site.label)}</text>
     </g>`;
-  }).join("");
-  const points = sites.map((site, index) => {
-    const [x, y] = radarPoint(center, radius, index, sites.length, site.maxScore);
-    return `<circle class="pressure-radar-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4">
-      <title>${escapeHtml(site.label)}：平均 ${site.meanScore.toFixed(1)}，最高 ${site.maxScore.toFixed(1)}，n=${site.n}</title>
-    </circle>`;
   }).join("");
   const samples = sites.map((site, index) =>
     pressureRadarSampleGroups(site).map(group => {
@@ -2680,20 +2679,19 @@ function renderPressureRadarCard(deviceRadar) {
   return `<article class="pressure-radar-card">
     <div class="pressure-radar-title">
       <strong>${escapeHtml(deviceRadar.device)}</strong>
-      <small>${sites.length} 个位点 · 峰值 ${maxSite ? `${escapeHtml(maxSite.label)} ${maxSite.maxScore.toFixed(1)}` : "无数据"}</small>
+      <small>${sites.length} 个位点 · 最低 ${minSite ? `${escapeHtml(minSite.label)} ${minSite.minScore.toFixed(1)}` : "无数据"}</small>
     </div>
-    <svg viewBox="0 0 300 300" role="img" aria-label="${attrEscape(`${deviceRadar.device}挤压雷达图`)}">
+    <svg viewBox="0 0 420 420" role="img" aria-label="${attrEscape(`${deviceRadar.device}挤压雷达图`)}">
       ${grid}
       ${axes}
+      ${scaleLabels}
       <polygon class="pressure-radar-mean" points="${radarPolygonPoints(sites, "meanScore")}"></polygon>
-      <polygon class="pressure-radar-max" points="${radarPolygonPoints(sites, "maxScore")}"></polygon>
+      <polygon class="pressure-radar-min" points="${radarPolygonPoints(sites, "minScore")}"></polygon>
       ${samples}
-      ${points}
-      <text class="pressure-radar-scale" x="150" y="54" text-anchor="middle">10</text>
     </svg>
     <div class="pressure-radar-legend">
       <span><i class="mean"></i>平均原始分数</span>
-      <span><i class="max"></i>最高原始分数</span>
+      <span><i class="min"></i>最低原始分数</span>
     </div>
   </article>`;
 }
