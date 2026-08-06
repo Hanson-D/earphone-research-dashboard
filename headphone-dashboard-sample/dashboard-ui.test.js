@@ -94,7 +94,7 @@ test("pressure page exposes device radar for mean and peak pressure risk", () =>
   assert.match(js, /meanRisk/);
   assert.match(js, /maxRisk/);
   assert.match(js, /function pressureRadarSampleGroups/);
-  assert.match(js, /Math\.max\(1, group\.risk\)/);
+  assert.match(js, /Math\.max\(0\.5, group\.risk\)/);
   assert.match(js, /group\.users\.length/);
   assert.match(js, /userNameField: pressureUserNameField\(\)/);
   assert.match(js, /renderPressureRadar\(rows, fields\)/);

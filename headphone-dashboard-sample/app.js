@@ -2668,7 +2668,7 @@ function renderPressureRadarCard(deviceRadar) {
   }).join("");
   const samples = sites.map((site, index) =>
     pressureRadarSampleGroups(site).map(group => {
-      const plotRisk = Math.max(1, group.risk);
+      const plotRisk = Math.max(0.5, group.risk);
       const [x, y] = radarPoint(center, radius, index, sites.length, plotRisk);
       const users = [...new Set(group.users.filter(Boolean))];
       const names = users.length ? users.join("，") : "未记录姓名";
