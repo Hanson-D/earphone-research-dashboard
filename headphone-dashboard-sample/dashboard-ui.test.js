@@ -81,6 +81,29 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(js, /state\.multiProjectB === state\.multiProjectA/);
 });
 
+test("pressure page exposes device radar for mean and peak pressure risk", () => {
+  const html = read("index.html");
+  const js = read("app.js");
+  const css = read("styles.css");
+
+  assert.match(html, /id="pressureRadar"/);
+  assert.match(html, /设备挤压雷达/);
+  assert.match(html, /平均风险 \/ 最高风险/);
+  assert.match(js, /function renderPressureRadar/);
+  assert.match(js, /Core\.pressureRadarByDevice/);
+  assert.match(js, /meanRisk/);
+  assert.match(js, /maxRisk/);
+  assert.match(js, /function pressureRadarSampleGroups/);
+  assert.match(js, /Math\.max\(1, group\.risk\)/);
+  assert.match(js, /group\.users\.length/);
+  assert.match(js, /userNameField: pressureUserNameField\(\)/);
+  assert.match(js, /renderPressureRadar\(rows, fields\)/);
+  assert.match(css, /\.pressure-radar-grid/);
+  assert.match(css, /\.pressure-radar-mean/);
+  assert.match(css, /\.pressure-radar-max/);
+  assert.match(css, /\.pressure-radar-sample/);
+});
+
 test("detail dashboard exposes csv export and click-to-center photo controls", () => {
   const html = read("index.html");
   const js = read("app.js");

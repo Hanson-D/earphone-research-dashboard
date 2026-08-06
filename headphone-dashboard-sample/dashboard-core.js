@@ -183,6 +183,61 @@
     }).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "zh-CN"));
   }
 
+  function pressureRadarByDevice(rows = [], pressureFields = [], deviceField = "", options = {}) {
+    if (!deviceField || !pressureFields.length) return [];
+    const {
+      labels = {},
+      pressureWorst = "low",
+      userField = "",
+      userNameField = ""
+    } = options;
+    const siteOrder = [];
+    const siteMeta = new Map();
+    pressureFields.forEach(field => {
+      const meta = pressureSiteMeta(field, labels[field]);
+      if (!siteMeta.has(meta.siteKey)) {
+        siteOrder.push(meta.siteKey);
+        siteMeta.set(meta.siteKey, { siteKey: meta.siteKey, label: meta.label, fields: [] });
+      }
+      siteMeta.get(meta.siteKey).fields.push(field);
+    });
+    const byDevice = new Map();
+    rows.forEach(row => {
+      const device = String(row[deviceField] || "未填写设备");
+      if (!byDevice.has(device)) byDevice.set(device, new Map());
+      const deviceSites = byDevice.get(device);
+      siteOrder.forEach(siteKey => {
+        const meta = siteMeta.get(siteKey);
+        const risks = meta.fields
+          .map(field => pressureRiskScore(row[field], pressureWorst))
+          .filter(value => value != null);
+        if (!risks.length) return;
+        if (!deviceSites.has(siteKey)) deviceSites.set(siteKey, []);
+        const user = String(row[userNameField] || row[userField] || "").trim();
+        deviceSites.get(siteKey).push(...risks.map(risk => ({ risk, user })));
+      });
+    });
+    return [...byDevice.entries()].map(([device, deviceSites]) => ({
+      device,
+      sites: siteOrder.map(siteKey => {
+        const meta = siteMeta.get(siteKey);
+        const samples = deviceSites.get(siteKey) || [];
+        const risks = samples.map(sample => sample.risk);
+        const meanRisk = risks.length ? risks.reduce((sum, value) => sum + value, 0) / risks.length : 0;
+        const maxRisk = risks.length ? Math.max(...risks) : 0;
+        return {
+          siteKey,
+          label: meta.label,
+          n: risks.length,
+          meanRisk,
+          maxRisk,
+          samples
+        };
+      }).filter(site => site.n > 0)
+    })).filter(device => device.sites.length)
+      .sort((a, b) => a.device.localeCompare(b.device, "zh-CN", { numeric: true }));
+  }
+
   function swapMappedPhotoAssignments(rows = [], source = {}, target = {}) {
     const nextRows = rows.map(row => ({ ...row }));
     const sourceRow = nextRows[source.rowIndex];
@@ -1251,6 +1306,7 @@
     pressureRiskScore,
     pressureSiteMeta,
     aggregatePressureSites,
+    pressureRadarByDevice,
     swapMappedPhotoAssignments,
     swapMappedPhotoDeviceGroups,
     inferFieldRole,

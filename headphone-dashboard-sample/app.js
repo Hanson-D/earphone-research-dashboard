@@ -209,7 +209,7 @@ const els = Object.fromEntries([
   "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
   "projectRecoveryActions", "useSampleProjectButton", "clearProjectPathButton", "projectTabs", "newProjectTabButton",
   "pressureWorstSelect", "protocolTemplateInput", "clearProtocolButton", "protocolStatus",
-  "pressurePage", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
+  "pressurePage", "pressureRadar", "pressureDeviceFilter", "pressureEarFilter", "pressureGroupField", "pressureGroupValue",
   "pressureAggregation", "pressureSummary", "pressureHeatmaps", "pressureRanking",
   "comparisonPage", "comparisonMetricSelect", "comparisonAutoDevices", "comparisonDeviceA", "comparisonDeviceB",
   "comparisonThreshold", "comparisonTitle", "comparisonSummary", "comparisonDeviceRanking", "comparisonGroupCards", "comparisonDetails",
@@ -2460,6 +2460,10 @@ function pressureSelectableFields() {
   });
 }
 
+function pressureUserNameField() {
+  return state.headers.find(field => field !== state.userIdField && /^(name|姓名|user_name|用户姓名)$/i.test(field)) || "";
+}
+
 function refreshPressureControls() {
   if (!els.pressureDeviceFilter) return;
   const currentDevice = state.pressureDeviceFilter;
@@ -2611,6 +2615,103 @@ function renderPressureSvg(view, title, summaries) {
   </article>`;
 }
 
+function radarPoint(center, radius, index, total, value) {
+  const angle = -Math.PI / 2 + index * Math.PI * 2 / Math.max(1, total);
+  const distance = radius * Math.max(0, Math.min(10, value)) / 10;
+  return [
+    center + Math.cos(angle) * distance,
+    center + Math.sin(angle) * distance
+  ];
+}
+
+function radarPolygonPoints(sites, metric) {
+  const center = 150;
+  const radius = 92;
+  return sites.map((site, index) => {
+    const [x, y] = radarPoint(center, radius, index, sites.length, site[metric]);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function pressureRadarSampleGroups(site) {
+  const groups = new Map();
+  (site.samples || []).forEach(sample => {
+    const key = Number(sample.risk).toFixed(1);
+    if (!groups.has(key)) groups.set(key, { risk: Number(sample.risk), users: [] });
+    if (sample.user) groups.get(key).users.push(sample.user);
+  });
+  return [...groups.values()].sort((a, b) => a.risk - b.risk);
+}
+
+function renderPressureRadarCard(deviceRadar) {
+  const sites = deviceRadar.sites;
+  const center = 150;
+  const radius = 92;
+  const maxSite = [...sites].sort((a, b) => b.maxRisk - a.maxRisk || b.meanRisk - a.meanRisk)[0];
+  const grid = [2, 4, 6, 8, 10].map(value =>
+    `<circle class="pressure-radar-ring" cx="${center}" cy="${center}" r="${radius * value / 10}"></circle>`
+  ).join("");
+  const axes = sites.map((site, index) => {
+    const [x, y] = radarPoint(center, radius, index, sites.length, 10);
+    const [labelX, labelY] = radarPoint(center, radius + 22, index, sites.length, 10);
+    const anchor = Math.abs(labelX - center) < 8 ? "middle" : labelX > center ? "start" : "end";
+    return `<g>
+      <line class="pressure-radar-axis" x1="${center}" y1="${center}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"></line>
+      <text class="pressure-radar-label" x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="${anchor}">${escapeHtml(site.label)}</text>
+    </g>`;
+  }).join("");
+  const points = sites.map((site, index) => {
+    const [x, y] = radarPoint(center, radius, index, sites.length, site.maxRisk);
+    return `<circle class="pressure-radar-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4">
+      <title>${escapeHtml(site.label)}：平均 ${site.meanRisk.toFixed(1)}，最高 ${site.maxRisk.toFixed(1)}，n=${site.n}</title>
+    </circle>`;
+  }).join("");
+  const samples = sites.map((site, index) =>
+    pressureRadarSampleGroups(site).map(group => {
+      const plotRisk = Math.max(1, group.risk);
+      const [x, y] = radarPoint(center, radius, index, sites.length, plotRisk);
+      const users = [...new Set(group.users.filter(Boolean))];
+      const names = users.length ? users.join("，") : "未记录姓名";
+      const dotRadius = Math.min(6.5, 2.5 + Math.sqrt(Math.max(1, group.users.length)) * 1.15);
+      return `<circle class="pressure-radar-sample" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${dotRadius.toFixed(1)}">
+        <title>${escapeHtml(site.label)} · 风险 ${group.risk.toFixed(1)}：${group.users.length} 人 · ${escapeHtml(names)}</title>
+      </circle>`;
+    }).join("")
+  ).join("");
+  return `<article class="pressure-radar-card">
+    <div class="pressure-radar-title">
+      <strong>${escapeHtml(deviceRadar.device)}</strong>
+      <small>${sites.length} 个位点 · 峰值 ${maxSite ? `${escapeHtml(maxSite.label)} ${maxSite.maxRisk.toFixed(1)}` : "无数据"}</small>
+    </div>
+    <svg viewBox="0 0 300 300" role="img" aria-label="${attrEscape(`${deviceRadar.device}挤压雷达图`)}">
+      ${grid}
+      ${axes}
+      <polygon class="pressure-radar-mean" points="${radarPolygonPoints(sites, "meanRisk")}"></polygon>
+      <polygon class="pressure-radar-max" points="${radarPolygonPoints(sites, "maxRisk")}"></polygon>
+      ${samples}
+      ${points}
+      <text class="pressure-radar-scale" x="150" y="54" text-anchor="middle">10</text>
+    </svg>
+    <div class="pressure-radar-legend">
+      <span><i class="mean"></i>平均挤压风险</span>
+      <span><i class="max"></i>最高挤压风险</span>
+    </div>
+  </article>`;
+}
+
+function renderPressureRadar(rows, fields) {
+  if (!els.pressureRadar) return;
+  const radar = Core.pressureRadarByDevice(rows, fields, deviceField(), {
+    labels: fieldLabels,
+    pressureWorst: state.pressureWorst,
+    userField: state.userIdField,
+    userNameField: pressureUserNameField()
+  });
+  els.pressureRadar.innerHTML = radar.length ?
+    radar.map(renderPressureRadarCard).join("") :
+    '<div class="empty-state">当前筛选条件下没有可绘制的设备挤压雷达。</div>';
+}
+
 function renderPressureMechanism() {
   if (!els.pressureHeatmaps) return;
   refreshPressureControls();
@@ -2618,12 +2719,14 @@ function renderPressureMechanism() {
   const rows = pressureMechanismRows();
   if (!state.rows.length) {
     els.pressureSummary.textContent = "尚未加载数据";
+    if (els.pressureRadar) els.pressureRadar.innerHTML = '<div class="empty-state">请先在 01 页加载项目或应用照片映射数据。</div>';
     els.pressureHeatmaps.innerHTML = '<div class="empty-state">请先在 01 页加载项目或应用照片映射数据。</div>';
     els.pressureRanking.innerHTML = "";
     return;
   }
   if (!fields.length) {
     els.pressureSummary.textContent = "未识别到挤压字段";
+    if (els.pressureRadar) els.pressureRadar.innerHTML = '<div class="empty-state">请在 02 页“字段角色”中把挤压列设为“挤压程度”。</div>';
     els.pressureHeatmaps.innerHTML = '<div class="empty-state">请在 02 页“字段角色”中把挤压列设为“挤压程度”。</div>';
     els.pressureRanking.innerHTML = "";
     return;
@@ -2636,6 +2739,7 @@ function renderPressureMechanism() {
   const users = new Set(rows.map(row => row[state.userIdField]).filter(Boolean)).size;
   const aggLabel = { mean: "平均风险", median: "中位风险", highRate: "高挤压比例" }[state.pressureAggregation];
   els.pressureSummary.textContent = `${rows.length} 条记录 · ${users} 位用户 · ${aggLabel}`;
+  renderPressureRadar(rows, fields);
   els.pressureHeatmaps.innerHTML = summaries.length ? [
     renderPressureSvg("rear", "耳后", summaries),
     renderPressureSvg("top", "耳上", summaries),

@@ -675,6 +675,48 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 }
 .pressure-main { min-width: 0; display: grid; gap: 14px; }
 .pressure-hero { overflow: hidden; }
+.pressure-radar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  padding: 18px;
+}
+.pressure-radar-card {
+  min-width: 0;
+  padding: 13px;
+  background: #fffdfa;
+  border: 1px solid var(--line);
+}
+.pressure-radar-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--accent-dark);
+}
+.pressure-radar-title strong { font-size: 13px; }
+.pressure-radar-title small { color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
+.pressure-radar-card svg { display: block; width: 100%; height: 300px; margin-top: 8px; }
+.pressure-radar-ring { fill: none; stroke: #ead6d6; stroke-width: 1; }
+.pressure-radar-axis { stroke: #d8c5c5; stroke-width: 1; }
+.pressure-radar-label {
+  fill: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #fffdf9;
+  stroke-width: 3px;
+}
+.pressure-radar-mean { fill: rgba(80, 117, 89, .18); stroke: #507559; stroke-width: 2.2; }
+.pressure-radar-max { fill: rgba(143, 29, 34, .16); stroke: var(--accent-dark); stroke-width: 2.4; }
+.pressure-radar-sample { fill: #fffdfa; stroke: var(--accent-dark); stroke-width: 1.7; opacity: .92; }
+.pressure-radar-dot { fill: var(--accent-dark); stroke: #fffdfa; stroke-width: 1.5; }
+.pressure-radar-scale { fill: var(--muted); font-size: 9px; font-weight: 800; }
+.pressure-radar-legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 10px; font-weight: 800; }
+.pressure-radar-legend span { display: inline-flex; gap: 5px; align-items: center; }
+.pressure-radar-legend i { width: 18px; height: 7px; border-radius: 999px; }
+.pressure-radar-legend .mean { background: #507559; }
+.pressure-radar-legend .max { background: var(--accent-dark); }
 .pressure-heatmaps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
