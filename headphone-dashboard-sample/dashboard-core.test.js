@@ -957,7 +957,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
     multiFlowMetricA: "comfort_score",
     multiFlowMetricB: "comfort_score",
     multiFlowThreshold: "1.5",
-    multiFlowMappings: [{ a: "样机A", b: "样机C" }],
+    multiFlowMappings: [{ a: "样机A", b: "样机C", label: "开放式组" }],
     userFilter: ["U001"],
     userOrder: ["U002", "U001"],
     userNotes: { U001: "重点样本", U003: "不在当前数据" },
@@ -984,7 +984,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.multiFlowMetricA, "comfort_score");
   assert.equal(config.multiFlowMetricB, "comfort_score");
   assert.equal(config.multiFlowThreshold, 1.5);
-  assert.deepEqual(config.multiFlowMappings, [{ a: "样机A", b: "样机C" }]);
+  assert.deepEqual(config.multiFlowMappings, [{ a: "样机A", b: "样机C", label: "开放式组" }]);
   assert.deepEqual(config.userFilter, ["U001"]);
   assert.deepEqual(config.userOrder, ["U002", "U001"]);
   assert.deepEqual(config.userNotes, { U001: "重点样本", U003: "不在当前数据" });

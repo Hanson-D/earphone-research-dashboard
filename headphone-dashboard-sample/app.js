@@ -2633,6 +2633,25 @@ function radarPolygonPoints(sites, metric) {
   }).join(" ");
 }
 
+function radarSignedPoint(center, radius, index, total, value, maxAbs) {
+  const angle = -Math.PI / 2 + (Math.PI * 2 * index / total);
+  const normalized = maxAbs > 0 ? (value + maxAbs) / (2 * maxAbs) : 0.5;
+  const distance = radius * Math.max(0, Math.min(1, normalized));
+  return [
+    center + Math.cos(angle) * distance,
+    center + Math.sin(angle) * distance
+  ];
+}
+
+function radarSignedPolygonPoints(sites, maxAbs) {
+  const center = 210;
+  const radius = 130;
+  return sites.map((site, index) => {
+    const [x, y] = radarSignedPoint(center, radius, index, sites.length, site.meanDiff, maxAbs);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
 function pressureRadarSampleGroups(site) {
   const groups = new Map();
   (site.samples || []).forEach(sample => {
@@ -2690,8 +2709,76 @@ function renderPressureRadarCard(deviceRadar) {
       ${samples}
     </svg>
     <div class="pressure-radar-legend">
-      <span><i class="mean"></i>平均原始分数</span>
-      <span><i class="min"></i>最低原始分数</span>
+	      <span><i class="mean"></i>平均原始分数</span>
+	      <span><i class="min"></i>最低原始分数</span>
+	    </div>
+	  </article>`;
+}
+
+function renderPressureRadarDiffCard(radar) {
+  if (radar.length < 2) return "";
+  const [deviceA, deviceB] = radar;
+  const sitesB = new Map(deviceB.sites.map(site => [site.siteKey, site]));
+  const sites = deviceA.sites
+    .map(siteA => {
+      const siteB = sitesB.get(siteA.siteKey);
+      if (!siteB) return null;
+      return {
+        siteKey: siteA.siteKey,
+        label: siteA.label,
+        meanDiff: siteB.meanScore - siteA.meanScore,
+        meanA: siteA.meanScore,
+        meanB: siteB.meanScore
+      };
+    })
+    .filter(Boolean);
+  if (sites.length < 3) return "";
+  const center = 210;
+  const radius = 130;
+  const maxAbs = Math.max(1, ...sites.map(site => Math.abs(site.meanDiff)));
+  const grid = [0, maxAbs / 2, maxAbs].map((value, index) =>
+    `<circle class="pressure-radar-ring ${index === 0 ? "zero" : ""}" cx="${center}" cy="${center}" r="${(radius * (value + maxAbs) / (2 * maxAbs)).toFixed(1)}"></circle>`
+  ).join("");
+  const scaleLabels = [
+    { value: -maxAbs, r: 0 },
+    { value: 0, r: radius / 2 },
+    { value: maxAbs, r: radius }
+  ].map(item => {
+    const y = center - item.r;
+    return `<text class="pressure-radar-scale" x="${center + 8}" y="${y.toFixed(1)}" text-anchor="start">${item.value > 0 ? "+" : ""}${item.value.toFixed(1)}</text>`;
+  }).join("");
+  const axes = sites.map((site, index) => {
+    const [x, y] = radarPoint(center, radius, index, sites.length, 10);
+    const [labelX, labelY] = radarPoint(center, radius + 34, index, sites.length, 10);
+    const anchor = Math.abs(labelX - center) < 8 ? "middle" : labelX > center ? "start" : "end";
+    return `<g>
+      <line class="pressure-radar-axis" x1="${center}" y1="${center}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"></line>
+      <text class="pressure-radar-label" x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="${anchor}">
+        <title>${escapeHtml(site.label)} · ${escapeHtml(deviceB.device)} - ${escapeHtml(deviceA.device)} = ${site.meanDiff.toFixed(1)}</title>
+        ${escapeHtml(site.label)}
+      </text>
+    </g>`;
+  }).join("");
+  const values = sites.map((site, index) => {
+    const [x, y] = radarSignedPoint(center, radius, index, sites.length, site.meanDiff, maxAbs);
+    return `<circle class="pressure-radar-diff-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4">
+      <title>${escapeHtml(site.label)}：${escapeHtml(deviceB.device)} ${site.meanB.toFixed(1)} - ${escapeHtml(deviceA.device)} ${site.meanA.toFixed(1)} = ${site.meanDiff.toFixed(1)}</title>
+    </circle>`;
+  }).join("");
+  return `<article class="pressure-radar-card pressure-radar-diff-card">
+    <div class="pressure-radar-title">
+      <strong>设备差值雷达</strong>
+      <small>${escapeHtml(deviceB.device)} - ${escapeHtml(deviceA.device)} · 平均原始分数差</small>
+    </div>
+    <svg viewBox="0 0 420 420" role="img" aria-label="${attrEscape(`${deviceB.device}减${deviceA.device}挤压平均分差雷达图`)}">
+      ${grid}
+      ${axes}
+      ${scaleLabels}
+      <polygon class="pressure-radar-diff" points="${radarSignedPolygonPoints(sites, maxAbs)}"></polygon>
+      ${values}
+    </svg>
+    <div class="pressure-radar-legend">
+      <span><i class="diff"></i>平均分差：${escapeHtml(deviceB.device)} - ${escapeHtml(deviceA.device)}</span>
     </div>
   </article>`;
 }
@@ -2704,7 +2791,7 @@ function renderPressureRadar(rows, fields) {
     userNameField: pressureUserNameField()
   });
   els.pressureRadar.innerHTML = radar.length ?
-    radar.map(renderPressureRadarCard).join("") :
+    [renderPressureRadarDiffCard(radar), ...radar.map(renderPressureRadarCard)].filter(Boolean).join("") :
     '<div class="empty-state">当前筛选条件下没有可绘制的设备挤压雷达。</div>';
 }
 
@@ -3556,8 +3643,17 @@ function ensureFlowMappings(devicesA, devicesB) {
   state.multiFlowMappings = (state.multiFlowMappings || []).filter(item => devicesA.includes(item.a) && devicesB.includes(item.b));
   if (!state.multiFlowMappings.length && devicesA.length && devicesB.length) {
     const count = Math.min(devicesA.length, devicesB.length);
-    state.multiFlowMappings = Array.from({ length: count }, (_, index) => ({ a: devicesA[index], b: devicesB[index] }));
+    state.multiFlowMappings = Array.from({ length: count }, (_, index) => ({ a: devicesA[index], b: devicesB[index], label: "" }));
   }
+}
+
+function flowMappingDefaultLabel(mapping = {}) {
+  return String(mapping.a || mapping.b || "未命名设备组");
+}
+
+function flowMappingLabel(mapping = {}) {
+  const label = String(mapping.label || "").trim();
+  return label || flowMappingDefaultLabel(mapping);
 }
 
 function renderFlowMappingRows(projectA, projectB) {
@@ -3566,6 +3662,7 @@ function renderFlowMappingRows(projectA, projectB) {
   ensureFlowMappings(devicesA, devicesB);
   els.multiFlowDeviceMappings.innerHTML = state.multiFlowMappings.map((mapping, index) => `
     <div class="flow-device-row" data-index="${index}">
+      <input class="flow-map-label" type="text" value="${attrEscape(flowMappingLabel(mapping))}" data-default="${attrEscape(flowMappingDefaultLabel(mapping))}" aria-label="设备组命名">
       <select class="flow-map-a">
         ${devicesA.map(device => `<option value="${attrEscape(device)}" ${device === mapping.a ? "selected" : ""}>${escapeHtml(device)}</option>`).join("")}
       </select>
@@ -3592,7 +3689,7 @@ function preferenceStateForRows(rows, project, metric, mappings, side, threshold
   const second = scores[1];
   if (second && best.score - second.score <= threshold) return { label: "无明显差异", key: "close", device: "" };
   const pair = mappings.find(item => String(side === "a" ? item.a : item.b) === String(best.device));
-  const equivalent = pair ? `${pair.a} ↔ ${pair.b}` : best.device;
+  const equivalent = pair ? flowMappingLabel(pair) : best.device;
   return { label: equivalent, key: equivalent, device: best.device };
 }
 
@@ -4880,7 +4977,7 @@ function bindEvents() {
     const projectB = projectContext(state.multiProjectB);
     const devicesA = uniqueDeviceValues(projectA);
     const devicesB = uniqueDeviceValues(projectB);
-    state.multiFlowMappings.push({ a: devicesA[0] || "", b: devicesB[0] || "" });
+    state.multiFlowMappings.push({ a: devicesA[0] || "", b: devicesB[0] || "", label: "" });
     renderMultiFlowPage();
     markProjectDirty();
   });
@@ -4889,9 +4986,18 @@ function bindEvents() {
     if (!row) return;
     const index = Number(row.dataset.index);
     if (!state.multiFlowMappings[index]) return;
-    state.multiFlowMappings[index] = {
+    const previous = state.multiFlowMappings[index];
+    const labelInput = row.querySelector(".flow-map-label");
+    const rawLabel = labelInput?.value.trim() || "";
+    const previousDefault = labelInput?.dataset.default || flowMappingDefaultLabel(previous);
+    const next = {
       a: row.querySelector(".flow-map-a")?.value || "",
       b: row.querySelector(".flow-map-b")?.value || ""
+    };
+    const labelIsDefault = !previous.label || rawLabel === previousDefault;
+    state.multiFlowMappings[index] = {
+      ...next,
+      label: labelIsDefault ? "" : rawLabel
     };
     renderMultiFlowPage();
     markProjectDirty();

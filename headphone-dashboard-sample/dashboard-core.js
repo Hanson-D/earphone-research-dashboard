@@ -1277,7 +1277,7 @@
       multiFlowMetricB: String(config.multiFlowMetricB || ""),
       multiFlowThreshold: Number.isFinite(multiFlowThreshold) ? Math.max(0, multiFlowThreshold) : undefined,
       multiFlowMappings: Array.isArray(config.multiFlowMappings) ? config.multiFlowMappings
-        .map(item => ({ a: String(item?.a || ""), b: String(item?.b || "") }))
+        .map(item => ({ a: String(item?.a || ""), b: String(item?.b || ""), label: String(item?.label || "") }))
         .filter(item => item.a || item.b) : [],
       userPhotoPositions,
       userFilter,

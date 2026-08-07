@@ -73,9 +73,12 @@ test("multi-project analysis exposes detail comparison and flow pages", () => {
   assert.match(js, /toOffsets/);
   assert.match(js, /nodeHeightFor/);
   assert.match(js, /function renderFlowDetailCards/);
+  assert.match(js, /function flowMappingLabel/);
+  assert.match(js, /flow-map-label/);
   assert.match(css, /\.sankey-chart/);
   assert.match(css, /\.multi-flow-overview/);
   assert.match(css, /\.flow-summary-row\.active/);
+  assert.match(css, /\.flow-map-label/);
   assert.match(css, /\.flow-detail-card/);
   assert.match(js, /validIds\.has\(state\.multiProjectA\)/);
   assert.match(js, /state\.multiProjectB === state\.multiProjectA/);
@@ -88,8 +91,10 @@ test("pressure page exposes larger device radar for mean and minimum raw pressur
 
   assert.match(html, /id="pressureRadar"/);
   assert.match(html, /设备挤压雷达/);
-  assert.match(html, /平均原始分数 \/ 最低原始分数/);
+  assert.match(html, /设备差值 \/ 平均原始分数 \/ 最低原始分数/);
   assert.match(js, /function renderPressureRadar/);
+  assert.match(js, /function renderPressureRadarDiffCard/);
+  assert.match(js, /meanDiff/);
   assert.match(js, /Core\.pressureRadarByDevice/);
   assert.match(js, /meanScore/);
   assert.match(js, /minScore/);
@@ -104,6 +109,7 @@ test("pressure page exposes larger device radar for mean and minimum raw pressur
   assert.match(css, /\.pressure-radar-grid/);
   assert.match(css, /\.pressure-radar-mean/);
   assert.match(css, /\.pressure-radar-min/);
+  assert.match(css, /\.pressure-radar-diff/);
   assert.match(css, /height:\s*420px/);
   assert.match(css, /\.pressure-radar-sample/);
 });

@@ -698,6 +698,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .pressure-radar-title small { color: var(--muted); font-size: 10px; font-weight: 700; text-align: right; }
 .pressure-radar-card svg { display: block; width: 100%; height: 420px; margin-top: 8px; }
 .pressure-radar-ring { fill: none; stroke: #ead6d6; stroke-width: 1; }
+.pressure-radar-ring.zero { stroke: #9f8a8a; stroke-dasharray: 4 4; }
 .pressure-radar-axis { stroke: #d8c5c5; stroke-width: 1; }
 .pressure-radar-label {
   fill: var(--accent-dark);
@@ -709,6 +710,8 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 }
 .pressure-radar-mean { fill: rgba(80, 117, 89, .18); stroke: #507559; stroke-width: 2.2; }
 .pressure-radar-min { fill: rgba(143, 29, 34, .16); stroke: var(--accent-dark); stroke-width: 2.4; }
+.pressure-radar-diff { fill: rgba(77, 112, 140, .18); stroke: #4d708c; stroke-width: 2.5; }
+.pressure-radar-diff-point { fill: #4d708c; stroke: #fffdfa; stroke-width: 1.4; }
 .pressure-radar-sample { fill: #fffdfa; stroke: var(--accent-dark); stroke-width: 1.7; opacity: .92; }
 .pressure-radar-dot { fill: var(--accent-dark); stroke: #fffdfa; stroke-width: 1.5; }
 .pressure-radar-scale { fill: var(--muted); font-size: 9px; font-weight: 800; }
@@ -717,6 +720,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .pressure-radar-legend i { width: 18px; height: 7px; border-radius: 999px; }
 .pressure-radar-legend .mean { background: #507559; }
 .pressure-radar-legend .min { background: var(--accent-dark); }
+.pressure-radar-legend .diff { background: #4d708c; }
 .pressure-heatmaps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -932,8 +936,9 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .multi-detail-table { min-width: 720px; }
 
 .flow-device-mappings { display: grid; gap: 8px; margin-bottom: 8px; }
-.flow-device-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
-.flow-device-row select { min-width: 0; }
+.flow-device-row { display: grid; grid-template-columns: minmax(88px, .85fr) minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.flow-device-row select, .flow-device-row input { min-width: 0; }
+.flow-map-label { padding: 6px 7px; border: 1px solid var(--line); background: #fffdfb; font-size: 11px; font-weight: 800; }
 .multi-flow-overview { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 0; border-top: 1px solid var(--line); }
 .multi-flow-chart { display: grid; gap: 10px; padding: 16px 18px 18px; border-right: 1px solid var(--line); }
 .sankey-shell { overflow-x: auto; padding: 8px; background: linear-gradient(180deg, #fffaf6, #fff); border: 1px solid var(--line); }
