@@ -954,6 +954,14 @@ test("dashboard config import keeps only fields in the current schema", () => {
     photoCompareLevelA: "女",
     photoCompareLevelB: "男",
     photoCompareView: "photo_front",
+    photoComparePhotoSize: "180",
+    photoComparePositionX: "42",
+    photoComparePositionY: "58",
+    photoCompareZoom: "130",
+    photoComparePanelSettings: {
+      a: { view: "ear:%E5%B7%A6%E8%80%B3::photo_front", photoSize: "170", positionX: "40", positionY: "55", zoom: "120" },
+      b: { view: "old_photo", photoSize: "999" }
+    },
     analysisMode: "multi",
     multiProjectA: "project-a",
     multiProjectB: "project-b",
@@ -985,6 +993,14 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.photoCompareLevelA, "女");
   assert.equal(config.photoCompareLevelB, "男");
   assert.equal(config.photoCompareView, "photo_front");
+  assert.equal(config.photoComparePhotoSize, 180);
+  assert.equal(config.photoComparePositionX, 42);
+  assert.equal(config.photoComparePositionY, 58);
+  assert.equal(config.photoCompareZoom, 130);
+  assert.deepEqual(config.photoComparePanelSettings, {
+    a: { view: "ear:%E5%B7%A6%E8%80%B3::photo_front", photoSize: 170, positionX: 40, positionY: 55, zoom: 120 },
+    b: { photoSize: 260 }
+  });
   assert.equal(config.analysisMode, "multi");
   assert.equal(config.multiProjectA, "project-a");
   assert.equal(config.multiProjectB, "project-b");

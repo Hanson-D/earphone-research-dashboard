@@ -1253,6 +1253,22 @@
       const match = text.match(/^ear:[^:]+::(.+)$/);
       return headerSet.has(match ? match[1] : text) ? text : "";
     };
+    const clampNumber = (value, min, max, fallback) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+    };
+    const photoComparePanelSettings = config.photoComparePanelSettings && typeof config.photoComparePanelSettings === "object" ?
+      Object.fromEntries(["a", "b"].map(side => {
+        const panel = config.photoComparePanelSettings[side] || {};
+        return [side, {
+          view: keepPhotoView(panel.view),
+          photoSize: clampNumber(panel.photoSize, 90, 260, undefined),
+          positionX: clampNumber(panel.positionX, 0, 100, undefined),
+          positionY: clampNumber(panel.positionY, 0, 100, undefined),
+          zoom: clampNumber(panel.zoom, 50, 250, undefined)
+        }];
+      }).map(([side, panel]) => [side, Object.fromEntries(Object.entries(panel).filter(([, value]) => value !== undefined && value !== ""))])
+        .filter(([, panel]) => Object.keys(panel).length)) : {};
     const comparisonThreshold = Number(config.comparisonThreshold);
     const comparisonGroupLayouts = config.comparisonGroupLayouts && typeof config.comparisonGroupLayouts === "object" ?
       Object.fromEntries(Object.entries(config.comparisonGroupLayouts)
@@ -1278,6 +1294,11 @@
       photoCompareLevelA: String(config.photoCompareLevelA || ""),
       photoCompareLevelB: String(config.photoCompareLevelB || ""),
       photoCompareView: keepPhotoView(config.photoCompareView),
+      photoComparePhotoSize: clampNumber(config.photoComparePhotoSize, 90, 260, undefined),
+      photoComparePositionX: clampNumber(config.photoComparePositionX, 0, 100, undefined),
+      photoComparePositionY: clampNumber(config.photoComparePositionY, 0, 100, undefined),
+      photoCompareZoom: clampNumber(config.photoCompareZoom, 50, 250, undefined),
+      photoComparePanelSettings,
       analysisMode: config.analysisMode === "multi" ? "multi" : config.analysisMode === "single" ? "single" : "",
       multiProjectA: String(config.multiProjectA || ""),
       multiProjectB: String(config.multiProjectB || ""),

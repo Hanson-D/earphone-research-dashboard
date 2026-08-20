@@ -629,12 +629,13 @@
 
   <main id="photoComparePage" class="app-page">
     <section class="photo-compare-layout">
-      <aside class="control-panel photo-compare-control-panel">
+      <article class="panel photo-compare-control-panel">
         <div class="section-heading">
           <span>照片对比</span>
-          <small>按变量水平左右查看</small>
+          <small>只显示组间变量</small>
         </div>
 
+        <div class="photo-compare-controls">
         <div class="control-block">
           <label for="photoCompareVariable">对比变量</label>
           <select id="photoCompareVariable"></select>
@@ -652,12 +653,20 @@
         </div>
 
         <div class="control-block">
-          <label for="photoCompareView">照片视角</label>
+          <label for="photoCompareView">统一视角</label>
           <select id="photoCompareView"></select>
         </div>
 
-        <p id="photoCompareSummary" class="pressure-note">选择变量、两个水平和视角后查看照片。</p>
-      </aside>
+        <div class="photo-compare-tuning">
+          <label>统一大小<input id="photoComparePhotoSize" type="range" min="90" max="260" step="10"><output id="photoComparePhotoSizeValue"></output></label>
+          <label>统一横向中心<input id="photoComparePositionX" type="range" min="0" max="100" step="1"><output id="photoComparePositionXValue"></output></label>
+          <label>统一纵向中心<input id="photoComparePositionY" type="range" min="0" max="100" step="1"><output id="photoComparePositionYValue"></output></label>
+          <label>统一缩放<input id="photoCompareZoom" type="range" min="50" max="250" step="5"><output id="photoCompareZoomValue"></output></label>
+        </div>
+        </div>
+
+        <p id="photoCompareSummary" class="pressure-note">选择组间变量、两个水平和视角后查看照片。</p>
+      </article>
 
       <section class="photo-compare-main">
         <article class="panel photo-compare-stage">
@@ -667,7 +676,7 @@
               <h2 id="photoCompareTitle">照片对比</h2>
             </div>
           </div>
-          <div id="photoCompareGrid" class="photo-compare-grid"></div>
+          <div id="photoCompareGrid" class="photo-compare-columns"></div>
         </article>
       </section>
     </section>
