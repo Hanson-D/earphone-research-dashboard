@@ -102,8 +102,10 @@ const state = {
   sourceCsvName: "",
   sourceCsvText: "",
   detailPhotoObserver: null,
+  mappingThumbnailObserver: null,
   mappingObjectUrls: [],
   thumbnailUrls: {},
+  thumbnailPromises: {},
   photoUrlByPath: {},
   photoRelativeByUrl: {},
   detailPreviewUrls: {},
@@ -1379,11 +1381,8 @@ async function persistProjectAssetsToServerProject(projectPath, project) {
   }
   const root = els.photoRootInput?.value?.trim?.() || "";
   if (root && /^[A-Za-z]:[\\/]|^\//.test(root)) {
-    const result = await copyProjectPhotosFromServerRoot(projectPath, root);
-    if (result.copied > 0) {
-      project.photoRoot = "photos";
-      els.photoRootInput.value = "photos";
-    }
+    project.photoRoot = root;
+    return project;
   }
   return project;
 }
@@ -4204,12 +4203,15 @@ function renderPhotoSourceMode() {
 }
 
 function clearMappingObjectUrls() {
+  state.mappingThumbnailObserver?.disconnect?.();
+  state.mappingThumbnailObserver = null;
   state.mappingObjectUrls.forEach(url => URL.revokeObjectURL(url));
   state.mappingObjectUrls = [];
   Object.values(state.thumbnailUrls).forEach(url => {
     if (String(url).startsWith("blob:")) URL.revokeObjectURL(url);
   });
   state.thumbnailUrls = {};
+  state.thumbnailPromises = {};
   state.photoUrlByPath = {};
   state.photoRelativeByUrl = {};
   clearDetailPreviewUrls();
@@ -4250,17 +4252,75 @@ async function createThumbnailUrl(sourceUrl, maxSize = 128, quality = 0.72) {
 }
 
 async function buildMappingThumbnails(photos = []) {
-  await Promise.all(photos.map(async photo => {
+  const visiblePhotos = photos.slice(0, 24);
+  await Promise.all(visiblePhotos.map(async photo => {
     const key = photoFileStoredPath(photo);
     const source = photoFileRuntimeUrl(photo);
-    if (!key || !source || state.thumbnailUrls[key]) return;
-    try {
-      const thumbUrl = await createThumbnailUrl(source);
-      state.thumbnailUrls[key] = thumbUrl;
-    } catch {
-      state.thumbnailUrls[key] = source;
-    }
+    if (!key || !source) return;
+    await mappingThumbnailUrl(key, source);
   }));
+}
+
+async function mappingThumbnailUrl(key, source) {
+  if (!key || !source) return source || "";
+  if (state.thumbnailUrls[key]) return state.thumbnailUrls[key];
+  if (!state.thumbnailPromises[key]) {
+    state.thumbnailPromises[key] = createThumbnailUrl(source)
+      .then(url => {
+        state.thumbnailUrls[key] = url;
+        delete state.thumbnailPromises[key];
+        return url;
+      })
+      .catch(() => {
+        state.thumbnailUrls[key] = source;
+        delete state.thumbnailPromises[key];
+        return source;
+      });
+  }
+  return state.thumbnailPromises[key];
+}
+
+async function loadMappingThumbnail(image) {
+  const key = image?.dataset?.thumbKey || "";
+  const source = image?.dataset?.thumbSrc || "";
+  if (!key || !source || image.dataset.loadingThumb === key) return;
+  image.dataset.loadingThumb = key;
+  const url = await mappingThumbnailUrl(key, source);
+  if (image.dataset.thumbKey !== key) return;
+  image.src = url;
+  image.classList.remove("mapping-photo-lazy");
+  delete image.dataset.loadingThumb;
+}
+
+function observeMappingThumbnails(root = els.mappingPreview) {
+  state.mappingThumbnailObserver?.disconnect?.();
+  const images = root ? [...root.querySelectorAll("img.mapping-photo-lazy[data-thumb-src]")] : [];
+  if (!images.length) return;
+  if (!("IntersectionObserver" in window)) {
+    images.slice(0, 48).forEach(loadMappingThumbnail);
+    return;
+  }
+  state.mappingThumbnailObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        state.mappingThumbnailObserver?.unobserve?.(entry.target);
+        loadMappingThumbnail(entry.target);
+      }
+    });
+  }, {
+    rootMargin: "520px 0px",
+    threshold: 0.01
+  });
+  images.forEach(image => state.mappingThumbnailObserver.observe(image));
+}
+
+function mappingPhotoImage(path, alt, caption) {
+  if (!path) return "";
+  const src = photoUrl(path);
+  const stored = state.photoRelativeByUrl[path] || normalizePathSlashes(path);
+  const thumbSrc = photoThumbUrl(path);
+  const lazy = thumbSrc === src;
+  return `<img class="photo-preview-trigger ${lazy ? "mapping-photo-lazy" : ""}" src="${attrEscape(lazy ? detailPhotoPlaceholder() : thumbSrc)}" alt="${attrEscape(alt)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}" data-thumb-key="${attrEscape(stored)}" data-thumb-src="${attrEscape(src)}">`;
 }
 
 async function loadBrowserPhotoFolder(files = []) {
@@ -4272,8 +4332,6 @@ async function loadBrowserPhotoFolder(files = []) {
       return url;
     }
   });
-  if (els.photoFolderStatus) els.photoFolderStatus.textContent = `正在生成 ${photos.length} 张缩略图…`;
-  await buildMappingThumbnails(photos);
   state.mappingFiles = photos;
   rebuildPhotoPathIndex(photos);
   const rootName = [...files].find(file => file.webkitRelativePath)?.webkitRelativePath?.split(/[\\/]/)[0] || "已选择文件夹";
@@ -4287,7 +4345,7 @@ async function loadBrowserPhotoFolder(files = []) {
   return photos;
 }
 
-async function scanPhotoRoot() {
+async function scanPhotoRoot(options = {}) {
   if (state.serverProjectId) return uploadServerPhotoFiles();
   if (state.mappingFiles.some(file => file.source === "browser_folder")) {
     rebuildPhotoPathIndex(state.mappingFiles);
@@ -4298,7 +4356,7 @@ async function scanPhotoRoot() {
   const response = await fetch("/api/scan-photos", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ root })
+    body: JSON.stringify({ root, force: Boolean(options.force) })
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "照片目录扫描失败。");
@@ -4602,11 +4660,9 @@ function bareSlotGroups(slots = []) {
 
 function renderBareSlotFigure(review, slot) {
   const path = state.mappedRows[slot.rowIndex]?.[slot.field] || "";
-  const src = path ? photoUrl(path) : "";
-  const thumbSrc = path ? photoThumbUrl(path) : "";
   const label = currentBarePhotoLabel(slot.field, slot.label);
   return `<figure class="mapping-photo-slot mapping-bare-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="bare" data-user="${attrEscape(review.user)}" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}" title="拖动照片到这里会重置该用户设备排序">
-    ${path ? `<img class="photo-preview-trigger" src="${attrEscape(thumbSrc)}" alt="${attrEscape(label)}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(`${review.user} · ${label}`)}">` : `<div class="missing-photo">拖到这里</div>`}
+    ${path ? mappingPhotoImage(path, label, `${review.user} · ${label}`) : `<div class="missing-photo">拖到这里</div>`}
     <figcaption>${escapeHtml(label)}</figcaption>
     <input class="bare-ear-label-input" data-field="${attrEscape(slot.field)}" value="${attrEscape(label)}" aria-label="${attrEscape(label)}名称">
     <select class="mapping-photo-select" data-row-index="${slot.rowIndex}" data-field="${attrEscape(slot.field)}">
@@ -4629,11 +4685,9 @@ function photoFieldViewName(field) {
 
 function renderMappingPhotoSlot(review, entry, field, deviceField) {
   const path = state.mappedRows[entry.rowIndex][field];
-  const src = path ? photoUrl(path) : "";
-  const thumbSrc = path ? photoThumbUrl(path) : "";
   const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
   return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="device" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
-    ${path ? `<img class="photo-preview-trigger" src="${attrEscape(thumbSrc)}" alt="${attrEscape(state.viewLabels[field])}" loading="lazy" decoding="async" draggable="false" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">缺失</div>`}
+    ${path ? mappingPhotoImage(path, state.viewLabels[field], caption) : `<div class="missing-photo">缺失</div>`}
     <figcaption>${escapeHtml(photoFieldViewName(field))}</figcaption>
     <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}">
       ${photoSelectOptions(els.mappingMode.value === "folders" ? state.mappingFiles : review.files, path)}
@@ -4709,6 +4763,7 @@ function renderMappingPreview(reviews, userField, deviceField, photoFields) {
   const issues = reviews.length - ok;
   els.mappingSummary.innerHTML = `<strong>${reviews.length}</strong> 位用户 · <strong>${ok}</strong> 正常 · <strong>${issues}</strong> 异常`;
   els.mappingPreview.innerHTML = reviews.map(review => renderMappingReviewCard(review, deviceField, photoFields)).join("");
+  observeMappingThumbnails();
 }
 
 function renderMappingReviewUser(user) {
@@ -4717,7 +4772,10 @@ function renderMappingReviewUser(user) {
   const current = [...els.mappingPreview.querySelectorAll(".mapping-user")]
     .find(element => element.dataset.reviewUser === String(user));
   const html = renderMappingReviewCard(review, els.mappingDeviceField.value, state.mappingPhotoFields);
-  if (current) current.outerHTML = html;
+  if (current) {
+    current.outerHTML = html;
+    observeMappingThumbnails();
+  }
 }
 
 function mappingSlotFromElement(element) {
@@ -5508,7 +5566,7 @@ function bindEvents() {
     els.runMappingButton.disabled = true;
     els.mappingSummary.textContent = "正在扫描并映射照片…";
     try {
-      await scanPhotoRoot();
+      await scanPhotoRoot({ force: true });
       state.photoMappingOverrides = {};
       await buildPhotoMapping();
       markProjectDirty();

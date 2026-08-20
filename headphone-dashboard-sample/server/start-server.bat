@@ -15,8 +15,7 @@ if "%PORT%"=="" (
 )
 
 if "%HOST%"=="" set "HOST=0.0.0.0"
-set "DASHBOARD_LEGACY_PATHS=0"
-set "URL=http://127.0.0.1:%PORT%/server/server.html"
+set "URL=http://127.0.0.1:%PORT%"
 
 where py >nul 2>nul
 if not errorlevel 1 (
@@ -36,9 +35,9 @@ pause
 exit /b 1
 
 :run_server
-echo Starting Earphone Research Dashboard server mode...
+echo Starting Earphone Research Dashboard...
 echo Local test entry: %URL%
-echo LAN users should open: http://SERVER_IP:%PORT%/server/server.html
+echo LAN users should open: http://SERVER_IP:%PORT%
 echo.
 start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 1; Start-Process '%URL%'"
 set "PORT=%PORT%"

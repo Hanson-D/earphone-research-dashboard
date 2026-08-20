@@ -162,6 +162,19 @@ class ServerProjectTests(unittest.TestCase):
         self.assertIn("path", roots[0])
         self.assertTrue(roots[0]["exists"])
 
+    def test_photo_scan_uses_cache_for_unchanged_root(self):
+        root = Path(self.tmp.name) / "photos"
+        (root / "U001").mkdir(parents=True)
+        (root / "U001" / "front.jpg").write_bytes(b"image")
+
+        first, first_cached = server.scan_photo_root(root)
+        second, second_cached = server.scan_photo_root(root)
+
+        self.assertFalse(first_cached)
+        self.assertTrue(second_cached)
+        self.assertEqual(first, second)
+        self.assertTrue(server.photo_scan_cache_path(root).is_file())
+
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
             previous_root = os.environ.get("DASHBOARD_PROJECTS_ROOT")

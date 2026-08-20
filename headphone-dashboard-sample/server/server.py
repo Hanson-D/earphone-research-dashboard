@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import mimetypes
 import os
@@ -16,6 +17,7 @@ PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 DEFAULT_PORT = 7362
 PORT_SEARCH_LIMIT = 100
 DEFAULT_HOST = "0.0.0.0"
+PHOTO_SCAN_CACHE_VERSION = 1
 
 
 def app_root():
@@ -324,6 +326,70 @@ def list_local_project_scan_root_info():
     return [{"path": display_path(root), "exists": root.is_dir()} for root in project_scan_roots()]
 
 
+def photo_scan_cache_dir():
+    path = project_root() / ".cache" / "photo-indexes"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def photo_scan_cache_path(root):
+    key = hashlib.sha256(str(root).encode("utf-8")).hexdigest()
+    return photo_scan_cache_dir() / f"{key}.json"
+
+
+def photo_scan_signature(root):
+    stat = root.stat()
+    return {
+        "version": PHOTO_SCAN_CACHE_VERSION,
+        "root": str(root),
+        "mtimeNs": stat.st_mtime_ns,
+        "ctimeNs": stat.st_ctime_ns,
+    }
+
+
+def read_photo_scan_cache(root):
+    path = photo_scan_cache_path(root)
+    if not path.is_file():
+        return None
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if cached.get("signature") != photo_scan_signature(root):
+        return None
+    photos = cached.get("photos")
+    return photos if isinstance(photos, list) else None
+
+
+def write_photo_scan_cache(root, photos):
+    payload = {
+        "signature": photo_scan_signature(root),
+        "photos": photos,
+    }
+    photo_scan_cache_path(root).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def scan_photo_root(root, force=False):
+    if not force:
+        cached = read_photo_scan_cache(root)
+        if cached is not None:
+            return cached, True
+    photos = []
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
+            relative = path.relative_to(root)
+            photos.append({
+                "name": path.name,
+                "relative_path": relative.as_posix(),
+                "absolute_path": relative.as_posix(),
+                "user_folder": relative.parts[0] if len(relative.parts) > 1 else "",
+                "url": f"/api/photo?path={quote(str(path.resolve()))}",
+            })
+    photos.sort(key=lambda item: (item["user_folder"], item["name"].lower(), item["relative_path"].lower()))
+    write_photo_scan_cache(root, photos)
+    return photos, False
+
+
 def save_server_project(project_id, project, expected_revision=None, title=None, create=False):
     if not isinstance(project, dict):
         raise TypeError("项目内容必须是 JSON 对象。")
@@ -458,6 +524,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
             root = Path(payload.get("root", "")).expanduser().resolve()
+            force = bool(payload.get("force"))
         except (ValueError, json.JSONDecodeError):
             self.send_json({"error": "无效的请求。"}, 400)
             return
@@ -467,20 +534,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
 
         ALLOWED_ROOTS.add(root)
-        photos = []
-        for path in root.rglob("*"):
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
-                relative = path.relative_to(root)
-                photos.append({
-                    "name": path.name,
-                    "relative_path": relative.as_posix(),
-                    "absolute_path": relative.as_posix(),
-                    "user_folder": relative.parts[0] if len(relative.parts) > 1 else "",
-                    "url": f"/api/photo?path={quote(str(path.resolve()))}",
-                })
-
-        photos.sort(key=lambda item: (item["user_folder"], item["name"].lower(), item["relative_path"].lower()))
-        self.send_json({"root": str(root), "photos": photos})
+        photos, cached = scan_photo_root(root, force=force)
+        self.send_json({"root": str(root), "photos": photos, "cached": cached})
 
     def save_project(self):
         try:
@@ -774,11 +829,13 @@ if __name__ == "__main__":
     local_base = f"http://127.0.0.1:{port}"
     if host in ("0.0.0.0", "::"):
         print(f"Dashboard local: {local_base}")
-        print(f"Server entry local: {local_base}/server/server.html")
         print(f"LAN access: http://YOUR_COMPUTER_IP:{port}")
-        print(f"LAN server entry: http://YOUR_COMPUTER_IP:{port}/server/server.html")
+        if not legacy_paths_enabled():
+            print(f"Legacy server entry local: {local_base}/server/server.html")
+            print(f"Legacy LAN server entry: http://YOUR_COMPUTER_IP:{port}/server/server.html")
     else:
         print(f"Dashboard: http://{host}:{port}")
-        print(f"Server entry: http://{host}:{port}/server/server.html")
+        if not legacy_paths_enabled():
+            print(f"Legacy server entry: http://{host}:{port}/server/server.html")
     print("Press Ctrl+C to stop.")
     server.serve_forever()

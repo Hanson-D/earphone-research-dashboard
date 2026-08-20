@@ -248,6 +248,21 @@ test("detail photos can load from sibling photos folder through project-photo ap
   assert.match(js, /photoRoot: els\.photoRootInput\.value\.trim\(\) \|\| "photos"/);
 });
 
+test("mapping thumbnails are generated lazily instead of all at folder load", () => {
+  const js = read("app.js");
+  const loadBody = js.match(/async function loadBrowserPhotoFolder\(files = \[\]\) \{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(js, /mappingThumbnailObserver/);
+  assert.match(js, /function observeMappingThumbnails/);
+  assert.match(js, /new IntersectionObserver/);
+  assert.match(js, /function mappingPhotoImage/);
+  assert.match(js, /mapping-photo-lazy/);
+  assert.match(js, /data-thumb-src/);
+  assert.match(js, /scanPhotoRoot\(\{ force: true \}\)/);
+  assert.doesNotMatch(loadBody, /buildMappingThumbnails/);
+  assert.match(js, /photos\.slice\(0,\s*24\)/);
+});
+
 test("project load failures expose recovery actions without affecting sample data", () => {
   const html = read("index.html");
   const js = read("app.js");
@@ -276,7 +291,7 @@ test("dynamic dashboard and server entry rendering escapes user-controlled text"
   assert.match(js, /views\.map\(escapeHtml\)/);
   assert.match(js, /escapeHtml\(fieldLabels\[metric\] \|\| metric\)/);
   assert.match(js, /\$\{escapeHtml\(label\)\}：\$\{score\}/);
-  assert.match(js, /src="\$\{attrEscape\(thumbSrc\)\}"/);
+  assert.match(js, /src="\$\{attrEscape\(lazy \? detailPhotoPlaceholder\(\) : thumbSrc\)\}"/);
   assert.match(js, /data-field="\$\{attrEscape\(slot\.field\)\}"/);
   assert.match(serverEntry, /function escapeHtml/);
   assert.match(serverEntry, /escapeHtml\(project\.title \|\| project\.id\)/);

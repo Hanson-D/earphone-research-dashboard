@@ -21,18 +21,16 @@ if [[ -z "${PORT:-}" ]]; then
 fi
 
 export PORT
-export DASHBOARD_LEGACY_PATHS=0
-
-URL="http://127.0.0.1:${PORT}/server/server.html"
+URL="http://127.0.0.1:${PORT}"
 
 if ! command -v python3 >/dev/null 2>&1; then
-  osascript -e 'display dialog "没有找到 python3，无法启动耳机数据看板服务器版。请先安装 Python 3。" buttons {"好"} default button "好" with icon caution'
+  osascript -e 'display dialog "没有找到 python3，无法启动耳机数据看板。请先安装 Python 3。" buttons {"好"} default button "好" with icon caution'
   exit 1
 fi
 
-echo "正在启动耳机数据看板服务器版..."
+echo "正在启动耳机数据看板..."
 echo "本机测试入口：${URL}"
-echo "其他设备访问：http://服务器IP:${PORT}/server/server.html"
+echo "其他设备访问：http://服务器IP:${PORT}"
 echo "使用期间请不要关闭这个窗口；关闭窗口会停止服务器。"
 echo
 
