@@ -133,8 +133,11 @@ test("single-project analysis exposes a group-level photo comparison board", () 
   assert.match(html, /id="photoCompareGrid"/);
   assert.match(js, /photoCompareVariable/);
   assert.match(js, /function photoCompareVariables/);
-  assert.match(js, /\["user", "user_id"\]\.includes\(fieldRole\(field\)\)/);
-  assert.match(js, /isUserLevelField\(field\)/);
+  assert.match(js, /function isPhotoCompareGroupField/);
+  assert.match(js, /function isBetweenUserVariable/);
+  assert.match(js, /photoCompareFieldValues\(field\)/);
+  assert.match(js, /\["device", "metric", "pressure", "photo", "ignore"\]\.includes\(role\)/);
+  assert.doesNotMatch(js, /\["user", "user_id"\]\.includes\(fieldRole\(field\)\)/);
   assert.match(js, /function renderPhotoComparePage/);
   assert.match(js, /function renderPhotoComparePanel/);
   assert.match(js, /function setPhotoComparePanelSetting/);

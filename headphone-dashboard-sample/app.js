@@ -2023,6 +2023,50 @@ function isUserLevelField(field) {
   return true;
 }
 
+function cleanPhotoCompareValue(value) {
+  return String(value ?? "").trim();
+}
+
+function photoCompareFieldValues(field, rows = state.rows) {
+  const values = new Set();
+  (rows || []).forEach(row => {
+    const value = cleanPhotoCompareValue(row?.[field]);
+    if (value) values.add(value);
+  });
+  return [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function isPhotoCompareIdentifierField(field) {
+  const key = cleanPhotoCompareValue(field);
+  const label = cleanPhotoCompareValue(fieldLabels[field] || field);
+  if (!key) return true;
+  if (field === state.userIdField || fieldRole(field) === "user_id") return true;
+  const identifierPattern = /^(id|user|user_id|participant|participant_id|subject|subject_id|record_id|name|姓名|用户|用户编号|用户id|受试者|受试者编号)$/i;
+  return identifierPattern.test(key) || identifierPattern.test(label);
+}
+
+function isBetweenUserVariable(field, rows = state.rows) {
+  const byUser = new Map();
+  for (const row of rows || []) {
+    const user = cleanPhotoCompareValue(row?.[state.userIdField]);
+    const value = cleanPhotoCompareValue(row?.[field]);
+    if (!user || !value) continue;
+    if (!byUser.has(user)) byUser.set(user, value);
+    if (byUser.get(user) !== value) return false;
+  }
+  return byUser.size > 0;
+}
+
+function isPhotoCompareGroupField(field) {
+  if (!field || isPhotoCompareIdentifierField(field) || state.photoFields.includes(field) || isPhotoField(field)) return false;
+  const role = fieldRole(field);
+  if (["device", "metric", "pressure", "photo", "ignore"].includes(role)) return false;
+  if (!["user", "dimension"].includes(role)) return false;
+  if (!isBetweenUserVariable(field)) return false;
+  const values = photoCompareFieldValues(field);
+  return values.length >= 2 && values.length <= 80;
+}
+
 function defaultColumnWidth(field) {
   if (isPhotoField(field)) return 360;
   if (/comment|备注|description|说明/i.test(field)) return 220;
@@ -3147,18 +3191,12 @@ function renderComparisonPreference() {
 }
 
 function photoCompareVariables() {
-  return state.dimensionFields.filter(field => {
-    if (!field || field === state.userIdField || state.photoFields.includes(field) || isPhotoField(field)) return false;
-    if (["user", "user_id"].includes(fieldRole(field))) return false;
-    if (!isUserLevelField(field)) return false;
-    const values = unique(field);
-    return values.length >= 2 && values.length <= 80;
-  });
+  return state.headers.filter(isPhotoCompareGroupField);
 }
 
 function photoCompareLevels(field = state.photoCompareVariable) {
   if (!field) return [];
-  return unique(field);
+  return photoCompareFieldValues(field);
 }
 
 function refreshPhotoCompareControls() {
@@ -3245,8 +3283,8 @@ function photoCompareRowsForLevel(level, panel) {
   if (!variable || !level) return [];
   const users = new Map();
   filteredRows().forEach(row => {
-    const user = String(row[state.userIdField] || "");
-    if (String(row[variable] || "") !== String(level)) return;
+    const user = cleanPhotoCompareValue(row[state.userIdField]);
+    if (cleanPhotoCompareValue(row[variable]) !== cleanPhotoCompareValue(level)) return;
     if (!user) return;
     if (!users.has(user)) users.set(user, []);
     users.get(user).push(row);
