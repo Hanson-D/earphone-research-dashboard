@@ -99,6 +99,7 @@ const state = {
   mappingRows: [],
   mappedRows: [],
   mappingFiles: [],
+  pendingPhotoAssetSave: false,
   sourceCsvFile: null,
   sourceCsvName: "",
   sourceCsvText: "",
@@ -540,6 +541,19 @@ function mappingConfigSnapshot() {
   };
 }
 
+function relativePhotoRootForSave(root) {
+  const normalized = safeRelativeRootForProjectPhoto(String(root || "photos").trim() || "photos");
+  if (!normalized) {
+    throw new Error("项目 JSON 只能保存相对照片根目录。请先把照片同步到项目 photos 文件夹，或填写相对照片路径。");
+  }
+  return normalized;
+}
+
+function normalizeProjectPhotoRootForSave(project) {
+  project.photoRoot = relativePhotoRootForSave(project.photoRoot || els.photoRootInput.value || "photos");
+  return project;
+}
+
 function setProjectPath(path) {
   const previousPath = state.projectPath;
   state.projectPath = path || "";
@@ -846,6 +860,7 @@ function useSampleProject() {
   state.sourceCsvFile = null;
   state.sourceCsvName = "";
   state.sourceCsvText = "";
+  state.pendingPhotoAssetSave = false;
   els.projectPathInput.value = "";
   syncProjectFileNameFromPath(defaultProjectPath());
   if (els.mappingCsvStatus) els.mappingCsvStatus.textContent = "尚未选择 CSV。保存项目时会把当前 CSV 复制到项目 data 文件夹。";
@@ -1062,6 +1077,7 @@ function restoreProjectTabSnapshot(snapshot) {
   state.mappingRows = cloneStateData(snapshot.mappingRows || []);
   state.mappedRows = cloneStateData(snapshot.mappedRows || []);
   state.mappingFiles = cloneStateData(snapshot.mappingFiles || []);
+  state.pendingPhotoAssetSave = false;
   state.mappingViews = cloneStateData(snapshot.mappingViews || []);
   state.mappingReviews = cloneStateData(snapshot.mappingReviews || []);
   state.mappingPhotoFields = cloneStateData(snapshot.mappingPhotoFields || []);
@@ -1150,7 +1166,7 @@ function restoreProjectTabSnapshot(snapshot) {
   render();
   if (state.mappingReviews.length) {
     renderMappingPreview(state.mappingReviews, els.mappingUserField.value, els.mappingDeviceField.value, state.mappingPhotoFields);
-    els.applyMappingButton.disabled = !state.mappedRows.length;
+    updateApplyDataButton();
     els.downloadPhotoAuditButton.disabled = !state.mappingPhotoFields.length;
   } else {
     resetMappingOutputs();
@@ -1191,6 +1207,7 @@ function createNewProjectTab() {
   state.mappingRows = [];
   state.mappedRows = [];
   state.mappingFiles = [];
+  state.pendingPhotoAssetSave = false;
   state.mappingViews = [];
   state.mappingReviews = [];
   state.mappingPhotoFields = [];
@@ -1317,6 +1334,14 @@ async function uploadProjectAsset(projectPath, kind, path, file, contentType = "
   return result;
 }
 
+async function projectAssetExists(projectPath, kind, path, file) {
+  const query = new URLSearchParams({ projectPath, kind, path, size: String(file?.size ?? "") });
+  const response = await fetch(`/api/project-asset-status?${query.toString()}`);
+  if (!response.ok) return false;
+  const result = await response.json();
+  return Boolean(result.exists && result.sizeMatches);
+}
+
 async function copyProjectPhotosFromServerRoot(projectPath, root) {
   const response = await fetch("/api/copy-project-photos", {
     method: "POST",
@@ -1335,6 +1360,16 @@ async function writeFileToDirectory(directoryHandle, fileName, file) {
   await writable.close();
 }
 
+async function fileExistsInDirectory(directoryHandle, fileName, file) {
+  try {
+    const handle = await directoryHandle.getFileHandle(fileName);
+    const existing = await handle.getFile();
+    return existing.size === file.size;
+  } catch {
+    return false;
+  }
+}
+
 async function ensureNestedDirectory(rootHandle, parts = []) {
   let handle = rootHandle;
   for (const part of parts.filter(Boolean)) {
@@ -1350,20 +1385,29 @@ async function persistProjectAssetsToSelectedFolder(projectDirHandle, project) {
     project.sourceCsv = joinPath("data", state.sourceCsvName || state.sourceCsvFile.name || "source.csv");
   }
   const files = selectedBrowserPhotoFiles();
-  if (files.length) {
+  if (state.pendingPhotoAssetSave && files.length) {
+    let written = 0;
+    let skipped = 0;
     for (const [index, file] of files.entries()) {
       const relative = relativePathForSelectedFile(file);
       if (!relative) continue;
       const parts = relative.split("/").filter(Boolean);
       const fileName = parts.pop();
       const dir = await ensureNestedDirectory(projectDirHandle, ["photos", ...parts]);
-      await writeFileToDirectory(dir, fileName, file);
+      if (await fileExistsInDirectory(dir, fileName, file)) {
+        skipped += 1;
+      } else {
+        await writeFileToDirectory(dir, fileName, file);
+        written += 1;
+      }
       if ((index + 1) % 10 === 0 || index === files.length - 1) {
-        setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}`, true);
+        setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}，新增 ${written}，跳过 ${skipped}`, true);
       }
     }
     project.photoRoot = "photos";
     els.photoRootInput.value = "photos";
+    state.pendingPhotoAssetSave = false;
+    if (els.photoFolderChooser) els.photoFolderChooser.value = "";
   }
   return project;
 }
@@ -1375,22 +1419,26 @@ async function persistProjectAssetsToServerProject(projectPath, project) {
     project.sourceCsv = result.path || joinPath("data", csvName);
   }
   const files = selectedBrowserPhotoFiles();
-  if (files.length) {
+  if (state.pendingPhotoAssetSave && files.length) {
+    let uploaded = 0;
+    let skipped = 0;
     for (const [index, file] of files.entries()) {
       const relative = relativePathForSelectedFile(file);
       if (!relative) continue;
-      await uploadProjectAsset(projectPath, "photo", relative, file, file.type || "application/octet-stream");
+      if (await projectAssetExists(projectPath, "photo", relative, file)) {
+        skipped += 1;
+      } else {
+        await uploadProjectAsset(projectPath, "photo", relative, file, file.type || "application/octet-stream");
+        uploaded += 1;
+      }
       if ((index + 1) % 10 === 0 || index === files.length - 1) {
-        setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}`, true);
+        setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}，新增 ${uploaded}，跳过 ${skipped}`, true);
       }
     }
     project.photoRoot = "photos";
     els.photoRootInput.value = "photos";
-    return project;
-  }
-  const root = els.photoRootInput?.value?.trim?.() || "";
-  if (root && /^[A-Za-z]:[\\/]|^\//.test(root)) {
-    project.photoRoot = root;
+    state.pendingPhotoAssetSave = false;
+    if (els.photoFolderChooser) els.photoFolderChooser.value = "";
     return project;
   }
   return project;
@@ -1411,6 +1459,7 @@ async function saveProject() {
   }
   const path = selectedProjectPath();
   project = await persistProjectAssetsToServerProject(path, project);
+  normalizeProjectPhotoRootForSave(project);
   await writeProject(path, project, "已保存项目");
 }
 
@@ -1419,6 +1468,7 @@ async function writeProjectToSelectedFolder(project, successPrefix) {
   const fileName = selectedProjectFileName();
   const projectDir = await state.projectFolderHandle.getDirectoryHandle(projectName, { create: true });
   await persistProjectAssetsToSelectedFolder(projectDir, project);
+  normalizeProjectPhotoRootForSave(project);
   const handle = await projectDir.getFileHandle(fileName, { create: true });
   const writable = await handle.createWritable();
   await writable.write(JSON.stringify(project, null, 2));
@@ -1485,6 +1535,7 @@ async function saveCurrentProjectConfig() {
     }
     if (!project) project = projectDocumentSnapshot();
     const mappingConfig = mappingConfigSnapshot();
+    mappingConfig.photoRoot = relativePhotoRootForSave(mappingConfig.photoRoot);
     await writeProjectToSelectedFolder({
       ...project,
       title: state.projectTitle || project.title || projectTabTitle(selectedProjectFileName()),
@@ -1509,6 +1560,7 @@ async function saveCurrentProjectConfig() {
   }
   if (!project) project = projectDocumentSnapshot();
   const mappingConfig = mappingConfigSnapshot();
+  mappingConfig.photoRoot = relativePhotoRootForSave(mappingConfig.photoRoot);
   await writeProject(path, {
     ...project,
     title: state.projectTitle || project.title || projectTabTitle(path),
@@ -1550,6 +1602,7 @@ async function applyLoadedProject(path, rawProject, options = {}) {
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
   state.mappingFiles = cloneStateData(options.mappingFiles || []);
+  state.pendingPhotoAssetSave = false;
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.protocolTemplate = project.protocolTemplate;
@@ -1648,6 +1701,7 @@ async function loadServerProject() {
   state.rows = project.rows.map(row => ({ ...row }));
   state.mappingRows = project.mappingRows.map(row => ({ ...row }));
   state.mappedRows = [];
+  state.pendingPhotoAssetSave = false;
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.protocolTemplate = project.protocolTemplate;
@@ -4338,6 +4392,7 @@ function clearMappingObjectUrls() {
   });
   state.thumbnailUrls = {};
   state.thumbnailPromises = {};
+  state.pendingPhotoAssetSave = false;
   state.photoUrlByPath = {};
   state.photoRelativeByUrl = {};
   clearDetailPreviewUrls();
@@ -4459,6 +4514,7 @@ async function loadBrowserPhotoFolder(files = []) {
     }
   });
   state.mappingFiles = photos;
+  state.pendingPhotoAssetSave = photos.length > 0;
   rebuildPhotoPathIndex(photos);
   const rootName = [...files].find(file => file.webkitRelativePath)?.webkitRelativePath?.split(/[\\/]/)[0] || "已选择文件夹";
   els.photoRootInput.value = photos.length ? `browser-folder:${rootName}` : "";
@@ -4656,7 +4712,7 @@ async function buildPhotoMapping() {
   });
   const libraryResult = await syncBareEarLibraryAndFallbacks();
   renderMappingPreview(reviews, userField, deviceField, photoFields);
-  els.applyMappingButton.disabled = false;
+  updateApplyDataButton();
   els.downloadPhotoAuditButton.disabled = false;
   if (libraryResult.filled) {
     els.mappingSummary.textContent = `映射完成，并从空耳库补齐 ${libraryResult.filled} 个空耳照片。`;
@@ -5172,12 +5228,26 @@ function resetMappingOutputs() {
   state.mappingReviews = [];
   state.mappingPhotoFields = [];
   state.photoMappingOverrides = {};
-  els.applyMappingButton.disabled = true;
   els.downloadPhotoAuditButton.disabled = true;
+  updateApplyDataButton();
+}
+
+function updateApplyDataButton() {
+  if (!els.applyMappingButton) return;
+  const hasMappedRows = state.mappedRows.length > 0;
+  const hasCsvRows = state.mappingRows.length > 0;
+  els.applyMappingButton.disabled = !hasMappedRows && !hasCsvRows;
+  els.applyMappingButton.textContent = hasMappedRows ? "应用照片映射到看板" : "应用 CSV 到看板";
 }
 
 function applyMappedRows() {
-  state.rows = rowsWithUserNotes(state.mappedRows);
+  const sourceRows = state.mappedRows.length ? state.mappedRows : state.mappingRows;
+  if (!sourceRows.length) {
+    els.mappingSummary.textContent = "请先选择 CSV。";
+    updateApplyDataButton();
+    return;
+  }
+  state.rows = rowsWithUserNotes(sourceRows);
   state.selectedGroup = null;
   state.columnFilters = {};
   state.userViews = {};
@@ -5186,7 +5256,7 @@ function applyMappedRows() {
   renderFieldRoleConfig();
   renderColumnConfig();
   render();
-  els.dataSourceLabel.textContent = "照片映射数据";
+  els.dataSourceLabel.textContent = state.mappedRows.length ? "照片映射数据" : "CSV 数据";
   switchPage("dashboard");
   markProjectDirty();
 }
@@ -5656,7 +5726,7 @@ function bindEvents() {
       initializeMappingFields();
       validateProtocolRows();
       renderProtocolStatus();
-      els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录`;
+      els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录。可先应用 CSV 到看板，或继续生成照片映射。`;
       if (els.mappingCsvStatus) els.mappingCsvStatus.textContent = `已选择：${file.name}。保存项目时会复制到项目 data 文件夹。`;
       markProjectDirty();
     };
@@ -5684,6 +5754,7 @@ function bindEvents() {
   els.photoRootInput.addEventListener("input", () => {
     clearMappingObjectUrls();
     state.mappingFiles = [];
+    state.pendingPhotoAssetSave = false;
     if (els.photoFolderChooser) els.photoFolderChooser.value = "";
     if (els.photoFolderStatus) els.photoFolderStatus.textContent = "将使用手动路径扫描照片目录。";
     resetMappingOutputs();

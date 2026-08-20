@@ -231,6 +231,17 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(result["path"], "photos/U001/front.jpg")
         self.assertEqual(target.read_bytes(), b"image")
 
+    def test_project_asset_status_reports_existing_matching_photo(self):
+        project_dir = Path(self.tmp.name) / "项目A"
+        project_path = project_dir / "项目A.json"
+        server.save_project_asset_file(str(project_path), "photo", "U001/front.jpg", b"image")
+
+        result = server.project_asset_status(str(project_path), "photo", "U001/front.jpg", "5")
+
+        self.assertTrue(result["exists"])
+        self.assertTrue(result["sizeMatches"])
+        self.assertEqual(result["path"], "photos/U001/front.jpg")
+
     def test_copy_project_photos_from_scanned_root(self):
         source_root = Path(self.tmp.name) / "source"
         source_root.mkdir()

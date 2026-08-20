@@ -270,6 +270,50 @@ test("mapping thumbnails are generated lazily instead of all at folder load", ()
   assert.match(js, /photos\.slice\(0,\s*24\)/);
 });
 
+test("csv rows can be applied to the dashboard without photo mapping", () => {
+  const html = read("index.html");
+  const js = read("app.js");
+  const applyBody = js.match(/function applyMappedRows\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(html, /id="applyMappingButton"[\s\S]*应用 CSV 到看板/);
+  assert.match(js, /function updateApplyDataButton/);
+  assert.match(js, /state\.mappedRows\.length \? state\.mappedRows : state\.mappingRows/);
+  assert.match(js, /应用 CSV 到看板/);
+  assert.match(js, /应用照片映射到看板/);
+  assert.match(js, /可先应用 CSV 到看板/);
+  assert.match(applyBody, /CSV 数据/);
+});
+
+test("project save skips photo assets that already exist", () => {
+  const js = read("app.js");
+  const selectedFolderBody = js.match(/async function persistProjectAssetsToSelectedFolder\(projectDirHandle, project\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  const serverProjectBody = js.match(/async function persistProjectAssetsToServerProject\(projectPath, project\) \{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(js, /function fileExistsInDirectory/);
+  assert.match(js, /async function projectAssetExists/);
+  assert.match(js, /\/api\/project-asset-status/);
+  assert.match(js, /pendingPhotoAssetSave/);
+  assert.match(js, /state\.pendingPhotoAssetSave = photos\.length > 0/);
+  assert.match(selectedFolderBody, /state\.pendingPhotoAssetSave && files\.length/);
+  assert.match(serverProjectBody, /state\.pendingPhotoAssetSave && files\.length/);
+  assert.match(js, /state\.pendingPhotoAssetSave = false/);
+  assert.match(selectedFolderBody, /fileExistsInDirectory/);
+  assert.match(serverProjectBody, /projectAssetExists/);
+  assert.match(js, /photoFolderChooser\) els\.photoFolderChooser\.value = ""/);
+});
+
+test("saved project json keeps photo root relative", () => {
+  const js = read("app.js");
+  const serverProjectBody = js.match(/async function persistProjectAssetsToServerProject\(projectPath, project\) \{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(js, /function relativePhotoRootForSave/);
+  assert.match(js, /function normalizeProjectPhotoRootForSave/);
+  assert.match(js, /项目 JSON 只能保存相对照片根目录/);
+  assert.match(js, /normalizeProjectPhotoRootForSave\(project\)/);
+  assert.match(js, /mappingConfig\.photoRoot = relativePhotoRootForSave\(mappingConfig\.photoRoot\)/);
+  assert.doesNotMatch(serverProjectBody, /project\.photoRoot = root/);
+});
+
 test("project load failures expose recovery actions without affecting sample data", () => {
   const html = read("index.html");
   const js = read("app.js");

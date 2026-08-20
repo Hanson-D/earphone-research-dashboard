@@ -200,6 +200,13 @@ def local_project_path_from_payload(value):
 
 
 def save_project_asset_file(project_path_value, kind, relative_value, data):
+    target, project_relative = project_asset_target(project_path_value, kind, relative_value)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return {"path": project_relative.as_posix(), "bytes": len(data)}
+
+
+def project_asset_target(project_path_value, kind, relative_value):
     project_path = local_project_path_from_payload(project_path_value)
     if kind == "csv":
         relative = safe_relative_asset_path(relative_value or "source.csv", {".csv"})
@@ -214,9 +221,23 @@ def save_project_asset_file(project_path_value, kind, relative_value, data):
     base = (project_path.parent / ("photos" if kind == "photo" else "data")).resolve()
     if base != target.parent and base not in target.parents:
         raise ValueError("资源保存路径无效。")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(data)
-    return {"path": project_relative.as_posix(), "bytes": len(data)}
+    return target, project_relative
+
+
+def project_asset_status(project_path_value, kind, relative_value, size_value=None):
+    target, project_relative = project_asset_target(project_path_value, kind, relative_value)
+    exists = target.is_file()
+    actual_size = target.stat().st_size if exists else None
+    try:
+        expected_size = int(size_value) if size_value not in (None, "") else None
+    except (TypeError, ValueError):
+        expected_size = None
+    return {
+        "path": project_relative.as_posix(),
+        "exists": exists,
+        "size": actual_size,
+        "sizeMatches": exists and expected_size is not None and actual_size == expected_size,
+    }
 
 
 def copy_project_photos_from_root(project_path_value, root_value):
@@ -662,6 +683,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "服务器部署已关闭本地项目列表接口。"}, 403)
                 return
             self.send_json({"projects": list_local_project_files(), "roots": list_local_project_scan_root_info()})
+            return
+        if parsed.path == "/api/project-asset-status":
+            if not legacy_paths_enabled():
+                self.send_json({"error": "服务器部署已关闭本地项目资源接口。"}, 403)
+                return
+            try:
+                query = parse_qs(parsed.query)
+                result = project_asset_status(
+                    query.get("projectPath", [""])[0],
+                    query.get("kind", [""])[0],
+                    query.get("path", [""])[0],
+                    query.get("size", [""])[0],
+                )
+            except ValueError as error:
+                self.send_json({"error": str(error)}, 400)
+                return
+            self.send_json(result)
             return
         if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
             self.serve_server_project_photo(parsed)
