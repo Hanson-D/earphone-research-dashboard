@@ -4,6 +4,7 @@ const initialParams = new URL(window.location.href).searchParams;
 const initialServerProjectId = initialParams.get("projectId") || "";
 const PHOTO_EAR_MODE_VALUE = "__photo_ear__";
 const USER_NOTE_FIELD = "user_note";
+const PHOTO_COMPARE_CONDITION_SEPARATOR = "\u001f";
 
 function storageScope() {
   return initialServerProjectId ? `server:${initialServerProjectId}` : "local";
@@ -167,6 +168,8 @@ const state = {
   photoCompareVariable: "",
   photoCompareLevelA: "",
   photoCompareLevelB: "",
+  photoCompareLevelsA: [],
+  photoCompareLevelsB: [],
   photoCompareView: "",
   photoComparePhotoSize: 150,
   photoComparePositionX: 50,
@@ -225,7 +228,7 @@ const els = Object.fromEntries([
   "comparisonPage", "comparisonMetricSelect", "comparisonAutoDevices", "comparisonDeviceA", "comparisonDeviceB",
   "comparisonThreshold", "comparisonTitle", "comparisonSummary", "comparisonDeviceRanking", "comparisonGroupCards", "comparisonDetails",
   "comparisonGlobalFontSize", "comparisonGlobalPhotoSize", "comparisonGlobalColumns", "comparisonApplyAllTables",
-  "photoComparePage", "photoCompareVariable", "photoCompareLevelA", "photoCompareLevelB", "photoCompareView",
+  "photoComparePage", "photoCompareVariable", "photoCompareLevelsA", "photoCompareLevelsB", "photoCompareView",
   "photoComparePhotoSize", "photoComparePhotoSizeValue", "photoComparePositionX", "photoComparePositionXValue",
   "photoComparePositionY", "photoComparePositionYValue", "photoCompareZoom", "photoCompareZoomValue",
   "photoCompareSummary", "photoCompareTitle", "photoCompareGrid",
@@ -417,6 +420,8 @@ function dashboardConfigSnapshot() {
     photoCompareVariable: state.photoCompareVariable,
     photoCompareLevelA: state.photoCompareLevelA,
     photoCompareLevelB: state.photoCompareLevelB,
+    photoCompareLevelsA: state.photoCompareLevelsA,
+    photoCompareLevelsB: state.photoCompareLevelsB,
     photoCompareView: state.photoCompareView,
     photoComparePhotoSize: state.photoComparePhotoSize,
     photoComparePositionX: state.photoComparePositionX,
@@ -952,6 +957,8 @@ function currentProjectTabSnapshot() {
     photoCompareVariable: state.photoCompareVariable,
     photoCompareLevelA: state.photoCompareLevelA,
     photoCompareLevelB: state.photoCompareLevelB,
+    photoCompareLevelsA: cloneStateData(state.photoCompareLevelsA),
+    photoCompareLevelsB: cloneStateData(state.photoCompareLevelsB),
     photoCompareView: state.photoCompareView,
     photoComparePhotoSize: state.photoComparePhotoSize,
     photoComparePositionX: state.photoComparePositionX,
@@ -1078,6 +1085,8 @@ function restoreProjectTabSnapshot(snapshot) {
   state.photoCompareVariable = snapshot.photoCompareVariable || "";
   state.photoCompareLevelA = snapshot.photoCompareLevelA || "";
   state.photoCompareLevelB = snapshot.photoCompareLevelB || "";
+  state.photoCompareLevelsA = Array.isArray(snapshot.photoCompareLevelsA) ? snapshot.photoCompareLevelsA.map(String) : (state.photoCompareLevelA ? [state.photoCompareLevelA] : []);
+  state.photoCompareLevelsB = Array.isArray(snapshot.photoCompareLevelsB) ? snapshot.photoCompareLevelsB.map(String) : (state.photoCompareLevelB ? [state.photoCompareLevelB] : []);
   state.photoCompareView = snapshot.photoCompareView || "";
   state.photoComparePhotoSize = Number.isFinite(Number(snapshot.photoComparePhotoSize)) ? Number(snapshot.photoComparePhotoSize) : 150;
   state.photoComparePositionX = Number.isFinite(Number(snapshot.photoComparePositionX)) ? Number(snapshot.photoComparePositionX) : 50;
@@ -1709,6 +1718,8 @@ function applyDashboardConfig(config) {
   state.photoCompareVariable = clean.photoCompareVariable || state.photoCompareVariable;
   state.photoCompareLevelA = clean.photoCompareLevelA || state.photoCompareLevelA;
   state.photoCompareLevelB = clean.photoCompareLevelB || state.photoCompareLevelB;
+  state.photoCompareLevelsA = Array.isArray(clean.photoCompareLevelsA) ? clean.photoCompareLevelsA : (state.photoCompareLevelA ? [state.photoCompareLevelA] : state.photoCompareLevelsA);
+  state.photoCompareLevelsB = Array.isArray(clean.photoCompareLevelsB) ? clean.photoCompareLevelsB : (state.photoCompareLevelB ? [state.photoCompareLevelB] : state.photoCompareLevelsB);
   state.photoCompareView = clean.photoCompareView || state.photoCompareView;
   if (Number.isFinite(Number(clean.photoComparePhotoSize))) state.photoComparePhotoSize = Number(clean.photoComparePhotoSize);
   if (Number.isFinite(Number(clean.photoComparePositionX))) state.photoComparePositionX = Number(clean.photoComparePositionX);
@@ -3198,6 +3209,78 @@ function photoCompareLevels(field = state.photoCompareVariable) {
   return photoCompareFieldValues(field);
 }
 
+function encodePhotoCompareCondition(field, level) {
+  return `${cleanPhotoCompareValue(field)}${PHOTO_COMPARE_CONDITION_SEPARATOR}${cleanPhotoCompareValue(level)}`;
+}
+
+function decodePhotoCompareCondition(token, fallbackField = state.photoCompareVariable) {
+  const text = cleanPhotoCompareValue(token);
+  const index = text.indexOf(PHOTO_COMPARE_CONDITION_SEPARATOR);
+  if (index >= 0) {
+    return {
+      field: cleanPhotoCompareValue(text.slice(0, index)),
+      level: cleanPhotoCompareValue(text.slice(index + PHOTO_COMPARE_CONDITION_SEPARATOR.length))
+    };
+  }
+  return { field: cleanPhotoCompareValue(fallbackField), level: text };
+}
+
+function photoCompareConditionLabel(token) {
+  const condition = decodePhotoCompareCondition(token);
+  const label = fieldLabels[condition.field] || condition.field;
+  if (!condition.field) return condition.level || "未选条件";
+  return `${label}=${condition.level}`;
+}
+
+function setDefaultPhotoCompareLevels(levels = photoCompareLevels()) {
+  state.photoCompareLevelsA = levels[0] ? [encodePhotoCompareCondition(state.photoCompareVariable, levels[0])] : [];
+  state.photoCompareLevelsB = levels[1] ? [encodePhotoCompareCondition(state.photoCompareVariable, levels[1])] :
+    (levels[0] ? [encodePhotoCompareCondition(state.photoCompareVariable, levels[0])] : []);
+  syncLegacyPhotoCompareLevels();
+}
+
+function syncLegacyPhotoCompareLevels() {
+  state.photoCompareLevelA = decodePhotoCompareCondition(state.photoCompareLevelsA[0] || "").level || "";
+  state.photoCompareLevelB = decodePhotoCompareCondition(state.photoCompareLevelsB[0] || "").level || "";
+}
+
+function selectedPhotoCompareLevels(side) {
+  const values = side === "a" ? state.photoCompareLevelsA : state.photoCompareLevelsB;
+  return Array.isArray(values) ? values.map(cleanPhotoCompareValue).filter(Boolean) : [];
+}
+
+function normalizePhotoCompareSelections(levels = photoCompareLevels()) {
+  const variables = new Set(photoCompareVariables());
+  const valuesByField = new Map([...variables].map(field => [field, new Set(photoCompareFieldValues(field))]));
+  const clean = values => [...new Set((Array.isArray(values) ? values : []).map(value => {
+    const condition = decodePhotoCompareCondition(value);
+    const field = variables.has(condition.field) ? condition.field : state.photoCompareVariable;
+    const level = condition.level;
+    return field && valuesByField.get(field)?.has(level) ? encodePhotoCompareCondition(field, level) : "";
+  }).filter(Boolean))];
+  if (!Array.isArray(state.photoCompareLevelsA) || !state.photoCompareLevelsA.length) {
+    state.photoCompareLevelsA = state.photoCompareLevelA ? [state.photoCompareLevelA] : [];
+  }
+  if (!Array.isArray(state.photoCompareLevelsB) || !state.photoCompareLevelsB.length) {
+    state.photoCompareLevelsB = state.photoCompareLevelB ? [state.photoCompareLevelB] : [];
+  }
+  state.photoCompareLevelsA = clean(state.photoCompareLevelsA);
+  state.photoCompareLevelsB = clean(state.photoCompareLevelsB);
+  if (!state.photoCompareLevelsA.length && !state.photoCompareLevelsB.length) setDefaultPhotoCompareLevels(levels);
+  else syncLegacyPhotoCompareLevels();
+}
+
+function renderPhotoCompareLevelChoices(container, side, levels = photoCompareLevels()) {
+  if (!container) return;
+  const selected = new Set(selectedPhotoCompareLevels(side));
+  container.innerHTML = levels.map(level => `
+    <label class="photo-compare-level-chip">
+      <input type="checkbox" value="${attrEscape(encodePhotoCompareCondition(state.photoCompareVariable, level))}" ${selected.has(encodePhotoCompareCondition(state.photoCompareVariable, level)) ? "checked" : ""}>
+      <span>${escapeHtml(level)}</span>
+    </label>
+  `).join("") || '<span class="empty-state">无可选条件</span>';
+}
+
 function refreshPhotoCompareControls() {
   if (!els.photoCompareVariable) return;
   const variables = photoCompareVariables();
@@ -3206,14 +3289,9 @@ function refreshPhotoCompareControls() {
   els.photoCompareVariable.value = state.photoCompareVariable;
 
   const levels = photoCompareLevels();
-  if (!levels.includes(state.photoCompareLevelA)) state.photoCompareLevelA = levels[0] || "";
-  if (!levels.includes(state.photoCompareLevelB) || state.photoCompareLevelB === state.photoCompareLevelA) {
-    state.photoCompareLevelB = levels.find(level => level !== state.photoCompareLevelA) || levels[1] || "";
-  }
-  fillSelect(els.photoCompareLevelA, levels, false, {});
-  fillSelect(els.photoCompareLevelB, levels, false, {});
-  els.photoCompareLevelA.value = state.photoCompareLevelA;
-  els.photoCompareLevelB.value = state.photoCompareLevelB;
+  normalizePhotoCompareSelections(levels);
+  renderPhotoCompareLevelChoices(els.photoCompareLevelsA, "a", levels);
+  renderPhotoCompareLevelChoices(els.photoCompareLevelsB, "b", levels);
 
   const viewOptions = photoViewOptions();
   const validViews = viewOptions.map(option => option.value);
@@ -3277,13 +3355,52 @@ function photoCompareFigure(user, row, panel) {
   </figure>`;
 }
 
-function photoCompareRowsForLevel(level, panel) {
-  const variable = state.photoCompareVariable;
-  if (!variable || !level) return [];
+function photoCompareDevicePhotos(rows = [], panel) {
+  const field = deviceField();
+  const groups = new Map();
+  sortUserDeviceRows(rows).forEach(row => {
+    const device = field ? cleanPhotoCompareValue(row[field]) || "未命名设备" : "照片";
+    if (!groups.has(device)) groups.set(device, []);
+    groups.get(device).push(row);
+  });
+  return [...groups.entries()].map(([device, deviceRows]) => {
+    const row = photoCompareRowForView(deviceRows, panel.view);
+    return { device, row, hasPhoto: Boolean(row) };
+  });
+}
+
+function photoCompareDeviceFigure(user, item, panel) {
+  const row = item.row;
+  const viewValue = panel.view || state.photoCompareView || "";
+  const selected = parsePhotoViewValue(viewValue);
+  const field = row && rowMatchesPhotoView(row, selected) ? selected.field :
+    state.photoFields.find(photoField => row?.[photoField]);
+  const src = field ? photoUrl(row[field]) : "";
+  const caption = [user, item.device, state.viewLabels[field] || ""].filter(Boolean).join(" · ");
+  return `<figure class="photo-compare-device-figure">
+    <figcaption>${escapeHtml(item.device || "—")}</figcaption>
+    <div class="photo-compare-frame">
+      ${src ? `<img class="photo-preview-trigger" src="${attrEscape(src)}" alt="${attrEscape(caption)}" loading="lazy" decoding="async" tabindex="0" role="button" data-preview-src="${attrEscape(src)}" data-preview-caption="${attrEscape(caption)}">` : `<div class="missing-photo">无图</div>`}
+    </div>
+  </figure>`;
+}
+
+function photoCompareUserCard(item, panel) {
+  return `<article class="photo-compare-user-card">
+    <h4>${escapeHtml(item.user || "—")}</h4>
+    <div class="photo-compare-device-strip">
+      ${item.devices.map(device => photoCompareDeviceFigure(item.user, device, panel)).join("")}
+    </div>
+  </article>`;
+}
+
+function photoCompareRowsForLevels(levels, panel) {
+  const conditions = (levels || []).map(value => decodePhotoCompareCondition(value)).filter(condition => condition.field && condition.level);
+  if (!conditions.length) return [];
   const users = new Map();
   filteredRows().forEach(row => {
     const user = cleanPhotoCompareValue(row[state.userIdField]);
-    if (cleanPhotoCompareValue(row[variable]) !== cleanPhotoCompareValue(level)) return;
+    if (!conditions.some(condition => cleanPhotoCompareValue(row[condition.field]) === condition.level)) return;
     if (!user) return;
     if (!users.has(user)) users.set(user, []);
     users.get(user).push(row);
@@ -3291,21 +3408,28 @@ function photoCompareRowsForLevel(level, panel) {
   const order = new Map(syncUserOrder([...users.keys()]).map((user, index) => [String(user), index]));
   return [...users.entries()]
     .sort(([userA], [userB]) => (order.get(String(userA)) ?? 0) - (order.get(String(userB)) ?? 0))
-    .map(([user, rows]) => ({ user, row: photoCompareRowForView(rows, panel.view), hasPhoto: Boolean(photoCompareRowForView(rows, panel.view)) }));
+    .map(([user, rows]) => {
+      const devices = photoCompareDevicePhotos(rows, panel);
+      return { user, devices, hasPhoto: devices.some(device => device.hasPhoto) };
+    });
 }
 
-function renderPhotoComparePanel(side, level) {
+function photoCompareLevelLabel(levels = []) {
+  return levels.length ? levels.map(photoCompareConditionLabel).join(" / ") : "未选条件";
+}
+
+function renderPhotoComparePanel(side, levels) {
   const panel = photoComparePanelSettings(side);
-  const rows = photoCompareRowsForLevel(level, panel);
+  const rows = photoCompareRowsForLevels(levels, panel);
   const shown = rows.filter(item => item.hasPhoto);
   const viewOptions = photoViewOptions();
   const style = `--compare-photo-size:${panel.photoSize}px;--compare-position-x:${panel.positionX}%;--compare-position-y:${panel.positionY}%;--compare-zoom:${panel.zoom / 100};`;
   return `<section class="photo-compare-column" style="${attrEscape(style)}">
     <header class="photo-compare-column-head">
       <div>
-        <span>${side === "a" ? "左侧水平" : "右侧水平"}</span>
-        <h3>${escapeHtml(level || "—")}</h3>
-        <small>${shown.length} / ${rows.length} 位有图</small>
+        <span>${side === "a" ? "左侧条件" : "右侧条件"}</span>
+        <h3 title="${attrEscape(photoCompareLevelLabel(levels))}">${escapeHtml(photoCompareLevelLabel(levels))}</h3>
+        <small>${shown.length} / ${rows.length} 位有图 · 每人 ${deviceField() ? "多设备" : "单组"} 横排</small>
       </div>
       <div class="photo-compare-panel-controls" data-photo-compare-side="${attrEscape(side)}">
         <label>视角<select class="photo-compare-side-control" data-setting="view">${viewOptions.map(option =>
@@ -3318,7 +3442,7 @@ function renderPhotoComparePanel(side, level) {
       </div>
     </header>
     <div class="photo-compare-wall">
-      ${shown.length ? shown.map(item => photoCompareFigure(item.user, item.row, panel)).join("") : '<div class="empty-state">当前水平没有匹配照片。</div>'}
+      ${shown.length ? shown.map(item => photoCompareUserCard(item, panel)).join("") : '<div class="empty-state">当前条件没有匹配照片。</div>'}
     </div>
   </section>`;
 }
@@ -3346,11 +3470,13 @@ function renderPhotoComparePage() {
   }
 
   const variableLabel = fieldLabels[state.photoCompareVariable] || state.photoCompareVariable;
-  els.photoCompareTitle.textContent = `${variableLabel} · ${state.photoCompareLevelA || "左侧"} vs ${state.photoCompareLevelB || "右侧"}`;
-  els.photoCompareSummary.textContent = `仅展示组间变量；组内设备/条件对比请使用 02 详情页。`;
+  const levelsA = selectedPhotoCompareLevels("a");
+  const levelsB = selectedPhotoCompareLevels("b");
+  els.photoCompareTitle.textContent = `${variableLabel} · ${photoCompareLevelLabel(levelsA)} vs ${photoCompareLevelLabel(levelsB)}`;
+  els.photoCompareSummary.textContent = `每侧可多选条件；切换变量可继续勾选更多条件，同一用户下横排展示多设备照片。`;
   els.photoCompareGrid.innerHTML = `
-    ${renderPhotoComparePanel("a", state.photoCompareLevelA)}
-    ${renderPhotoComparePanel("b", state.photoCompareLevelB)}
+    ${renderPhotoComparePanel("a", levelsA)}
+    ${renderPhotoComparePanel("b", levelsB)}
   `;
 }
 
@@ -5807,25 +5933,27 @@ function bindEvents() {
   });
   els.photoCompareVariable?.addEventListener("change", () => {
     state.photoCompareVariable = els.photoCompareVariable.value;
-    const levels = photoCompareLevels();
-    state.photoCompareLevelA = levels[0] || "";
-    state.photoCompareLevelB = levels.find(level => level !== state.photoCompareLevelA) || levels[1] || "";
+    normalizePhotoCompareSelections(photoCompareLevels());
     renderPhotoComparePage();
     markProjectDirty();
   });
-  els.photoCompareLevelA?.addEventListener("change", () => {
-    state.photoCompareLevelA = els.photoCompareLevelA.value;
-    if (state.photoCompareLevelB === state.photoCompareLevelA) {
-      state.photoCompareLevelB = photoCompareLevels().find(level => level !== state.photoCompareLevelA) || state.photoCompareLevelB;
-    }
-    renderPhotoComparePage();
-    markProjectDirty();
-  });
-  els.photoCompareLevelB?.addEventListener("change", () => {
-    state.photoCompareLevelB = els.photoCompareLevelB.value;
-    renderPhotoComparePage();
-    markProjectDirty();
-  });
+  const bindPhotoCompareLevelChecks = (container, side) => {
+    container?.addEventListener("change", event => {
+      const input = event.target.closest('input[type="checkbox"]');
+      if (!input) return;
+      const key = side === "a" ? "photoCompareLevelsA" : "photoCompareLevelsB";
+      const current = new Set(selectedPhotoCompareLevels(side));
+      const value = cleanPhotoCompareValue(input.value);
+      if (input.checked) current.add(value);
+      else current.delete(value);
+      state[key] = [...current];
+      syncLegacyPhotoCompareLevels();
+      renderPhotoComparePage();
+      markProjectDirty();
+    });
+  };
+  bindPhotoCompareLevelChecks(els.photoCompareLevelsA, "a");
+  bindPhotoCompareLevelChecks(els.photoCompareLevelsB, "b");
   els.photoCompareView?.addEventListener("change", () => {
     state.photoCompareView = els.photoCompareView.value;
     state.photoComparePanelSettings = {};

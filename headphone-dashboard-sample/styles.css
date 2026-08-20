@@ -1018,8 +1018,15 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 }
 .photo-compare-layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
 .photo-compare-control-panel { padding: 16px 18px; border-top: 4px solid var(--accent); }
-.photo-compare-controls { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.2fr) minmax(160px, .9fr) minmax(360px, 1.8fr); gap: 12px; align-items: end; }
+.photo-compare-controls { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(360px, 1.6fr) minmax(150px, .7fr) minmax(360px, 1.7fr); gap: 12px; align-items: end; }
 .photo-compare-control-panel .control-block { margin-bottom: 0; }
+.photo-compare-level-sets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.photo-compare-level-set { display: grid; gap: 6px; min-width: 0; }
+.photo-compare-level-set > span { color: var(--muted); font-size: 10px; font-weight: 900; }
+.photo-compare-level-options { display: flex; flex-wrap: wrap; gap: 5px; max-height: 92px; overflow: auto; padding: 6px; background: #fff8f3; border: 1px solid var(--line); }
+.photo-compare-level-chip { display: inline-flex; align-items: center; max-width: 100%; gap: 4px; padding: 4px 7px; color: var(--accent-dark); background: #fff; border: 1px solid #dbc8c8; font-size: 11px; font-weight: 850; cursor: pointer; }
+.photo-compare-level-chip input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
+.photo-compare-level-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .photo-compare-tuning { display: grid; grid-template-columns: repeat(2, minmax(160px, 1fr)); gap: 8px; }
 .photo-compare-tuning label,
 .photo-compare-panel-controls label {
@@ -1075,17 +1082,35 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .photo-compare-panel-controls select { padding: 6px 7px; font-size: 11px; }
 .photo-compare-wall {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(max(110px, var(--compare-photo-size)), 1fr));
-  gap: 9px;
+  grid-template-columns: 1fr;
+  gap: 8px;
   align-content: start;
   padding: 10px;
 }
-.photo-compare-figure { display: grid; grid-template-rows: auto var(--compare-photo-size); min-width: 0; margin: 0; }
-.photo-compare-figure figcaption {
-  margin: 0 0 4px;
+.photo-compare-user-card { display: grid; gap: 6px; min-width: 0; padding: 7px; background: #fff; border: 1px solid #eadbd6; }
+.photo-compare-user-card h4 {
+  margin: 0;
   overflow: hidden;
   color: var(--accent-dark);
   font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.photo-compare-device-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--compare-photo-size), 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+.photo-compare-figure,
+.photo-compare-device-figure { display: grid; grid-template-rows: auto var(--compare-photo-size); min-width: 0; margin: 0; }
+.photo-compare-figure figcaption,
+.photo-compare-device-figure figcaption {
+  margin: 0 0 4px;
+  overflow: hidden;
+  color: var(--accent-dark);
+  font-size: 10px;
   font-weight: 900;
   text-align: center;
   text-overflow: ellipsis;
@@ -1267,6 +1292,7 @@ body.capture-mode .photo-cell-controls { display: none; }
   .pressure-layout { grid-template-columns: 1fr; }
   .comparison-preference-layout { grid-template-columns: 1fr; }
   .photo-compare-controls { grid-template-columns: 1fr 1fr; }
+  .photo-compare-level-sets { grid-column: 1 / -1; }
   .photo-compare-tuning { grid-column: 1 / -1; }
   .photo-compare-columns { grid-template-columns: 1fr; }
   .multi-project-layout { grid-template-columns: 1fr; }
@@ -1301,9 +1327,10 @@ body.capture-mode .photo-cell-controls { display: none; }
   .display-settings, .column-config-list { grid-template-columns: 1fr; }
   .display-settings label:not(.config-import-button) { grid-template-columns: 90px minmax(100px, 1fr) 42px; }
   .photo-compare-controls,
+  .photo-compare-level-sets,
   .photo-compare-tuning,
   .photo-compare-column-head,
   .photo-compare-panel-controls { grid-template-columns: 1fr; }
   .photo-compare-panel-controls label:first-child { grid-column: auto; }
-  .photo-compare-wall { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .photo-compare-device-strip { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
 }

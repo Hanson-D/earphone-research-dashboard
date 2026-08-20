@@ -953,6 +953,8 @@ test("dashboard config import keeps only fields in the current schema", () => {
     photoCompareVariable: "gender",
     photoCompareLevelA: "女",
     photoCompareLevelB: "男",
+    photoCompareLevelsA: ["女", "儿童", ""],
+    photoCompareLevelsB: ["男", "成人", "男"],
     photoCompareView: "photo_front",
     photoComparePhotoSize: "180",
     photoComparePositionX: "42",
@@ -992,6 +994,8 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.photoCompareVariable, "gender");
   assert.equal(config.photoCompareLevelA, "女");
   assert.equal(config.photoCompareLevelB, "男");
+  assert.deepEqual(config.photoCompareLevelsA, ["女", "儿童"]);
+  assert.deepEqual(config.photoCompareLevelsB, ["男", "成人"]);
   assert.equal(config.photoCompareView, "photo_front");
   assert.equal(config.photoComparePhotoSize, 180);
   assert.equal(config.photoComparePositionX, 42);

@@ -1257,6 +1257,9 @@
       const number = Number(value);
       return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
     };
+    const stringList = value => Array.isArray(value) ? [...new Set(value.map(item => String(item || "").trim()).filter(Boolean))] : [];
+    const photoCompareLevelsA = stringList(config.photoCompareLevelsA);
+    const photoCompareLevelsB = stringList(config.photoCompareLevelsB);
     const photoComparePanelSettings = config.photoComparePanelSettings && typeof config.photoComparePanelSettings === "object" ?
       Object.fromEntries(["a", "b"].map(side => {
         const panel = config.photoComparePanelSettings[side] || {};
@@ -1291,8 +1294,10 @@
       comparisonThreshold: Number.isFinite(comparisonThreshold) ? Math.max(0, comparisonThreshold) : undefined,
       comparisonGroupLayouts,
       photoCompareVariable: keepField(config.photoCompareVariable),
-      photoCompareLevelA: String(config.photoCompareLevelA || ""),
-      photoCompareLevelB: String(config.photoCompareLevelB || ""),
+      photoCompareLevelA: String(config.photoCompareLevelA || photoCompareLevelsA[0] || ""),
+      photoCompareLevelB: String(config.photoCompareLevelB || photoCompareLevelsB[0] || ""),
+      photoCompareLevelsA: photoCompareLevelsA.length ? photoCompareLevelsA : (config.photoCompareLevelA ? [String(config.photoCompareLevelA)] : []),
+      photoCompareLevelsB: photoCompareLevelsB.length ? photoCompareLevelsB : (config.photoCompareLevelB ? [String(config.photoCompareLevelB)] : []),
       photoCompareView: keepPhotoView(config.photoCompareView),
       photoComparePhotoSize: clampNumber(config.photoComparePhotoSize, 90, 260, undefined),
       photoComparePositionX: clampNumber(config.photoComparePositionX, 0, 100, undefined),

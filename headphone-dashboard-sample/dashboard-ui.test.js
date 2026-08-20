@@ -123,8 +123,8 @@ test("single-project analysis exposes a group-level photo comparison board", () 
   assert.match(html, /id="photoComparePage"/);
   assert.match(html, /只显示组间变量/);
   assert.match(html, /id="photoCompareVariable"/);
-  assert.match(html, /id="photoCompareLevelA"/);
-  assert.match(html, /id="photoCompareLevelB"/);
+  assert.match(html, /id="photoCompareLevelsA"/);
+  assert.match(html, /id="photoCompareLevelsB"/);
   assert.match(html, /id="photoCompareView"/);
   assert.match(html, /id="photoComparePhotoSize"/);
   assert.match(html, /id="photoComparePositionX"/);
@@ -140,15 +140,22 @@ test("single-project analysis exposes a group-level photo comparison board", () 
   assert.doesNotMatch(js, /\["user", "user_id"\]\.includes\(fieldRole\(field\)\)/);
   assert.match(js, /function renderPhotoComparePage/);
   assert.match(js, /function renderPhotoComparePanel/);
+  assert.match(js, /function renderPhotoCompareLevelChoices/);
+  assert.match(js, /function photoCompareRowsForLevels/);
+  assert.match(js, /function photoCompareDevicePhotos/);
+  assert.match(js, /function photoCompareUserCard/);
   assert.match(js, /function setPhotoComparePanelSetting/);
   assert.match(js, /rowMatchesPhotoView/);
-  assert.match(js, /photoCompareFigure/);
+  assert.match(js, /photoCompareLevelsA/);
   assert.match(js, /photoCompareVariable\?\.addEventListener\("change"/);
+  assert.match(js, /bindPhotoCompareLevelChecks\(els\.photoCompareLevelsA, "a"\)/);
   assert.match(js, /photoCompareGrid\?\.addEventListener\("input"/);
   assert.match(css, /\.photo-compare-layout/);
   assert.match(css, /\.photo-compare-controls\s*{[\s\S]*grid-template-columns:/);
+  assert.match(css, /\.photo-compare-level-options/);
   assert.match(css, /\.photo-compare-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(css, /\.photo-compare-wall\s*{[\s\S]*auto-fill/);
+  assert.match(css, /\.photo-compare-user-card/);
+  assert.match(css, /\.photo-compare-device-strip\s*{[\s\S]*auto-fit/);
   assert.match(css, /\.photo-compare-frame img\s*{[\s\S]*object-fit:\s*contain/);
 });
 
