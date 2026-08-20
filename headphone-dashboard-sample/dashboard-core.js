@@ -1248,6 +1248,11 @@
       .filter(([user, note]) => (!validUsers.size || validUsers.has(user)) && note));
     const deviceOrderMode = ["source", "asc", "desc"].includes(config.deviceOrderMode) ? config.deviceOrderMode : "";
     const keepField = field => headerSet.has(field) ? field : "";
+    const keepPhotoView = value => {
+      const text = String(value || "");
+      const match = text.match(/^ear:[^:]+::(.+)$/);
+      return headerSet.has(match ? match[1] : text) ? text : "";
+    };
     const comparisonThreshold = Number(config.comparisonThreshold);
     const comparisonGroupLayouts = config.comparisonGroupLayouts && typeof config.comparisonGroupLayouts === "object" ?
       Object.fromEntries(Object.entries(config.comparisonGroupLayouts)
@@ -1269,6 +1274,10 @@
       comparisonDeviceB: String(config.comparisonDeviceB || ""),
       comparisonThreshold: Number.isFinite(comparisonThreshold) ? Math.max(0, comparisonThreshold) : undefined,
       comparisonGroupLayouts,
+      photoCompareVariable: keepField(config.photoCompareVariable),
+      photoCompareLevelA: String(config.photoCompareLevelA || ""),
+      photoCompareLevelB: String(config.photoCompareLevelB || ""),
+      photoCompareView: keepPhotoView(config.photoCompareView),
       analysisMode: config.analysisMode === "multi" ? "multi" : config.analysisMode === "single" ? "single" : "",
       multiProjectA: String(config.multiProjectA || ""),
       multiProjectB: String(config.multiProjectB || ""),

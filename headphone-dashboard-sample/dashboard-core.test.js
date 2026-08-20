@@ -950,6 +950,10 @@ test("dashboard config import keeps only fields in the current schema", () => {
     comparisonDeviceB: "样机B",
     comparisonThreshold: "1.5",
     comparisonGroupLayouts: { aBetter: { fontSize: 12, columns: { photos: { visible: false, width: 120 } } } },
+    photoCompareVariable: "gender",
+    photoCompareLevelA: "女",
+    photoCompareLevelB: "男",
+    photoCompareView: "photo_front",
     analysisMode: "multi",
     multiProjectA: "project-a",
     multiProjectB: "project-b",
@@ -962,7 +966,7 @@ test("dashboard config import keeps only fields in the current schema", () => {
     userOrder: ["U002", "U001"],
     userNotes: { U001: "重点样本", U003: "不在当前数据" },
     deviceOrderMode: "asc"
-  }, ["gender", "comfort_score"]);
+  }, ["gender", "comfort_score", "photo_front"]);
   assert.deepEqual(config.fieldRoleOverrides, { gender: "user" });
   assert.deepEqual(config.layout.columns, [{ id: "gender", visible: true }]);
   assert.equal(config.layout.detailPhotoMode, "capture");
@@ -977,6 +981,10 @@ test("dashboard config import keeps only fields in the current schema", () => {
   assert.equal(config.comparisonDeviceB, "样机B");
   assert.equal(config.comparisonThreshold, 1.5);
   assert.equal(config.comparisonGroupLayouts.aBetter.fontSize, 12);
+  assert.equal(config.photoCompareVariable, "gender");
+  assert.equal(config.photoCompareLevelA, "女");
+  assert.equal(config.photoCompareLevelB, "男");
+  assert.equal(config.photoCompareView, "photo_front");
   assert.equal(config.analysisMode, "multi");
   assert.equal(config.multiProjectA, "project-a");
   assert.equal(config.multiProjectB, "project-b");

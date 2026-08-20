@@ -66,6 +66,7 @@
         <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
         <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
         <button class="page-tab" data-page="comparison">04 · 设备偏好</button>
+        <button class="page-tab" data-page="photoCompare">05 · 照片对比</button>
       </nav>
 
       <nav id="multiPageNav" class="page-nav" hidden>
@@ -621,6 +622,52 @@
             </details>
           </div>
           <div id="comparisonDetails" class="preference-details"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <main id="photoComparePage" class="app-page">
+    <section class="photo-compare-layout">
+      <aside class="control-panel photo-compare-control-panel">
+        <div class="section-heading">
+          <span>照片对比</span>
+          <small>按变量水平左右查看</small>
+        </div>
+
+        <div class="control-block">
+          <label for="photoCompareVariable">对比变量</label>
+          <select id="photoCompareVariable"></select>
+        </div>
+
+        <div class="control-block split-control">
+          <div>
+            <label for="photoCompareLevelA">左侧水平</label>
+            <select id="photoCompareLevelA"></select>
+          </div>
+          <div>
+            <label for="photoCompareLevelB">右侧水平</label>
+            <select id="photoCompareLevelB"></select>
+          </div>
+        </div>
+
+        <div class="control-block">
+          <label for="photoCompareView">照片视角</label>
+          <select id="photoCompareView"></select>
+        </div>
+
+        <p id="photoCompareSummary" class="pressure-note">选择变量、两个水平和视角后查看照片。</p>
+      </aside>
+
+      <section class="photo-compare-main">
+        <article class="panel photo-compare-stage">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">PHOTO PAIRS</p>
+              <h2 id="photoCompareTitle">照片对比</h2>
+            </div>
+          </div>
+          <div id="photoCompareGrid" class="photo-compare-grid"></div>
         </article>
       </section>
     </section>

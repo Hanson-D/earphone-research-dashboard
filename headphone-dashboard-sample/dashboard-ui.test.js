@@ -114,6 +114,29 @@ test("pressure page exposes larger device radar for mean and minimum raw pressur
   assert.match(css, /\.pressure-radar-sample/);
 });
 
+test("single-project analysis exposes a photo-first comparison board", () => {
+  const html = read("index.html");
+  const js = read("app.js");
+  const css = read("styles.css");
+
+  assert.match(html, /data-page="photoCompare"[\s\S]*05 · 照片对比/);
+  assert.match(html, /id="photoComparePage"/);
+  assert.match(html, /id="photoCompareVariable"/);
+  assert.match(html, /id="photoCompareLevelA"/);
+  assert.match(html, /id="photoCompareLevelB"/);
+  assert.match(html, /id="photoCompareView"/);
+  assert.match(html, /id="photoCompareGrid"/);
+  assert.match(js, /photoCompareVariable/);
+  assert.match(js, /function photoCompareVariables/);
+  assert.match(js, /function renderPhotoComparePage/);
+  assert.match(js, /rowMatchesPhotoView/);
+  assert.match(js, /photoCompareFigure/);
+  assert.match(js, /photoCompareVariable\?\.addEventListener\("change"/);
+  assert.match(css, /\.photo-compare-layout/);
+  assert.match(css, /\.photo-compare-pair\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.photo-compare-frame img\s*{[\s\S]*object-fit:\s*contain/);
+});
+
 test("detail dashboard exposes csv export and click-to-center photo controls", () => {
   const html = read("index.html");
   const js = read("app.js");
