@@ -62,7 +62,7 @@
       </nav>
 
       <nav id="singlePageNav" class="page-nav">
-        <button class="page-tab active" data-page="mapping" aria-current="page">01 · 照片映射</button>
+        <button class="page-tab active" data-page="mapping" aria-current="page">01 · 数据预处理</button>
         <button class="page-tab" data-page="dashboard">02 · 数据看板</button>
         <button class="page-tab" data-page="pressure">03 · 挤压机制</button>
         <button class="page-tab" data-page="comparison">04 · 设备偏好</button>
@@ -78,18 +78,18 @@
     <section class="mapping-layout">
       <section class="mapping-setup mapping-card mapping-builder">
         <div class="mapping-builder-heading">
-          <p class="panel-kicker">PHOTO INDEX BUILDER</p>
-          <h2>照片自动映射</h2>
-          <p class="mapping-intro">从 CSV 与照片目录生成可直接用于看板的照片字段；可按拍摄顺序映射，也可按子文件夹自动识别。</p>
+          <p class="panel-kicker">DATA PREPROCESSING</p>
+          <h2>数据预处理</h2>
+          <p class="mapping-intro">先确认 CSV 变量分类，再按需生成照片映射；CSV 与照片资产保存彼此独立。</p>
         </div>
 
-        <div class="mapping-steps-grid">
-          <section class="mapping-step">
+        <section class="preprocess-section csv-preprocess-section">
+          <div class="mapping-step csv-source-panel">
             <div class="mapping-step-heading">
               <span>01</span>
               <div>
-                <h3>导入 CSV</h3>
-                <p>选择原始 CSV，系统会读取用户、设备、评分和可选字段。</p>
+                <h3>CSV 数据</h3>
+                <p>选择原始 CSV，确认变量分类后可直接应用到看板。</p>
               </div>
             </div>
             <label class="mapping-input">
@@ -97,14 +97,30 @@
               <input id="mappingCsvInput" type="file" accept=".csv,text/csv">
               <small id="mappingCsvStatus">尚未选择 CSV。保存项目时会把当前 CSV 复制到项目 data 文件夹。</small>
             </label>
-          </section>
+            <div class="preprocess-actions">
+              <button id="confirmFieldRolesButton" class="primary-button" type="button" disabled>确认变量分类改动</button>
+              <button id="applyMappingButton" class="primary-button" disabled>应用 CSV 到看板</button>
+            </div>
+            <div id="fieldRoleDraftStatus" class="field-role-draft-status" aria-live="polite">等待导入 CSV。</div>
+          </div>
 
-          <section class="mapping-step">
+          <section class="variable-role-panel">
+            <div class="subsection-heading">
+              <h3>变量分类</h3>
+              <p>拖动变量到目标分类；灰色变量不可改。改动需确认后才会进入项目状态。</p>
+            </div>
+            <div id="fieldRoleList" class="field-role-list variable-role-board"></div>
+            <button id="resetFieldRolesButton" type="button" class="compact-button">恢复自动识别</button>
+          </section>
+        </section>
+
+        <section class="preprocess-section photo-setup-section">
+          <div class="mapping-step photo-source-panel">
             <div class="mapping-step-heading">
               <span>02</span>
               <div>
-                <h3>照片根目录与规则</h3>
-                <p>选择照片根文件夹，并决定按拍照顺序还是按子文件夹识别。</p>
+                <h3>照片来源</h3>
+                <p>选择照片根文件夹，照片资产只在重新选择后才进入待保存状态。</p>
               </div>
             </div>
             <label id="photoRootInputWrap" class="mapping-input">
@@ -128,13 +144,13 @@
                 <input id="photoRootInput" name="photoRoot" type="text" autocomplete="off" placeholder="例如：/Users/name/research/photos…">
               </label>
             </details>
-          </section>
+          </div>
 
-          <section class="mapping-step">
+          <section class="mapping-step photo-rule-panel">
             <div class="mapping-step-heading">
               <span>03</span>
               <div>
-                <h3>字段与拍照顺序</h3>
+                <h3>照片映射规则</h3>
                 <p>指定用户、耳侧、设备字段；顺序逻辑必须填写拍照视角顺序。</p>
               </div>
             </div>
@@ -182,12 +198,11 @@
             <div class="mapping-run-step">
               <button id="runMappingButton" class="primary-button">生成照片映射</button>
               <div class="mapping-actions">
-                <button id="applyMappingButton" class="primary-button" disabled>应用 CSV 到看板</button>
                 <button id="downloadPhotoAuditButton" class="outline-button" disabled>下载缺失/异常清单</button>
               </div>
             </div>
           </section>
-        </div>
+        </section>
 
       </section>
 
@@ -256,9 +271,7 @@
 
         <details class="field-role-config">
           <summary>字段角色</summary>
-          <p>用于控制哪些列是组间变量、评分指标、挤压程度、照片或忽略列；自动识别不准时可在这里手动维护字段角色，挤压方向由上方“挤压分数方向”控制。</p>
-          <div id="fieldRoleList" class="field-role-list"></div>
-          <button id="resetFieldRolesButton" type="button" class="compact-button">恢复自动识别</button>
+          <p>变量分类已移到 01 页“数据预处理”。这里会使用已确认的分类结果；挤压方向仍由上方“挤压分数方向”控制。</p>
         </details>
 
         <details class="protocol-panel control-protocol-panel subtle-protocol-panel">

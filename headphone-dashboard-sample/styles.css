@@ -260,6 +260,107 @@ select[multiple] { min-height: 84px; }
 .field-role-config summary { color: var(--accent-dark); cursor: pointer; font-size: 12px; font-weight: 800; }
 .field-role-config p { margin: 7px 0 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .field-role-list { display: grid; gap: 6px; max-height: 280px; overflow: auto; margin-bottom: 10px; }
+.variable-role-board {
+  grid-template-columns: repeat(4, minmax(128px, 1fr));
+  align-content: start;
+  max-height: 420px;
+  margin-bottom: 0;
+  padding-right: 2px;
+}
+.field-role-lane {
+  display: grid;
+  grid-template-rows: auto minmax(74px, 1fr);
+  min-width: 0;
+  background: #fff8f3;
+  border: 1px solid #ead6d6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.field-role-lane header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  color: var(--accent-dark);
+  background: var(--accent-pale);
+  border-bottom: 1px solid #ead6d6;
+  font-size: 10px;
+}
+.field-role-lane header span {
+  min-width: 18px;
+  padding: 1px 5px;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.field-role-dropzone {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 74px;
+  padding: 7px;
+}
+.field-role-dropzone.drop-target {
+  background: rgba(143,29,34,.08);
+  outline: 2px dashed rgba(143,29,34,.35);
+  outline-offset: -3px;
+}
+.field-role-chip {
+  width: 100%;
+  padding: 7px 8px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  border-radius: 3px;
+  text-align: left;
+  cursor: grab;
+}
+.field-role-chip span {
+  display: block;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-role-chip small {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-role-chip.changed {
+  border-left-color: var(--accent);
+  background: #fffdf9;
+}
+.field-role-chip.locked {
+  color: #7f7873;
+  background: #f1ece8;
+  border-color: #ddd2ca;
+  cursor: not-allowed;
+}
+.field-role-chip.dragging {
+  opacity: .55;
+  cursor: grabbing;
+}
+.field-role-empty {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--muted);
+  border: 1px dashed #ead6d6;
+  border-radius: 3px;
+  font-size: 10px;
+  text-align: center;
+}
 .field-role-row { display: grid; grid-template-columns: minmax(0, 1fr) 118px; gap: 7px; align-items: center; padding: 6px; background: var(--accent-pale); border: 1px solid #ead6d6; }
 .field-role-row span { min-width: 0; font-size: 10px; font-weight: 800; }
 .field-role-row small { display: block; overflow: hidden; color: var(--muted); font-size: 8px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
@@ -316,6 +417,48 @@ select[multiple] { min-height: 84px; }
   grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) minmax(420px, 3fr);
   gap: 14px;
   align-items: stretch;
+}
+.preprocess-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  min-width: 0;
+}
+.csv-preprocess-section {
+  grid-template-columns: minmax(230px, .72fr) minmax(460px, 1.28fr);
+  align-items: stretch;
+}
+.photo-setup-section {
+  grid-template-columns: minmax(280px, .9fr) minmax(460px, 1.1fr);
+  align-items: start;
+}
+.csv-source-panel,
+.photo-source-panel,
+.photo-rule-panel,
+.variable-role-panel {
+  min-width: 0;
+}
+.variable-role-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px;
+  background: #fffdfb;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.subsection-heading h3 { margin: 0; color: var(--accent-dark); font-size: 16px; }
+.subsection-heading p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.preprocess-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.field-role-draft-status {
+  min-height: 28px;
+  padding: 8px 9px;
+  color: var(--muted);
+  background: #fff8f3;
+  border: 1px solid #ead6d6;
+  border-left: 3px solid var(--accent);
+  font-size: 10px;
+  line-height: 1.45;
 }
 .mapping-step {
   display: grid;
@@ -389,7 +532,7 @@ select[multiple] { min-height: 84px; }
 .mapping-mode-note strong { display: block; margin-bottom: 3px; color: var(--accent-dark); font-size: 11px; }
 .mapping-mode-note span { display: block; }
 .mapping-fields { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.mapping-step:nth-child(3) .mapping-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+.photo-rule-panel .mapping-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
 .mapping-fields select { margin-top: 6px; }
 .bare-ear-config {
   display: grid;
@@ -1318,7 +1461,10 @@ body.capture-mode .photo-cell-controls { display: none; }
   .app-shell { grid-template-columns: 1fr; }
   .project-sidebar { position: static; grid-template-columns: 1fr; border-right: 0; border-bottom: 1px solid var(--line-strong); }
   .mapping-steps-grid { grid-template-columns: 1fr; }
-  .mapping-step:nth-child(3) .mapping-fields { grid-template-columns: 1fr; }
+  .csv-preprocess-section,
+  .photo-setup-section { grid-template-columns: 1fr; }
+  .variable-role-board { grid-template-columns: repeat(2, minmax(128px, 1fr)); }
+  .photo-rule-panel .mapping-fields { grid-template-columns: 1fr; }
   .mapping-form-grid { grid-template-columns: 1fr; }
   .mapping-review-columns { grid-template-columns: 1fr; }
   .mapping-ear-groups { grid-template-columns: 1fr; }
@@ -1349,6 +1495,7 @@ body.capture-mode .photo-cell-controls { display: none; }
   .detail-toolbar { align-items: stretch; flex-direction: column; }
   .view-control { margin-left: 0; }
   .mapping-steps-grid { grid-template-columns: 1fr; }
+  .variable-role-board { grid-template-columns: 1fr; max-height: 520px; }
   .mapping-run-step { grid-template-columns: 1fr; }
   .mapping-run-step .primary-button { max-width: none; }
   .preference-group-grid { grid-template-columns: 1fr; }

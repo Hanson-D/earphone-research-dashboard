@@ -139,6 +139,9 @@ const state = {
   headers: [],
   fieldRoles: {},
   fieldRoleOverrides: loadFieldRoleOverrides(),
+  fieldRoleDraftOverrides: {},
+  fieldRolesConfirmed: false,
+  draggedFieldRoleField: "",
   dimensionFields: [],
   metricFields: [],
   userIdField: "user_id",
@@ -220,7 +223,7 @@ const els = Object.fromEntries([
   "bareEarToggleWrap", "includeBareEarPhotos", "bareEarConfigPanel", "bareEarSplitByEar", "bareEarGenericCountWrap",
   "bareEarGenericCount", "bareEarSideCounts", "bareEarLeftCount", "bareEarRightCount", "singleEarToggleWrap", "singleEarMode", "runMappingButton",
   "mappingModeNote", "applyMappingButton", "downloadPhotoAuditButton", "mappingSummary", "mappingPreview",
-  "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton",
+  "globalViewControl", "globalViewSelect", "resetViewsButton", "fieldRoleList", "resetFieldRolesButton", "confirmFieldRolesButton", "fieldRoleDraftStatus",
   "projectPathInput", "projectNameStatus", "chooseProjectFolderButton", "projectFolderStatus", "exportProjectCsvButton",
   "loadProjectButton", "saveProjectConfigButton", "saveProjectButton", "projectStatus",
   "projectRecoveryActions", "useSampleProjectButton", "clearProjectPathButton", "projectTabs", "newProjectTabButton",
@@ -998,6 +1001,8 @@ function currentProjectTabSnapshot() {
     search: state.search,
     columnFilters: cloneStateData(state.columnFilters),
     fieldRoleOverrides: cloneStateData(state.fieldRoleOverrides),
+    fieldRoleDraftOverrides: cloneStateData(state.fieldRoleDraftOverrides),
+    fieldRolesConfirmed: state.fieldRolesConfirmed,
     layout: cloneStateData(state.layout),
     projectPath: state.projectPath,
     projectTitle: state.projectTitle,
@@ -1127,6 +1132,8 @@ function restoreProjectTabSnapshot(snapshot) {
   state.search = snapshot.search || "";
   state.columnFilters = cloneStateData(snapshot.columnFilters || {});
   state.fieldRoleOverrides = cloneStateData(snapshot.fieldRoleOverrides || {});
+  state.fieldRoleDraftOverrides = cloneStateData(snapshot.fieldRoleDraftOverrides || state.fieldRoleOverrides || {});
+  state.fieldRolesConfirmed = snapshot.fieldRolesConfirmed !== false;
   state.layout = cloneStateData(snapshot.layout || defaultLayout());
   state.projectPath = snapshot.projectPath || "";
   state.projectTitle = snapshot.projectTitle || "";
@@ -1213,6 +1220,9 @@ function createNewProjectTab() {
   state.mappingReviews = [];
   state.mappingPhotoFields = [];
   state.photoMappingOverrides = {};
+  state.fieldRoleOverrides = {};
+  state.fieldRoleDraftOverrides = {};
+  state.fieldRolesConfirmed = false;
   state.projectPath = "";
   state.projectTitle = "";
   state.projectDirty = false;
@@ -1629,6 +1639,8 @@ async function applyLoadedProject(path, rawProject, options = {}) {
   applyDashboardConfig(project.dashboardConfig);
   applyProtocolFieldRoles();
   buildSchema();
+  state.fieldRoleDraftOverrides = { ...state.fieldRoleOverrides };
+  state.fieldRolesConfirmed = true;
   initializeControls();
   renderFieldRoleConfig();
   renderColumnConfig();
@@ -1757,6 +1769,8 @@ function applyDashboardConfig(config) {
     applyLayoutVariables();
   }
   state.fieldRoleOverrides = clean.fieldRoleOverrides;
+  state.fieldRoleDraftOverrides = { ...state.fieldRoleOverrides };
+  state.fieldRolesConfirmed = true;
   saveFieldRoleOverrides();
   if (clean.primaryDimension) state.primaryDimension = clean.primaryDimension;
   if (clean.secondaryDimension) state.secondaryDimension = clean.secondaryDimension;
@@ -1924,29 +1938,162 @@ function fieldRole(field) {
   return state.fieldRoles[field] || Core.inferFieldRole(field, state.rows);
 }
 
-function renderFieldRoleConfig() {
-  const labels = {
-    user_id: "用户编号",
-    device: "设备/条件",
-    user: "组间变量",
-    dimension: "透视维度",
-    metric: "评分/数值指标",
-    pressure: "挤压程度",
-    photo: "照片视角",
-    ignore: "忽略"
-  };
-  const options = Object.entries(labels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
-  els.fieldRoleList.innerHTML = state.headers.map(field => `
-    <label class="field-role-row">
-      <span>${escapeHtml(fieldLabels[field] || field)}<small>${escapeHtml(field)}</small></span>
-      <select data-field="${attrEscape(field)}">
-        ${options}
-      </select>
-    </label>
-  `).join("");
-  els.fieldRoleList.querySelectorAll("select").forEach(select => {
-    select.value = fieldRole(select.dataset.field);
+const FIELD_ROLE_LABELS = {
+  user_id: "用户编号",
+  device: "设备/条件",
+  user: "组间变量",
+  dimension: "记录分组变量",
+  metric: "评分/数值指标",
+  pressure: "挤压程度",
+  photo: "照片",
+  ignore: "忽略"
+};
+
+const FIELD_ROLE_ORDER = ["user_id", "device", "user", "dimension", "metric", "pressure", "photo", "ignore"];
+
+function fieldRoleSourceRows() {
+  return state.mappingRows.length ? state.mappingRows : state.rows;
+}
+
+function inferredFieldRoleForRows(field, rows = fieldRoleSourceRows()) {
+  return Core.inferFieldRole(field, rows);
+}
+
+function fieldRoleHeadersForDraft() {
+  return Object.keys(fieldRoleSourceRows()[0] || {});
+}
+
+function draftFieldRole(field) {
+  return state.fieldRoleDraftOverrides[field] || state.fieldRoleOverrides[field] || inferredFieldRoleForRows(field);
+}
+
+function resetFieldRoleDraftFromConfirmed() {
+  state.fieldRoleDraftOverrides = { ...state.fieldRoleOverrides };
+  state.fieldRolesConfirmed = false;
+}
+
+function fieldRoleLockReason(field) {
+  const headers = fieldRoleHeadersForDraft();
+  const rows = fieldRoleSourceRows();
+  const inferred = inferredFieldRoleForRows(field, rows);
+  if (field === USER_NOTE_FIELD) return "系统备注字段";
+  if (/^photo_|^bare_ear_photo/.test(field)) return "系统照片字段";
+  const userFields = headers.filter(item => draftFieldRole(item) === "user_id");
+  if (draftFieldRole(field) === "user_id" && userFields.length <= 1) return "唯一用户编号";
+  if (inferred === "photo" && draftFieldRole(field) === "photo") return "照片路径字段";
+  return "";
+}
+
+function normalizeRoleValue(value) {
+  return FIELD_ROLE_ORDER.includes(value) ? value : "dimension";
+}
+
+function userValueKey(value) {
+  return String(value ?? "").trim();
+}
+
+function nonEmptyValues(rows, field) {
+  return rows.map(row => String(row[field] ?? "").trim()).filter(Boolean);
+}
+
+function numericValueRate(rows, field) {
+  const values = nonEmptyValues(rows, field);
+  if (!values.length) return 0;
+  return values.filter(value => Number.isFinite(Number(value))).length / values.length;
+}
+
+function photoLikeValueRate(rows, field) {
+  const values = nonEmptyValues(rows, field);
+  if (!values.length) return 0;
+  return values.filter(value => Core.isImagePath(value) || /^(blob:|data:|https?:|\/api\/)/i.test(value)).length / values.length;
+}
+
+function validateFieldRoleDraft() {
+  const rows = fieldRoleSourceRows();
+  const headers = fieldRoleHeadersForDraft();
+  const roles = Object.fromEntries(headers.map(field => [field, draftFieldRole(field)]));
+  const errors = [];
+  const warnings = [];
+  const userFields = headers.filter(field => roles[field] === "user_id");
+  if (!userFields.length) errors.push("至少需要一个用户编号字段。");
+  headers.forEach(field => {
+    const role = roles[field];
+    const label = fieldLabels[field] || field;
+    if ((role === "metric" || role === "pressure") && numericValueRate(rows, field) < 0.8) {
+      errors.push(`${label} 不能作为${FIELD_ROLE_LABELS[role]}：非数字值过多。`);
+    }
+    if (role === "photo" && !/^photo_|^bare_ear_photo/.test(field) && photoLikeValueRate(rows, field) < 0.5) {
+      errors.push(`${label} 不能作为照片字段：不像图片路径。`);
+    }
+    if (role === "user" && userFields.length) {
+      const byUser = new Map();
+      rows.forEach(row => {
+        const user = userValueKey(row[userFields[0]]);
+        if (!user) return;
+        const value = userValueKey(row[field]);
+        if (!byUser.has(user)) byUser.set(user, value);
+        else if (byUser.get(user) !== value) errors.push(`${label} 不能作为组间变量：同一用户存在多个值。`);
+      });
+    }
+    if (role === "dimension" && new Set(nonEmptyValues(rows, field)).size > 80) {
+      warnings.push(`${label} 作为记录分组变量的唯一值较多，分组可能很碎。`);
+    }
   });
+  return { errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
+}
+
+function updateFieldRoleDraftStatus() {
+  if (!els.fieldRoleDraftStatus) return;
+  const headers = fieldRoleHeadersForDraft();
+  if (!headers.length) {
+    els.fieldRoleDraftStatus.textContent = "等待导入 CSV。";
+    if (els.confirmFieldRolesButton) els.confirmFieldRolesButton.disabled = true;
+    return;
+  }
+  const changed = headers.filter(field => draftFieldRole(field) !== inferredFieldRoleForRows(field)).length;
+  const validation = validateFieldRoleDraft();
+  const status = [
+    `${headers.length} 个字段`,
+    `${changed} 个手动分类`,
+    validation.errors.length ? `${validation.errors.length} 个错误` : "",
+    validation.warnings.length ? `${validation.warnings.length} 个提示` : ""
+  ].filter(Boolean).join(" · ");
+  els.fieldRoleDraftStatus.textContent = validation.errors.length ? `${status}：${validation.errors[0]}` : status;
+  if (els.confirmFieldRolesButton) els.confirmFieldRolesButton.disabled = validation.errors.length > 0;
+}
+
+function renderFieldRoleConfig() {
+  if (!els.fieldRoleList) return;
+  const rows = fieldRoleSourceRows();
+  const headers = Object.keys(rows[0] || {});
+  if (!headers.length) {
+    els.fieldRoleList.innerHTML = '<div class="empty-state">导入 CSV 后可调整变量分类。</div>';
+    updateFieldRoleDraftStatus();
+    return;
+  }
+  const groups = new Map(FIELD_ROLE_ORDER.map(role => [role, []]));
+  headers.forEach(field => {
+    const role = draftFieldRole(field);
+    if (!groups.has(role)) groups.set(role, []);
+    groups.get(role).push(field);
+  });
+  els.fieldRoleList.innerHTML = FIELD_ROLE_ORDER.map(role => `
+    <section class="field-role-lane" data-role="${role}">
+      <header><strong>${FIELD_ROLE_LABELS[role]}</strong><span>${groups.get(role)?.length || 0}</span></header>
+      <div class="field-role-dropzone" data-role="${role}">
+        ${(groups.get(role) || []).map(field => {
+          const inferred = inferredFieldRoleForRows(field, rows);
+          const lockReason = fieldRoleLockReason(field);
+          const changed = draftFieldRole(field) !== inferred;
+          return `<button type="button" class="field-role-chip ${changed ? "changed" : ""} ${lockReason ? "locked" : ""}" draggable="${lockReason ? "false" : "true"}" data-field="${attrEscape(field)}" title="${attrEscape(lockReason || "拖动到其他分类")}">
+            <span>${escapeHtml(fieldLabels[field] || field)}</span>
+            <small>${escapeHtml(field)} · 自动：${escapeHtml(FIELD_ROLE_LABELS[inferred] || inferred)}${lockReason ? ` · ${escapeHtml(lockReason)}` : ""}</small>
+          </button>`;
+        }).join("") || '<p class="field-role-empty">拖到这里</p>'}
+      </div>
+    </section>
+  `).join("");
+  updateFieldRoleDraftStatus();
 }
 
 function parseCSV(text) {
@@ -5249,11 +5396,17 @@ function updateApplyDataButton() {
   if (!els.applyMappingButton) return;
   const hasMappedRows = state.mappedRows.length > 0;
   const hasCsvRows = state.mappingRows.length > 0;
-  els.applyMappingButton.disabled = !hasMappedRows && !hasCsvRows;
+  const needsRoleConfirm = hasCsvRows && !state.fieldRolesConfirmed;
+  els.applyMappingButton.disabled = (!hasMappedRows && !hasCsvRows) || needsRoleConfirm;
   els.applyMappingButton.textContent = hasMappedRows ? "应用照片映射到看板" : "应用 CSV 到看板";
 }
 
 function applyMappedRows() {
+  if (state.mappingRows.length && !state.fieldRolesConfirmed) {
+    els.mappingSummary.textContent = "请先确认变量分类改动。";
+    updateApplyDataButton();
+    return;
+  }
   const sourceRows = state.mappedRows.length ? state.mappedRows : state.mappingRows;
   if (!sourceRows.length) {
     els.mappingSummary.textContent = "请先选择 CSV。";
@@ -5272,6 +5425,47 @@ function applyMappedRows() {
   els.dataSourceLabel.textContent = state.mappedRows.length ? "照片映射数据" : "CSV 数据";
   switchPage("dashboard");
   markProjectDirty();
+}
+
+function confirmFieldRoleDraft() {
+  const headers = fieldRoleHeadersForDraft();
+  if (!headers.length) {
+    if (els.fieldRoleDraftStatus) els.fieldRoleDraftStatus.textContent = "请先导入 CSV。";
+    return false;
+  }
+  const validation = validateFieldRoleDraft();
+  if (validation.errors.length) {
+    if (els.fieldRoleDraftStatus) els.fieldRoleDraftStatus.textContent = `无法确认：${validation.errors[0]}`;
+    renderFieldRoleConfig();
+    updateApplyDataButton();
+    return false;
+  }
+  const nextOverrides = Object.fromEntries(Object.entries(state.fieldRoleOverrides).filter(([field]) => !headers.includes(field)));
+  headers.forEach(field => {
+    const role = draftFieldRole(field);
+    const inferred = inferredFieldRoleForRows(field);
+    if (role !== inferred) nextOverrides[field] = role;
+  });
+  state.fieldRoleOverrides = nextOverrides;
+  state.fieldRoleDraftOverrides = { ...nextOverrides };
+  state.fieldRolesConfirmed = true;
+  saveFieldRoleOverrides();
+  const currentHeaders = Object.keys(state.rows[0] || {});
+  if (currentHeaders.length && headers.every(field => currentHeaders.includes(field))) {
+    state.selectedGroup = null;
+    buildSchema();
+    initializeControls();
+    renderColumnConfig();
+    render();
+  }
+  renderFieldRoleConfig();
+  updateApplyDataButton();
+  if (els.fieldRoleDraftStatus) {
+    const warning = validation.warnings[0] ? ` · 提示：${validation.warnings[0]}` : "";
+    els.fieldRoleDraftStatus.textContent = `变量分类已确认${warning}`;
+  }
+  markProjectDirty();
+  return true;
 }
 
 function handleDetailHeaderChange(event) {
@@ -5735,11 +5929,13 @@ function bindEvents() {
     reader.onload = () => {
       state.sourceCsvText = String(reader.result || "");
       state.mappingRows = parseCSV(state.sourceCsvText);
+      resetFieldRoleDraftFromConfirmed();
       resetMappingOutputs();
       initializeMappingFields();
+      renderFieldRoleConfig();
       validateProtocolRows();
       renderProtocolStatus();
-      els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录。可先应用 CSV 到看板，或继续生成照片映射。`;
+      els.mappingSummary.textContent = `${file.name} · ${state.mappingRows.length} 条记录。确认变量分类后可应用 CSV 到看板，或继续生成照片映射。`;
       if (els.mappingCsvStatus) els.mappingCsvStatus.textContent = `已选择：${file.name}。保存项目时会复制到项目 data 文件夹。`;
       markProjectDirty();
     };
@@ -5776,6 +5972,9 @@ function bindEvents() {
     els.runMappingButton.disabled = true;
     els.mappingSummary.textContent = "正在扫描并映射照片…";
     try {
+      if (!state.fieldRolesConfirmed) {
+        throw new Error("请先确认变量分类改动。");
+      }
       await scanPhotoRoot({ force: true });
       state.photoMappingOverrides = {};
       await buildPhotoMapping();
@@ -5930,30 +6129,52 @@ function bindEvents() {
     if (event.key === "Escape" && !els.photoLightbox.hidden) closePhotoLightbox();
   });
   els.photoLightboxClose.addEventListener("click", closePhotoLightbox);
-  els.fieldRoleList.addEventListener("change", event => {
-    if (!event.target.matches("select[data-field]")) return;
-    const field = event.target.dataset.field;
-    const inferred = Core.inferFieldRole(field, state.rows);
-    if (event.target.value === inferred) delete state.fieldRoleOverrides[field];
-    else state.fieldRoleOverrides[field] = event.target.value;
-    saveFieldRoleOverrides();
-    state.selectedGroup = null;
-    buildSchema();
-    initializeControls();
+  els.confirmFieldRolesButton?.addEventListener("click", confirmFieldRoleDraft);
+  els.fieldRoleList.addEventListener("dragstart", event => {
+    const chip = event.target.closest(".field-role-chip:not(.locked)");
+    if (!chip) return;
+    state.draggedFieldRoleField = chip.dataset.field || "";
+    chip.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", state.draggedFieldRoleField);
+  });
+  els.fieldRoleList.addEventListener("dragend", event => {
+    event.target.closest(".field-role-chip")?.classList.remove("dragging");
+    state.draggedFieldRoleField = "";
+    els.fieldRoleList.querySelectorAll(".field-role-dropzone.drop-target").forEach(zone => zone.classList.remove("drop-target"));
+  });
+  els.fieldRoleList.addEventListener("dragover", event => {
+    const zone = event.target.closest(".field-role-dropzone");
+    if (!zone || !state.draggedFieldRoleField) return;
+    event.preventDefault();
+    zone.classList.add("drop-target");
+  });
+  els.fieldRoleList.addEventListener("dragleave", event => {
+    const zone = event.target.closest(".field-role-dropzone");
+    if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove("drop-target");
+  });
+  els.fieldRoleList.addEventListener("drop", event => {
+    const zone = event.target.closest(".field-role-dropzone");
+    const field = state.draggedFieldRoleField || event.dataTransfer.getData("text/plain");
+    if (!zone || !field) return;
+    event.preventDefault();
+    const role = normalizeRoleValue(zone.dataset.role);
+    const lockReason = fieldRoleLockReason(field);
+    if (lockReason) {
+      if (els.fieldRoleDraftStatus) els.fieldRoleDraftStatus.textContent = `${field} 不可改：${lockReason}`;
+      return;
+    }
+    state.fieldRoleDraftOverrides[field] = role;
+    state.fieldRolesConfirmed = false;
     renderFieldRoleConfig();
-    renderColumnConfig();
-    render();
+    updateApplyDataButton();
     markProjectDirty();
   });
   els.resetFieldRolesButton.addEventListener("click", () => {
-    state.fieldRoleOverrides = {};
-    saveFieldRoleOverrides();
-    state.selectedGroup = null;
-    buildSchema();
-    initializeControls();
+    state.fieldRoleDraftOverrides = {};
+    state.fieldRolesConfirmed = false;
     renderFieldRoleConfig();
-    renderColumnConfig();
-    render();
+    updateApplyDataButton();
     markProjectDirty();
   });
   els.primaryDimension.addEventListener("change", () => { state.primaryDimension = els.primaryDimension.value; state.selectedGroup = null; render(); markProjectDirty(); });

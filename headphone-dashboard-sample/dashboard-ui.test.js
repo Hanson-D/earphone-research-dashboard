@@ -24,13 +24,19 @@ function directSectionClasses(html, parentClass) {
   return children;
 }
 
-test("mapping page is organized as a three-step workflow with optional advanced settings", () => {
+test("preprocessing page separates csv roles, photo setup, and mapping review", () => {
   const html = read("index.html");
   const css = read("styles.css");
+  const js = read("app.js");
 
-  assert.match(html, /<section class="mapping-step">[\s\S]*导入 CSV/);
-  assert.match(html, /<section class="mapping-step">[\s\S]*照片根目录与规则/);
-  assert.match(html, /<section class="mapping-step">[\s\S]*字段与拍照顺序/);
+  assert.match(html, /01 · 数据预处理/);
+  assert.match(html, /<section class="preprocess-section csv-preprocess-section">[\s\S]*CSV 数据/);
+  assert.match(html, /<section class="variable-role-panel">[\s\S]*变量分类/);
+  assert.match(html, /id="fieldRoleList" class="field-role-list variable-role-board"/);
+  assert.match(html, /id="confirmFieldRolesButton"[\s\S]*确认变量分类改动/);
+  assert.match(html, /id="fieldRoleDraftStatus"/);
+  assert.match(html, /<section class="preprocess-section photo-setup-section">[\s\S]*照片来源/);
+  assert.match(html, /<section class="mapping-step photo-rule-panel">[\s\S]*照片映射规则/);
   assert.match(html, /<div class="mapping-run-step">[\s\S]*生成照片映射/);
   assert.match(html, /<details class="advanced-path-input mapping-advanced">[\s\S]*高级：手动输入照片路径/);
   assert.match(html, /<details class="mapping-advanced">[\s\S]*高级匹配设置/);
@@ -38,9 +44,18 @@ test("mapping page is organized as a three-step workflow with optional advanced 
     "mapping-setup mapping-card mapping-builder",
     "mapping-results panel"
   ]);
-  assert.match(css, /\.mapping-steps-grid\s*{[\s\S]*grid-template-columns:\s*minmax\(180px,\s*1fr\)\s*minmax\(260px,\s*2fr\)\s*minmax\(420px,\s*3fr\);/);
+  assert.match(css, /\.csv-preprocess-section\s*{[\s\S]*grid-template-columns:\s*minmax\(230px,\s*\.72fr\)\s*minmax\(460px,\s*1\.28fr\);/);
+  assert.match(css, /\.photo-setup-section\s*{[\s\S]*grid-template-columns:\s*minmax\(280px,\s*\.9fr\)\s*minmax\(460px,\s*1\.1fr\);/);
+  assert.match(css, /\.variable-role-board\s*{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(128px,\s*1fr\)\);/);
+  assert.match(css, /\.field-role-chip\.locked\s*{/);
   assert.match(css, /\.mapping-layout\s*{[\s\S]*grid-template-columns:\s*1fr;/);
   assert.doesNotMatch(cssBlock(css, ".mapping-setup"), /position:\s*sticky;/);
+  assert.match(js, /const FIELD_ROLE_LABELS = \{[\s\S]*dimension:\s*"记录分组变量"/);
+  assert.match(js, /function validateFieldRoleDraft/);
+  assert.match(js, /function confirmFieldRoleDraft/);
+  assert.match(js, /fieldRolesConfirmed/);
+  assert.match(js, /dragstart/);
+  assert.match(js, /drop/);
 });
 
 test("detail layout panel separates display settings from column configuration", () => {
@@ -285,11 +300,14 @@ test("csv rows can be applied to the dashboard without photo mapping", () => {
   const applyBody = js.match(/function applyMappedRows\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
 
   assert.match(html, /id="applyMappingButton"[\s\S]*应用 CSV 到看板/);
+  assert.match(html, /id="confirmFieldRolesButton"[\s\S]*确认变量分类改动/);
   assert.match(js, /function updateApplyDataButton/);
+  assert.match(js, /needsRoleConfirm/);
+  assert.match(js, /请先确认变量分类改动/);
   assert.match(js, /state\.mappedRows\.length \? state\.mappedRows : state\.mappingRows/);
   assert.match(js, /应用 CSV 到看板/);
   assert.match(js, /应用照片映射到看板/);
-  assert.match(js, /可先应用 CSV 到看板/);
+  assert.match(js, /确认变量分类后可应用 CSV 到看板/);
   assert.match(applyBody, /CSV 数据/);
 });
 
