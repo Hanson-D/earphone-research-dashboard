@@ -262,8 +262,11 @@ select[multiple] { min-height: 84px; }
 .field-role-list { display: grid; gap: 6px; max-height: 280px; overflow: auto; margin-bottom: 10px; }
 .variable-role-board {
   grid-template-columns: repeat(4, minmax(128px, 1fr));
+  grid-auto-rows: minmax(150px, 1fr);
   align-content: start;
   max-height: 420px;
+  min-height: 0;
+  overflow-y: auto;
   margin-bottom: 0;
   padding-right: 2px;
 }
@@ -271,6 +274,7 @@ select[multiple] { min-height: 84px; }
   display: grid;
   grid-template-rows: auto minmax(74px, 1fr);
   min-width: 0;
+  min-height: 0;
   background: #fff8f3;
   border: 1px solid #ead6d6;
   border-radius: 4px;
@@ -302,6 +306,7 @@ select[multiple] { min-height: 84px; }
   align-content: start;
   gap: 6px;
   min-height: 74px;
+  overflow-y: auto;
   padding: 7px;
 }
 .field-role-dropzone.drop-target {
