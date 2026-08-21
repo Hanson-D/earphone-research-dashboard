@@ -154,9 +154,10 @@ test("single-project analysis exposes a group-level photo comparison board", () 
   assert.match(css, /\.photo-compare-controls\s*{[\s\S]*grid-template-columns:/);
   assert.match(css, /\.photo-compare-level-options/);
   assert.match(css, /\.photo-compare-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.photo-compare-wall\s*{[\s\S]*auto-fill/);
   assert.match(css, /\.photo-compare-user-card/);
   assert.match(css, /\.photo-compare-device-strip\s*{[\s\S]*auto-fit/);
-  assert.match(css, /\.photo-compare-frame img\s*{[\s\S]*object-fit:\s*contain/);
+  assert.match(css, /\.photo-compare-frame img\s*{[\s\S]*object-fit:\s*cover/);
 });
 
 test("detail dashboard exposes csv export and click-to-center photo controls", () => {

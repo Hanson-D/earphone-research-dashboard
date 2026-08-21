@@ -172,7 +172,7 @@ const state = {
   photoCompareLevelsA: [],
   photoCompareLevelsB: [],
   photoCompareView: "",
-  photoComparePhotoSize: 150,
+  photoComparePhotoSize: 120,
   photoComparePositionX: 50,
   photoComparePositionY: 50,
   photoCompareZoom: 100,
@@ -1104,7 +1104,7 @@ function restoreProjectTabSnapshot(snapshot) {
   state.photoCompareLevelsA = Array.isArray(snapshot.photoCompareLevelsA) ? snapshot.photoCompareLevelsA.map(String) : (state.photoCompareLevelA ? [state.photoCompareLevelA] : []);
   state.photoCompareLevelsB = Array.isArray(snapshot.photoCompareLevelsB) ? snapshot.photoCompareLevelsB.map(String) : (state.photoCompareLevelB ? [state.photoCompareLevelB] : []);
   state.photoCompareView = snapshot.photoCompareView || "";
-  state.photoComparePhotoSize = Number.isFinite(Number(snapshot.photoComparePhotoSize)) ? Number(snapshot.photoComparePhotoSize) : 150;
+  state.photoComparePhotoSize = Number.isFinite(Number(snapshot.photoComparePhotoSize)) ? Number(snapshot.photoComparePhotoSize) : 120;
   state.photoComparePositionX = Number.isFinite(Number(snapshot.photoComparePositionX)) ? Number(snapshot.photoComparePositionX) : 50;
   state.photoComparePositionY = Number.isFinite(Number(snapshot.photoComparePositionY)) ? Number(snapshot.photoComparePositionY) : 50;
   state.photoCompareZoom = Number.isFinite(Number(snapshot.photoCompareZoom)) ? Number(snapshot.photoCompareZoom) : 100;
@@ -3377,7 +3377,7 @@ function photoComparePanelSettings(side) {
   const panel = state.photoComparePanelSettings?.[side] || {};
   return {
     view: panel.view || state.photoCompareView || state.globalView || state.photoFields[0] || "",
-    photoSize: Math.max(90, Math.min(260, Number(panel.photoSize) || state.photoComparePhotoSize || 150)),
+    photoSize: Math.max(90, Math.min(260, Number(panel.photoSize) || state.photoComparePhotoSize || 120)),
     positionX: clampPercent(panel.positionX, state.photoComparePositionX),
     positionY: clampPercent(panel.positionY, state.photoComparePositionY),
     zoom: clampPhotoZoom(panel.zoom, state.photoCompareZoom)
@@ -6032,7 +6032,7 @@ function bindEvents() {
     markProjectDirty();
   });
   els.photoComparePhotoSize?.addEventListener("input", () => {
-    state.photoComparePhotoSize = Math.max(90, Math.min(260, Number(els.photoComparePhotoSize.value) || 150));
+    state.photoComparePhotoSize = Math.max(90, Math.min(260, Number(els.photoComparePhotoSize.value) || 120));
     state.photoComparePanelSettings = {};
     renderPhotoComparePage();
     markProjectDirty();
