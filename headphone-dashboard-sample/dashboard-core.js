@@ -294,12 +294,55 @@
     return nextRows;
   }
 
+  function stableWithinGroup(rows = [], groupField = "", valueField = "") {
+    if (!groupField || !valueField || groupField === valueField) return false;
+    const byGroup = new Map();
+    let groups = 0;
+    for (const row of rows) {
+      const group = String(row?.[groupField] ?? "").trim();
+      if (!group) continue;
+      const value = String(row?.[valueField] ?? "").trim();
+      if (!byGroup.has(group)) {
+        byGroup.set(group, value);
+        groups += 1;
+      } else if (byGroup.get(group) !== value) {
+        return false;
+      }
+    }
+    return groups > 0;
+  }
+
+  function likelyUserField(headers = []) {
+    return headers.find(field => /^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) ||
+      headers.find(field => /user|participant|subject|姓名|用户|受试者/i.test(field)) || "";
+  }
+
+  function likelyDeviceField(headers = []) {
+    return headers.find(field => /^device_name$|device_id|condition|设备|条件/i.test(field)) || "";
+  }
+
+  function isEarSizeField(field, rows = []) {
+    const headers = Object.keys(rows[0] || {});
+    const userField = likelyUserField(headers);
+    return /ear[_\-\s]*(size|shape|width|height|length|depth|dimension|measure)|耳型|耳形|人耳|耳.*(尺寸|大小|宽|高|长|深|厚|角度)|甲腔|耳道|外展|耳轮/i.test(field) &&
+      stableWithinGroup(rows, userField, field);
+  }
+
+  function isInterferenceField(field, rows = []) {
+    const headers = Object.keys(rows[0] || {});
+    const deviceField = likelyDeviceField(headers);
+    return /interference|collision|conflict|contact|overlap|position|location|干涉|干扰|碰撞|冲突|遮挡|接触|位置/i.test(field) &&
+      stableWithinGroup(rows, deviceField, field);
+  }
+
   function inferFieldRole(field, rows = []) {
     if (/^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) return "user_id";
     if (/^device_name$|device_id|condition|设备|条件/i.test(field)) return "device";
     if (isPhotoField(field, rows)) return "photo";
     if (isPressureField(field)) return "pressure";
     if (/record|comment|备注|说明|description/i.test(field)) return "ignore";
+    if (isInterferenceField(field, rows)) return "interference";
+    if (isEarSizeField(field, rows)) return "ear_size";
     if (/gender|sex|age|年龄|性别|ear_|concha|canal|protrusion|helix|耳|甲腔|耳道|外展|耳轮/i.test(field)) return "user";
     if (isScoreMetric(field) && isNumericField(field, rows)) return "metric";
     if (isNumericField(field, rows)) return "metric";
@@ -1377,6 +1420,8 @@
     swapMappedPhotoAssignments,
     swapMappedPhotoDeviceGroups,
     inferFieldRole,
+    isEarSizeField,
+    isInterferenceField,
     resolveFieldRoles,
     naturalCompare,
     photoFieldNames,

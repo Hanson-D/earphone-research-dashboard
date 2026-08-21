@@ -44,15 +44,17 @@ test("preprocessing page separates csv roles, photo setup, and mapping review", 
     "mapping-setup mapping-card mapping-builder",
     "mapping-results panel"
   ]);
-  assert.match(css, /\.csv-preprocess-section\s*{[\s\S]*grid-template-columns:\s*minmax\(230px,\s*\.72fr\)\s*minmax\(460px,\s*1\.28fr\);/);
+  assert.match(css, /\.csv-preprocess-section\s*{[\s\S]*grid-template-columns:\s*minmax\(160px,\s*\.42fr\)\s*minmax\(620px,\s*1\.58fr\);/);
   assert.match(css, /\.photo-setup-section\s*{[\s\S]*grid-template-columns:\s*minmax\(280px,\s*\.9fr\)\s*minmax\(460px,\s*1\.1fr\);/);
-  assert.match(css, /\.variable-role-board\s*{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(128px,\s*1fr\)\);/);
+  assert.match(css, /\.variable-role-board\s*{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(118px,\s*1fr\)\);/);
   assert.match(css, /\.variable-role-board\s*{[\s\S]*overflow-y:\s*auto;/);
   assert.match(css, /\.field-role-dropzone\s*{[\s\S]*overflow-y:\s*auto;/);
   assert.match(css, /\.field-role-chip\.locked\s*{/);
   assert.match(css, /\.mapping-layout\s*{[\s\S]*grid-template-columns:\s*1fr;/);
   assert.doesNotMatch(cssBlock(css, ".mapping-setup"), /position:\s*sticky;/);
   assert.match(js, /const FIELD_ROLE_LABELS = \{[\s\S]*dimension:\s*"记录分组变量"/);
+  assert.match(js, /ear_size:\s*"人耳尺寸"/);
+  assert.match(js, /interference:\s*"干涉变量"/);
   assert.match(js, /function validateFieldRoleDraft/);
   assert.match(js, /function confirmFieldRoleDraft/);
   assert.match(js, /fieldRolesConfirmed/);

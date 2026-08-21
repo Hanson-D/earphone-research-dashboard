@@ -261,7 +261,7 @@ select[multiple] { min-height: 84px; }
 .field-role-config p { margin: 7px 0 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .field-role-list { display: grid; gap: 6px; max-height: 280px; overflow: auto; margin-bottom: 10px; }
 .variable-role-board {
-  grid-template-columns: repeat(4, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   grid-auto-rows: minmax(150px, 1fr);
   align-content: start;
   max-height: 420px;
@@ -430,7 +430,7 @@ select[multiple] { min-height: 84px; }
   min-width: 0;
 }
 .csv-preprocess-section {
-  grid-template-columns: minmax(230px, .72fr) minmax(460px, 1.28fr);
+  grid-template-columns: minmax(160px, .42fr) minmax(620px, 1.58fr);
   align-items: stretch;
 }
 .photo-setup-section {

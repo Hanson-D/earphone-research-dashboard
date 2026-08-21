@@ -1942,14 +1942,16 @@ const FIELD_ROLE_LABELS = {
   user_id: "用户编号",
   device: "设备/条件",
   user: "组间变量",
+  ear_size: "人耳尺寸",
   dimension: "记录分组变量",
+  interference: "干涉变量",
   metric: "评分/数值指标",
   pressure: "挤压程度",
   photo: "照片",
   ignore: "忽略"
 };
 
-const FIELD_ROLE_ORDER = ["user_id", "device", "user", "dimension", "metric", "pressure", "photo", "ignore"];
+const FIELD_ROLE_ORDER = ["user_id", "device", "user", "ear_size", "dimension", "interference", "metric", "pressure", "photo", "ignore"];
 
 function fieldRoleSourceRows() {
   return state.mappingRows.length ? state.mappingRows : state.rows;
@@ -2008,6 +2010,24 @@ function photoLikeValueRate(rows, field) {
   return values.filter(value => Core.isImagePath(value) || /^(blob:|data:|https?:|\/api\/)/i.test(value)).length / values.length;
 }
 
+function fieldStableByGroup(rows, groupField, field) {
+  if (!groupField || !field || groupField === field) return false;
+  const byGroup = new Map();
+  let groups = 0;
+  for (const row of rows) {
+    const group = userValueKey(row[groupField]);
+    if (!group) continue;
+    const value = userValueKey(row[field]);
+    if (!byGroup.has(group)) {
+      byGroup.set(group, value);
+      groups += 1;
+    } else if (byGroup.get(group) !== value) {
+      return false;
+    }
+  }
+  return groups > 0;
+}
+
 function validateFieldRoleDraft() {
   const rows = fieldRoleSourceRows();
   const headers = fieldRoleHeadersForDraft();
@@ -2015,6 +2035,7 @@ function validateFieldRoleDraft() {
   const errors = [];
   const warnings = [];
   const userFields = headers.filter(field => roles[field] === "user_id");
+  const deviceFields = headers.filter(field => roles[field] === "device");
   if (!userFields.length) errors.push("至少需要一个用户编号字段。");
   headers.forEach(field => {
     const role = roles[field];
@@ -2034,6 +2055,13 @@ function validateFieldRoleDraft() {
         if (!byUser.has(user)) byUser.set(user, value);
         else if (byUser.get(user) !== value) errors.push(`${label} 不能作为组间变量：同一用户存在多个值。`);
       });
+    }
+    if (role === "ear_size" && userFields.length && !fieldStableByGroup(rows, userFields[0], field)) {
+      errors.push(`${label} 不能作为人耳尺寸：同一用户存在多个值。`);
+    }
+    if (role === "interference") {
+      if (!deviceFields.length) errors.push(`${label} 不能作为干涉变量：需要先指定设备/条件字段。`);
+      else if (!fieldStableByGroup(rows, deviceFields[0], field)) errors.push(`${label} 不能作为干涉变量：同一设备/条件存在多个值。`);
     }
     if (role === "dimension" && new Set(nonEmptyValues(rows, field)).size > 80) {
       warnings.push(`${label} 作为记录分组变量的唯一值较多，分组可能很碎。`);
@@ -2213,7 +2241,7 @@ function rootedPhotoPath(relativePath) {
 
 function isUserLevelField(field) {
   const role = fieldRole(field);
-  if (role === "user" || role === "user_id") return true;
+  if (role === "user" || role === "ear_size" || role === "user_id") return true;
   if (role !== "dimension") return false;
   if (isPhotoField(field)) return false;
   if (field === state.userIdField) {
@@ -2303,7 +2331,7 @@ function buildSchema() {
   state.metricFields = state.headers.filter(field => fieldRole(field) === "metric" && isNumericField(field));
   state.dimensionFields = state.headers.filter(field => {
     const count = unique(field).length;
-    return ["device", "user", "dimension"].includes(fieldRole(field)) &&
+    return ["device", "user", "ear_size", "dimension", "interference"].includes(fieldRole(field)) &&
       field !== state.userIdField && count > 0 && count <= 50;
   });
 

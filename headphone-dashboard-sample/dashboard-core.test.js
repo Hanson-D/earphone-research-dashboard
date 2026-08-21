@@ -234,6 +234,31 @@ test("field roles are inferred and can be overridden", () => {
   assert.equal(roles.comments, "ignore");
 });
 
+test("field roles infer ear size by user and interference by device", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A", ear_width_mm: "32", interference_score: "2", interference_position: "front" },
+    { user_id: "U001", device_name: "B", ear_width_mm: "32", interference_score: "5", interference_position: "rear" },
+    { user_id: "U002", device_name: "A", ear_width_mm: "29", interference_score: "2", interference_position: "front" },
+    { user_id: "U002", device_name: "B", ear_width_mm: "29", interference_score: "5", interference_position: "rear" }
+  ];
+
+  assert.equal(core.inferFieldRole("ear_width_mm", rows), "ear_size");
+  assert.equal(core.inferFieldRole("interference_score", rows), "interference");
+  assert.equal(core.inferFieldRole("interference_position", rows), "interference");
+});
+
+test("field roles avoid ear size and interference when group values are unstable", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A", ear_width_mm: "32", interference_score: "2" },
+    { user_id: "U001", device_name: "B", ear_width_mm: "33", interference_score: "5" },
+    { user_id: "U002", device_name: "A", ear_width_mm: "29", interference_score: "3" },
+    { user_id: "U002", device_name: "B", ear_width_mm: "29", interference_score: "5" }
+  ];
+
+  assert.equal(core.inferFieldRole("ear_width_mm", rows), "user");
+  assert.equal(core.inferFieldRole("interference_score", rows), "metric");
+});
+
 test("photo mapping follows user folders and supports per-cell overrides", () => {
   const rows = [
     { user_id: "U001", device_name: "A" },
