@@ -1024,7 +1024,40 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .photo-compare-level-sets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .photo-compare-level-set { display: grid; gap: 6px; min-width: 0; }
 .photo-compare-level-set > span { color: var(--muted); font-size: 10px; font-weight: 900; }
-.photo-compare-level-options { display: flex; flex-wrap: wrap; gap: 5px; max-height: 92px; overflow: auto; padding: 6px; background: #fff8f3; border: 1px solid var(--line); }
+.photo-compare-level-options { position: relative; min-width: 0; }
+.photo-compare-level-menu { position: relative; min-width: 0; }
+.photo-compare-level-trigger {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  color: var(--accent-dark);
+  background: #fff8f3;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+.photo-compare-level-trigger b { overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.photo-compare-level-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: none;
+  gap: 7px;
+  padding: 7px;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 12px 24px rgba(67,30,32,.14);
+}
+.photo-compare-level-menu.open .photo-compare-level-popover { display: grid; }
+.photo-compare-level-list { display: flex; flex-wrap: wrap; gap: 5px; max-height: 136px; overflow: auto; }
+.photo-compare-level-confirm { justify-self: end; padding: 7px 14px; font-size: 11px; }
 .photo-compare-level-chip { display: inline-flex; align-items: center; max-width: 100%; gap: 4px; padding: 4px 7px; color: var(--accent-dark); background: #fff; border: 1px solid #dbc8c8; font-size: 11px; font-weight: 850; cursor: pointer; }
 .photo-compare-level-chip input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
 .photo-compare-level-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

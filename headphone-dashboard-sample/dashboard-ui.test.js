@@ -151,11 +151,16 @@ test("single-project analysis exposes a group-level photo comparison board", () 
   assert.match(js, /photoCompareVariable\?\.addEventListener\("change"/);
   assert.match(js, /photoCompareResetLevels\?\.addEventListener\("click"/);
   assert.match(js, /bindPhotoCompareLevelChecks\(els\.photoCompareLevelsA, "a"\)/);
+  assert.match(js, /photo-compare-level-trigger/);
+  assert.match(js, /photo-compare-level-confirm/);
+  assert.match(js, /document\.addEventListener\("click"/);
   assert.match(js, /photoCompareGrid\?\.addEventListener\("input"/);
   assert.match(css, /\.photo-compare-layout/);
   assert.match(css, /\.photo-compare-controls\s*{[\s\S]*grid-template-columns:/);
   assert.match(css, /\.photo-compare-reset-button/);
   assert.match(css, /\.photo-compare-level-options/);
+  assert.match(css, /\.photo-compare-level-popover/);
+  assert.match(css, /\.photo-compare-level-menu\.open \.photo-compare-level-popover\s*{[\s\S]*display:\s*grid/);
   assert.match(css, /\.photo-compare-columns\s*{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(css, /\.photo-compare-wall\s*{[\s\S]*auto-fill/);
   assert.match(css, /\.photo-compare-user-card/);

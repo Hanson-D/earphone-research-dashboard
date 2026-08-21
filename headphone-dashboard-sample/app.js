@@ -177,6 +177,7 @@ const state = {
   photoComparePositionY: 50,
   photoCompareZoom: 100,
   photoComparePanelSettings: {},
+  photoCompareOpenLevelMenu: "",
   analysisMode: "single",
   multiProjectA: "",
   multiProjectB: "",
@@ -3327,12 +3328,24 @@ function normalizePhotoCompareSelections(levels = photoCompareLevels()) {
 function renderPhotoCompareLevelChoices(container, side, levels = photoCompareLevels()) {
   if (!container) return;
   const selected = new Set(selectedPhotoCompareLevels(side));
-  container.innerHTML = levels.map(level => `
-    <label class="photo-compare-level-chip">
-      <input type="checkbox" value="${attrEscape(encodePhotoCompareCondition(state.photoCompareVariable, level))}" ${selected.has(encodePhotoCompareCondition(state.photoCompareVariable, level)) ? "checked" : ""}>
-      <span>${escapeHtml(level)}</span>
-    </label>
-  `).join("") || '<span class="empty-state">无可选条件</span>';
+  const label = selected.size ? `${selected.size} 个条件` : "选择条件";
+  container.innerHTML = `<div class="photo-compare-level-menu ${state.photoCompareOpenLevelMenu === side ? "open" : ""}" data-photo-compare-level-side="${attrEscape(side)}">
+    <button type="button" class="photo-compare-level-trigger" aria-expanded="${state.photoCompareOpenLevelMenu === side ? "true" : "false"}">
+      <span>${escapeHtml(label)}</span>
+      <b>${escapeHtml(selectedPhotoCompareLevels(side).slice(0, 2).map(photoCompareConditionLabel).join(" / ") || "未选择")}</b>
+    </button>
+    <div class="photo-compare-level-popover">
+      <div class="photo-compare-level-list">
+        ${levels.map(level => `
+          <label class="photo-compare-level-chip">
+            <input type="checkbox" value="${attrEscape(encodePhotoCompareCondition(state.photoCompareVariable, level))}" ${selected.has(encodePhotoCompareCondition(state.photoCompareVariable, level)) ? "checked" : ""}>
+            <span>${escapeHtml(level)}</span>
+          </label>
+        `).join("") || '<span class="empty-state">无可选条件</span>'}
+      </div>
+      <button type="button" class="primary-button photo-compare-level-confirm">确认</button>
+    </div>
+  </div>`;
 }
 
 function refreshPhotoCompareControls() {
@@ -6010,10 +6023,24 @@ function bindEvents() {
   });
   els.photoCompareResetLevels?.addEventListener("click", () => {
     setDefaultPhotoCompareLevels(photoCompareLevels());
+    state.photoCompareOpenLevelMenu = "";
     renderPhotoComparePage();
     markProjectDirty();
   });
   const bindPhotoCompareLevelChecks = (container, side) => {
+    container?.addEventListener("click", event => {
+      const menu = event.target.closest(".photo-compare-level-menu");
+      if (!menu) return;
+      if (event.target.closest(".photo-compare-level-trigger")) {
+        state.photoCompareOpenLevelMenu = side;
+        renderPhotoComparePage();
+        return;
+      }
+      if (event.target.closest(".photo-compare-level-confirm")) {
+        state.photoCompareOpenLevelMenu = "";
+        renderPhotoComparePage();
+      }
+    });
     container?.addEventListener("change", event => {
       const input = event.target.closest('input[type="checkbox"]');
       if (!input) return;
@@ -6023,6 +6050,7 @@ function bindEvents() {
       if (input.checked) current.add(value);
       else current.delete(value);
       state[key] = [...current];
+      state.photoCompareOpenLevelMenu = side;
       syncLegacyPhotoCompareLevels();
       renderPhotoComparePage();
       markProjectDirty();
@@ -6030,6 +6058,11 @@ function bindEvents() {
   };
   bindPhotoCompareLevelChecks(els.photoCompareLevelsA, "a");
   bindPhotoCompareLevelChecks(els.photoCompareLevelsB, "b");
+  document.addEventListener("click", event => {
+    if (!state.photoCompareOpenLevelMenu || event.target.closest(".photo-compare-level-menu")) return;
+    state.photoCompareOpenLevelMenu = "";
+    renderPhotoComparePage();
+  });
   els.photoCompareView?.addEventListener("change", () => {
     state.photoCompareView = els.photoCompareView.value;
     state.photoComparePanelSettings = {};
