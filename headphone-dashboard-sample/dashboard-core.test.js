@@ -22,9 +22,11 @@ test("full axis only forces 0-10 for score-like metrics", () => {
 test("pressure fields support English suffix and Chinese column names", () => {
   assert.equal(core.isPressureField("tragus_pressure_score"), true);
   assert.equal(core.isPressureField("tragus_pressure_relief_score"), true);
+  assert.equal(core.isPressureField("pressure_area"), true);
   assert.equal(core.isPressureField("tragus"), true);
   assert.equal(core.isPressureField("耳屏"), true);
   assert.equal(core.isPressureField("耳屏挤压"), true);
+  assert.equal(core.isPressureField("耳屏挤压面积"), true);
   assert.equal(core.isPressureField("耳屏挤压分数"), true);
   assert.equal(core.isPressureField("耳廓前侧"), true);
   assert.equal(core.isPressureField("耳廓上侧"), true);
@@ -236,15 +238,16 @@ test("field roles are inferred and can be overridden", () => {
 
 test("field roles infer ear size by user and interference by device", () => {
   const rows = [
-    { user_id: "U001", device_name: "A", ear_width_mm: "32", interference_score: "2", interference_position: "front" },
-    { user_id: "U001", device_name: "B", ear_width_mm: "32", interference_score: "5", interference_position: "rear" },
-    { user_id: "U002", device_name: "A", ear_width_mm: "29", interference_score: "2", interference_position: "front" },
-    { user_id: "U002", device_name: "B", ear_width_mm: "29", interference_score: "5", interference_position: "rear" }
+    { user_id: "U001", device_name: "A", ear_width_mm: "32", interference_score: "2", interference_position: "front", 干涉面积: "12" },
+    { user_id: "U001", device_name: "B", ear_width_mm: "32", interference_score: "5", interference_position: "rear", 干涉面积: "18" },
+    { user_id: "U002", device_name: "A", ear_width_mm: "29", interference_score: "2", interference_position: "front", 干涉面积: "12" },
+    { user_id: "U002", device_name: "B", ear_width_mm: "29", interference_score: "5", interference_position: "rear", 干涉面积: "18" }
   ];
 
   assert.equal(core.inferFieldRole("ear_width_mm", rows), "ear_size");
   assert.equal(core.inferFieldRole("interference_score", rows), "interference");
   assert.equal(core.inferFieldRole("interference_position", rows), "interference");
+  assert.equal(core.inferFieldRole("干涉面积", rows), "interference");
 });
 
 test("field roles avoid ear size and interference when group values are unstable", () => {
@@ -257,6 +260,36 @@ test("field roles avoid ear size and interference when group values are unstable
 
   assert.equal(core.inferFieldRole("ear_width_mm", rows), "user");
   assert.equal(core.inferFieldRole("interference_score", rows), "metric");
+});
+
+test("explicit comfort stability and satisfaction scores outrank special field roles", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A", comfort_score: "8", stability_rating: "7", 满意度: "9" },
+    { user_id: "U001", device_name: "B", comfort_score: "6", stability_rating: "8", 满意度: "7" },
+    { user_id: "U002", device_name: "A", comfort_score: "9", stability_rating: "7", 满意度: "8" },
+    { user_id: "U002", device_name: "B", comfort_score: "5", stability_rating: "6", 满意度: "6" }
+  ];
+
+  assert.equal(core.inferFieldRole("comfort_score", rows), "metric");
+  assert.equal(core.inferFieldRole("stability_rating", rows), "metric");
+  assert.equal(core.inferFieldRole("满意度", rows), "metric");
+});
+
+test("ear size inference requires dimension semantics and does not steal pressure fields", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A", helix_pressure_score: "6", concha_depth_mm: "11.2", ear_area_mm2: "120.5", 耳道体积: "1.2", 耳廓占比: "42.5", 耳屏挤压面积: "3", 耳轮: "6" },
+    { user_id: "U001", device_name: "B", helix_pressure_score: "8", concha_depth_mm: "11.2", ear_area_mm2: "120.5", 耳道体积: "1.2", 耳廓占比: "42.5", 耳屏挤压面积: "4", 耳轮: "7" },
+    { user_id: "U002", device_name: "A", helix_pressure_score: "4", concha_depth_mm: "9.4", ear_area_mm2: "108.2", 耳道体积: "1.0", 耳廓占比: "39.8", 耳屏挤压面积: "2", 耳轮: "4" },
+    { user_id: "U002", device_name: "B", helix_pressure_score: "5", concha_depth_mm: "9.4", ear_area_mm2: "108.2", 耳道体积: "1.0", 耳廓占比: "39.8", 耳屏挤压面积: "3", 耳轮: "5" }
+  ];
+
+  assert.equal(core.inferFieldRole("helix_pressure_score", rows), "pressure");
+  assert.equal(core.inferFieldRole("concha_depth_mm", rows), "ear_size");
+  assert.equal(core.inferFieldRole("ear_area_mm2", rows), "ear_size");
+  assert.equal(core.inferFieldRole("耳道体积", rows), "ear_size");
+  assert.equal(core.inferFieldRole("耳廓占比", rows), "ear_size");
+  assert.equal(core.inferFieldRole("耳屏挤压面积", rows), "pressure");
+  assert.equal(core.inferFieldRole("耳轮", rows), "pressure");
 });
 
 test("photo mapping follows user folders and supports per-cell overrides", () => {

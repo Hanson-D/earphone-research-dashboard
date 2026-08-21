@@ -27,6 +27,11 @@
     return /score$|rating$|satisfaction|comfort|stability|满意|舒适|稳定|评分|得分/i.test(field);
   }
 
+  function isExplicitEvaluationMetric(field, rows = []) {
+    return /(?:comfort|stability|satisfaction|preference|overall)(?:$|[_\-\s]|score|rating)|(?:舒适|稳定|满意|偏好|综合).*(?:度|分|评分|得分)?/i.test(field) &&
+      isNumericField(field, rows);
+  }
+
   const PRESSURE_SITE_TERMS = [
     "tragus", "antitragus", "helix", "concha", "canal", "lobe",
     "auricle_front", "auricle front", "front auricle", "anterior auricle",
@@ -41,6 +46,10 @@
   ];
 
   const PRESSURE_FIELD_SUFFIX_PATTERN = /(?:^|[_\-\s])(?:pressure|relief|score|rating|degree|level|value)(?=$|[_\-\s])|(?:挤压程度|挤压分数|挤压评分|挤压得分|挤压|压力程度|压力分数|压力评分|压力得分|压力|分数|评分|得分|程度)$/i;
+  const EXPLICIT_PRESSURE_PATTERN = /(?:^|[_\-\s])(?:pressure|relief)(?:$|[_\-\s])|pressure_(?:score|relief_score)$|挤压|压力|压迫/i;
+  const INTERFERENCE_PATTERN = /interference|collision|conflict|contact|overlap|obstruction|block|position|location|干涉|干扰|碰撞|冲突|遮挡|接触|位置|区域|方向/i;
+  const EAR_SIZE_PART_PATTERN = /ear|auricle|concha|canal|helix|pinna|lobe|耳|甲腔|耳道|耳轮|耳廓|耳垂|人耳/i;
+  const EAR_SIZE_MEASURE_PATTERN = /size|width|height|length|depth|distance|angle|diameter|thickness|area|volume|ratio|percent|percentage|dimension|measure|尺寸|大小|宽度|宽|高度|高|长度|长|深度|深|距离|间距|夹角|角度|直径|厚度|厚|面积|体积|容积|比例|百分比|占比|测量/i;
 
   function normalizePressureFieldToken(field) {
     return String(field || "")
@@ -79,8 +88,13 @@
 
   function isPressureField(field) {
     const source = String(field || "");
-    if (/pressure_(?:score|relief_score)$|挤压|压力/i.test(source)) return true;
+    if (EXPLICIT_PRESSURE_PATTERN.test(source)) return true;
     const token = normalizePressureFieldToken(source);
+    return PRESSURE_SITE_TERMS.some(term => token === term.toLowerCase());
+  }
+
+  function isPressureSiteField(field) {
+    const token = normalizePressureFieldToken(field);
     return PRESSURE_SITE_TERMS.some(term => token === term.toLowerCase());
   }
 
@@ -324,25 +338,43 @@
   function isEarSizeField(field, rows = []) {
     const headers = Object.keys(rows[0] || {});
     const userField = likelyUserField(headers);
-    return /ear[_\-\s]*(size|shape|width|height|length|depth|dimension|measure)|耳型|耳形|人耳|耳.*(尺寸|大小|宽|高|长|深|厚|角度)|甲腔|耳道|外展|耳轮/i.test(field) &&
+    return EAR_SIZE_PART_PATTERN.test(field) && EAR_SIZE_MEASURE_PATTERN.test(field) &&
       stableWithinGroup(rows, userField, field);
   }
 
   function isInterferenceField(field, rows = []) {
     const headers = Object.keys(rows[0] || {});
     const deviceField = likelyDeviceField(headers);
-    return /interference|collision|conflict|contact|overlap|position|location|干涉|干扰|碰撞|冲突|遮挡|接触|位置/i.test(field) &&
+    return INTERFERENCE_PATTERN.test(field) &&
       stableWithinGroup(rows, deviceField, field);
+  }
+
+  function isIntegerRatingField(field, rows = []) {
+    const values = rows
+      .map(row => row?.[field])
+      .filter(value => value !== "" && value != null)
+      .map(Number)
+      .filter(Number.isFinite);
+    if (!values.length || !values.every(Number.isInteger)) return false;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return (min >= 0 && max <= 10) || (min >= 1 && max <= 5);
+  }
+
+  function isImplicitPressureScoreField(field, rows = []) {
+    return isPressureSiteField(field) && isIntegerRatingField(field, rows);
   }
 
   function inferFieldRole(field, rows = []) {
     if (/^(user_id|participant_id|subject_id|用户编号|用户id)$/i.test(field)) return "user_id";
     if (/^device_name$|device_id|condition|设备|条件/i.test(field)) return "device";
     if (isPhotoField(field, rows)) return "photo";
-    if (isPressureField(field)) return "pressure";
     if (/record|comment|备注|说明|description/i.test(field)) return "ignore";
+    if (isExplicitEvaluationMetric(field, rows)) return "metric";
+    if (EXPLICIT_PRESSURE_PATTERN.test(String(field || ""))) return "pressure";
     if (isInterferenceField(field, rows)) return "interference";
     if (isEarSizeField(field, rows)) return "ear_size";
+    if (isImplicitPressureScoreField(field, rows)) return "pressure";
     if (/gender|sex|age|年龄|性别|ear_|concha|canal|protrusion|helix|耳|甲腔|耳道|外展|耳轮/i.test(field)) return "user";
     if (isScoreMetric(field) && isNumericField(field, rows)) return "metric";
     if (isNumericField(field, rows)) return "metric";
@@ -1409,9 +1441,11 @@
     isPhotoField,
     isNumericField,
     isScoreMetric,
+    isExplicitEvaluationMetric,
     computeAxisRange,
     numericSummary,
     isPressureField,
+    isImplicitPressureScoreField,
     pressureSiteLabel,
     pressureRiskScore,
     pressureSiteMeta,
