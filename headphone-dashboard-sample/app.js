@@ -229,7 +229,7 @@ const els = Object.fromEntries([
   "comparisonPage", "comparisonMetricSelect", "comparisonAutoDevices", "comparisonDeviceA", "comparisonDeviceB",
   "comparisonThreshold", "comparisonTitle", "comparisonSummary", "comparisonDeviceRanking", "comparisonGroupCards", "comparisonDetails",
   "comparisonGlobalFontSize", "comparisonGlobalPhotoSize", "comparisonGlobalColumns", "comparisonApplyAllTables",
-  "photoComparePage", "photoCompareVariable", "photoCompareLevelsA", "photoCompareLevelsB", "photoCompareView",
+  "photoComparePage", "photoCompareVariable", "photoCompareResetLevels", "photoCompareLevelsA", "photoCompareLevelsB", "photoCompareView",
   "photoComparePhotoSize", "photoComparePhotoSizeValue", "photoComparePositionX", "photoComparePositionXValue",
   "photoComparePositionY", "photoComparePositionYValue", "photoCompareZoom", "photoCompareZoomValue",
   "photoCompareSummary", "photoCompareTitle", "photoCompareGrid",
@@ -6005,6 +6005,11 @@ function bindEvents() {
   els.photoCompareVariable?.addEventListener("change", () => {
     state.photoCompareVariable = els.photoCompareVariable.value;
     normalizePhotoCompareSelections(photoCompareLevels());
+    renderPhotoComparePage();
+    markProjectDirty();
+  });
+  els.photoCompareResetLevels?.addEventListener("click", () => {
+    setDefaultPhotoCompareLevels(photoCompareLevels());
     renderPhotoComparePage();
     markProjectDirty();
   });

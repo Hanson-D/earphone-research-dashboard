@@ -1020,6 +1020,7 @@ th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-alig
 .photo-compare-control-panel { padding: 16px 18px; border-top: 4px solid var(--accent); }
 .photo-compare-controls { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(360px, 1.6fr) minmax(150px, .7fr) minmax(360px, 1.7fr); gap: 12px; align-items: end; }
 .photo-compare-control-panel .control-block { margin-bottom: 0; }
+.photo-compare-reset-button { width: 100%; margin-top: 7px; padding: 7px 10px; font-size: 11px; }
 .photo-compare-level-sets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .photo-compare-level-set { display: grid; gap: 6px; min-width: 0; }
 .photo-compare-level-set > span { color: var(--muted); font-size: 10px; font-weight: 900; }
