@@ -20,19 +20,29 @@ set "URL=http://127.0.0.1:%PORT%"
 where py >nul 2>nul
 if not errorlevel 1 (
   set "PYTHON_CMD=py -3"
-  goto run_server
+  goto ensure_pillow
 )
 
 where python >nul 2>nul
 if not errorlevel 1 (
   set "PYTHON_CMD=python"
-  goto run_server
+  goto ensure_pillow
 )
 
 echo Python 3 was not found.
 echo Please install Python 3 first, then run this file again.
 pause
 exit /b 1
+
+:ensure_pillow
+%PYTHON_CMD% -c "import PIL" >nul 2>nul
+if errorlevel 1 (
+  echo Installing Pillow for faster photo thumbnails...
+  %PYTHON_CMD% -m pip install Pillow
+  if errorlevel 1 (
+    echo Pillow installation failed. The dashboard will still run, but thumbnails may load more slowly.
+  )
+)
 
 :run_server
 echo Starting Earphone Research Dashboard...

@@ -175,6 +175,31 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertTrue(server.photo_scan_cache_path(root).is_file())
 
+    def test_photo_thumbnail_cache_is_under_projects_cache(self):
+        root = Path(self.tmp.name) / "photos"
+        root.mkdir()
+        photo = root / "front.jpg"
+        photo.write_bytes(b"image")
+
+        cache_path = server.photo_thumbnail_cache_path(photo, 360)
+
+        self.assertEqual(cache_path.parent, (Path(self.tmp.name) / ".cache" / "photo-thumbnails").resolve())
+        self.assertEqual(cache_path.suffix, ".jpg")
+
+    def test_photo_thumbnail_generation_falls_back_without_pillow(self):
+        root = Path(self.tmp.name) / "photos"
+        root.mkdir()
+        photo = root / "front.jpg"
+        photo.write_bytes(b"image")
+        original_image = server.Image
+        server.Image = None
+        try:
+            thumbnail = server.generate_photo_thumbnail(photo, 360)
+        finally:
+            server.Image = original_image
+
+        self.assertIsNone(thumbnail)
+
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
             previous_root = os.environ.get("DASHBOARD_PROJECTS_ROOT")

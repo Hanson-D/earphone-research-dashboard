@@ -283,6 +283,23 @@ test("detail photos can load from sibling photos folder through project-photo ap
   assert.match(js, /photoRoot: els\.photoRootInput\.value\.trim\(\) \|\| "photos"/);
 });
 
+test("photo thumbnails prefer backend thumbnail endpoint and preserve original preview source", () => {
+  const js = read("app.js");
+  const rootBat = read("打开耳机数据看板.bat");
+  const serverBat = read("server/start-server.bat");
+
+  assert.match(js, /function serverPhotoThumbnailUrl/);
+  assert.match(js, /\/api\/photo-thumb\?/);
+  assert.match(js, /kind", "local"/);
+  assert.match(js, /kind", "project"/);
+  assert.match(js, /kind", "server-project"/);
+  assert.match(js, /kind", "bare-ear"/);
+  assert.match(js, /serverPhotoThumbnailUrl\(source, 1200\)/);
+  assert.match(js, /data-preview-src="\$\{attrEscape\(src\)\}"/);
+  assert.match(rootBat, /pip install Pillow/);
+  assert.match(serverBat, /pip install Pillow/);
+});
+
 test("mapping thumbnails are generated lazily instead of all at folder load", () => {
   const js = read("app.js");
   const loadBody = js.match(/async function loadBrowserPhotoFolder\(files = \[\]\) \{([\s\S]*?)\n\}/)?.[1] || "";

@@ -2166,7 +2166,49 @@ function photoUrl(path) {
 
 function photoThumbUrl(path) {
   const stored = state.photoRelativeByUrl[path] || normalizePathSlashes(path);
-  return state.thumbnailUrls[path] || state.thumbnailUrls[stored] || photoUrl(path);
+  if (state.thumbnailUrls[path] || state.thumbnailUrls[stored]) return state.thumbnailUrls[path] || state.thumbnailUrls[stored];
+  const source = photoUrl(path);
+  return serverPhotoThumbnailUrl(source, 360) || source;
+}
+
+function serverPhotoThumbnailUrl(source, size = 360) {
+  if (!source || /^(blob:|data:)/i.test(source)) return "";
+  let url;
+  try {
+    url = new URL(source, window.location.href);
+  } catch {
+    return "";
+  }
+  if (url.origin !== window.location.origin) return "";
+  const params = new URLSearchParams({ size: String(size) });
+  if (url.pathname === "/api/photo") {
+    const path = url.searchParams.get("path") || "";
+    if (!path) return "";
+    params.set("kind", "local");
+    params.set("path", path);
+  } else if (url.pathname === "/api/project-photo") {
+    const path = url.searchParams.get("path") || "";
+    const root = url.searchParams.get("root") || "photos";
+    if (!path) return "";
+    params.set("kind", "project");
+    params.set("root", root);
+    params.set("path", path);
+    const project = url.searchParams.get("project") || "";
+    if (project) params.set("project", project);
+  } else if (url.pathname === "/api/bare-ear-photo") {
+    const path = url.searchParams.get("path") || "";
+    if (!path) return "";
+    params.set("kind", "bare-ear");
+    params.set("path", path);
+  } else {
+    const match = url.pathname.match(/^\/api\/server\/projects\/([^/]+)\/photos$/);
+    const path = url.searchParams.get("path") || "";
+    if (!match || !path) return "";
+    params.set("kind", "server-project");
+    params.set("projectId", decodeURIComponent(match[1]));
+    params.set("path", path);
+  }
+  return `/api/photo-thumb?${params.toString()}`;
 }
 
 function normalizePathSlashes(value) {
@@ -4929,6 +4971,8 @@ function detailPhotoMode() {
 function detailPhotoPreviewUrl(source) {
   if (!source) return Promise.resolve(source);
   if (detailPhotoMode() === "capture") return Promise.resolve(source);
+  const serverThumb = serverPhotoThumbnailUrl(source, 1200);
+  if (serverThumb) return Promise.resolve(serverThumb);
   if (state.detailPreviewUrls[source]) return Promise.resolve(state.detailPreviewUrls[source]);
   if (!state.detailPreviewPromises[source]) {
     state.detailPreviewPromises[source] = createThumbnailUrl(source, 1200, 0.86)

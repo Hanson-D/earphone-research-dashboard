@@ -10,6 +10,13 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
+try:
+    from PIL import Image, ImageOps, UnidentifiedImageError
+except ImportError:
+    Image = None
+    ImageOps = None
+    UnidentifiedImageError = OSError
+
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic"}
 ALLOWED_ROOTS = set()
@@ -18,6 +25,7 @@ DEFAULT_PORT = 7362
 PORT_SEARCH_LIMIT = 100
 DEFAULT_HOST = "0.0.0.0"
 PHOTO_SCAN_CACHE_VERSION = 1
+PHOTO_THUMB_CACHE_VERSION = 1
 
 
 def app_root():
@@ -358,6 +366,45 @@ def photo_scan_cache_path(root):
     return photo_scan_cache_dir() / f"{key}.json"
 
 
+def photo_thumbnail_cache_dir():
+    path = project_root() / ".cache" / "photo-thumbnails"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def photo_thumbnail_cache_path(path, max_size=360):
+    stat = path.stat()
+    payload = {
+        "version": PHOTO_THUMB_CACHE_VERSION,
+        "path": str(path.resolve()),
+        "mtimeNs": stat.st_mtime_ns,
+        "size": stat.st_size,
+        "maxSize": int(max_size),
+    }
+    key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return photo_thumbnail_cache_dir() / f"{key}.jpg"
+
+
+def generate_photo_thumbnail(path, max_size=360):
+    max_size = max(64, min(1600, int(max_size or 360)))
+    cache_path = photo_thumbnail_cache_path(path, max_size)
+    if cache_path.is_file():
+        return cache_path
+    if Image is None:
+        return None
+    try:
+        with Image.open(path) as image:
+            image = ImageOps.exif_transpose(image)
+            image.thumbnail((max_size, max_size))
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            image.save(cache_path, "JPEG", quality=82, optimize=True)
+    except (OSError, UnidentifiedImageError):
+        return None
+    return cache_path
+
+
 def photo_scan_signature(root):
     stat = root.stat()
     return {
@@ -675,6 +722,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/bare-ear-photo":
             self.serve_bare_ear_photo(parsed)
             return
+        if parsed.path == "/api/photo-thumb":
+            self.serve_photo_thumbnail(parsed)
+            return
         if parsed.path == "/api/server/projects":
             self.send_json({"projects": list_server_projects()})
             return
@@ -763,7 +813,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_error(403, "Photo path is not inside a scanned root")
             return
 
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        self.serve_file(path)
+
+    def serve_file(self, path, content_type=None):
+        content_type = content_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
@@ -792,13 +845,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(error)}, 400)
             return
 
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        data = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self.serve_file(path)
 
     def serve_server_project_photo(self, parsed):
         try:
@@ -814,13 +861,70 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(error)}, 400)
             return
 
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        data = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self.serve_file(path)
+
+    def resolve_photo_thumbnail_source(self, parsed):
+        query = parse_qs(parsed.query)
+        kind = query.get("kind", [""])[0]
+        if kind == "local":
+            if not legacy_paths_enabled():
+                raise PermissionError("Legacy local photo endpoint is disabled")
+            path = Path(query.get("path", [""])[0]).expanduser()
+            if not path.is_file() or not is_within_allowed_root(path):
+                raise PermissionError("Photo path is not inside a scanned root")
+            return path.resolve()
+        if kind == "project":
+            root = safe_relative_root(query.get("root", ["photos"])[0])
+            relative_path = safe_relative_photo_path(query.get("path", [""])[0])
+            project_values = query.get("project", [])
+            if project_values:
+                project_path = resolve_client_path(project_values[0])
+                if not project_path.name.endswith(".json"):
+                    raise ValueError("项目路径必须是 JSON 文件。")
+                base = (project_path.parent / root).resolve()
+            else:
+                base = (app_root() / root).resolve()
+            path = (base / relative_path).resolve()
+            if base not in path.parents or not path.is_file():
+                raise FileNotFoundError("Project photo not found")
+            return path
+        if kind == "server-project":
+            project_id = query.get("projectId", [""])[0]
+            relative_path = safe_relative_photo_path(query.get("path", [""])[0])
+            root = server_project_photo_root(project_id).resolve()
+            path = (root / relative_path).resolve()
+            if root not in path.parents or not path.is_file():
+                raise FileNotFoundError("Photo not found")
+            return path
+        if kind == "bare-ear":
+            relative = safe_relative_photo_path(query.get("path", [""])[0])
+            root = bare_ear_library_root().resolve()
+            path = (root / relative).resolve()
+            if root not in path.parents or not path.is_file():
+                raise FileNotFoundError("Bare ear photo not found")
+            return path
+        raise ValueError("未知缩略图来源。")
+
+    def serve_photo_thumbnail(self, parsed):
+        try:
+            query = parse_qs(parsed.query)
+            path = self.resolve_photo_thumbnail_source(parsed)
+            max_size = query.get("size", ["360"])[0]
+            thumbnail = generate_photo_thumbnail(path, max_size)
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
+        except FileNotFoundError as error:
+            self.send_error(404, str(error))
+            return
+        except ValueError as error:
+            self.send_json({"error": str(error)}, 400)
+            return
+
+        if thumbnail:
+            self.serve_file(thumbnail, "image/jpeg")
+        else:
+            self.serve_file(path)
 
     def serve_bare_ear_photo(self, parsed):
         try:
@@ -834,13 +938,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": str(error)}, 400)
             return
 
-        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        data = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self.serve_file(path)
 
 
 if __name__ == "__main__":
