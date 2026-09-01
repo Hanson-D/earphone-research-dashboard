@@ -155,5 +155,29 @@ read_client_value() {
 }
 
 dashboard_listener() {
-  ss -lntp 2>/dev/null | awk -v port=":${DASHBOARD_PORT}" '$4 ~ port "$" {print}' || true
+  if command -v ss >/dev/null 2>&1; then
+    ss -lntp 2>/dev/null | awk -v port=":${DASHBOARD_PORT}" '$4 ~ port "$" {print}' || true
+    return
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -n -P -iTCP:"${DASHBOARD_PORT}" -sTCP:LISTEN 2>/dev/null || true
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "${DASHBOARD_HOST}" "${DASHBOARD_PORT}" <<'PY'
+import socket
+import sys
+
+host, port = sys.argv[1], int(sys.argv[2])
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    sock.bind((host, port))
+except OSError:
+    print(f"{host}:{port} is already in use; process details are unavailable.")
+finally:
+    sock.close()
+PY
+    return
+  fi
+  die "Cannot inspect port ${DASHBOARD_PORT}: ss, lsof, and python3 are unavailable."
 }

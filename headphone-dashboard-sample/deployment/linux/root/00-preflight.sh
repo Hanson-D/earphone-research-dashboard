@@ -29,9 +29,51 @@ else
   printf 'OS: unknown\n'
 fi
 
-for command_name in bash python3 systemctl ssh ssh-keygen scp sed awk grep install getent useradd curl sha256sum; do
+for command_name in \
+  bash python3 systemctl ssh-keygen sed awk grep install getent \
+  useradd groupadd chpasswd usermod userdel curl sha256sum \
+  find xargs mktemp chmod chgrp cut tr sort; do
   check_command "${command_name}"
 done
+
+printf '\nCompatibility helpers:\n'
+if command -v runuser >/dev/null 2>&1; then
+  printf 'OK      user switch     runuser\n'
+elif command -v sudo >/dev/null 2>&1; then
+  printf 'OK      user switch     sudo\n'
+elif command -v su >/dev/null 2>&1; then
+  printf 'OK      user switch     su\n'
+else
+  printf 'MISSING user switch     runuser, sudo, or su is required\n'
+  failures=$((failures + 1))
+fi
+
+if command -v ss >/dev/null 2>&1; then
+  printf 'OK      port inspection ss\n'
+elif command -v lsof >/dev/null 2>&1; then
+  printf 'OK      port inspection lsof\n'
+else
+  printf 'OK      port inspection python3 socket fallback\n'
+fi
+
+if command -v systemd-analyze >/dev/null 2>&1; then
+  printf 'OK      unit validation systemd-analyze\n'
+else
+  printf 'OPTIONAL unit validation systemd-analyze not found; start-time validation will be used\n'
+fi
+
+if command -v setfacl >/dev/null 2>&1; then
+  printf 'OK      path ACL        setfacl\n'
+else
+  printf 'OPTIONAL path ACL        setfacl not found; interactive traverse permission fallback will be used\n'
+fi
+
+if command -v nologin >/dev/null 2>&1 || [[ -x /usr/sbin/nologin ]]; then
+  printf 'OK      login shell     nologin\n'
+else
+  printf 'MISSING login shell     nologin\n'
+  failures=$((failures + 1))
+fi
 
 if sshd_binary="$(sshd_path 2>/dev/null)"; then
   printf 'OK      sshd            %s\n' "${sshd_binary}"

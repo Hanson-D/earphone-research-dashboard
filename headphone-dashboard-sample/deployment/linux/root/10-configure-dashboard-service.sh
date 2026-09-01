@@ -36,7 +36,7 @@ find "${APP_ROOT}" -type f -exec chmod g+r {} +
 
 for parent in "$(dirname "${APP_ROOT}")" "$(dirname "$(dirname "${APP_ROOT}")")"; do
   [[ -d "${parent}" ]] || continue
-  if ! runuser -u "${DASHBOARD_USER}" -- test -x "${parent}"; then
+  if ! run_as_user "${DASHBOARD_USER}" test -x "${parent}"; then
     if command -v setfacl >/dev/null 2>&1; then
       setfacl -m "u:${DASHBOARD_USER}:--x" "${parent}"
       log "Granted ${DASHBOARD_USER} traverse access to ${parent} with ACL."
@@ -86,7 +86,11 @@ install -o root -g root -m 0644 "${unit_path}.tmp" "${unit_path}"
 rm -f "${unit_path}.tmp"
 
 systemctl daemon-reload
-systemd-analyze verify "${unit_path}" >/dev/null
+if command -v systemd-analyze >/dev/null 2>&1; then
+  systemd-analyze verify "${unit_path}" >/dev/null
+else
+  warn "systemd-analyze is unavailable; unit verification will occur when the service starts."
+fi
 
 log "Dashboard service configuration installed."
 printf 'Service was not enabled or started.\n'
