@@ -34,6 +34,28 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
+run_as_user() {
+  local target_user="$1"
+  shift
+
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "${target_user}" -- "$@"
+    return
+  fi
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -u "${target_user}" -- "$@"
+    return
+  fi
+  if command -v su >/dev/null 2>&1; then
+    local command_line
+    printf -v command_line '%q ' "$@"
+    su -s /bin/bash -c "${command_line% }" "${target_user}"
+    return
+  fi
+
+  die "Cannot switch to ${target_user}: runuser, sudo, and su are unavailable."
+}
+
 confirm() {
   local prompt="$1"
   local answer
