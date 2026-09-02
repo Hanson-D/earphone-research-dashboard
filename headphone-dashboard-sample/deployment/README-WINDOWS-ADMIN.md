@@ -70,3 +70,5 @@ Linux 看板只监听 `127.0.0.1:7362`。公司网络只需要允许客户端访
 SSH 隧道配置使用 `/etc/ssh/sshd_config` 末尾带边界标记的受管块。脚本会先用
 `sshd -t -f` 验证候选文件，再备份、安装和重载；对于不支持 `Include` 的旧版
 OpenSSH，会自动移除本工具此前添加的 `sshd_config.d` Include 行。
+SSH 重载依次尝试 `systemctl`、Ubuntu 14.04 常用的 `service ssh reload`，以及
+`/etc/init.d/ssh reload`，不要求 SSH 服务必须注册为 systemd unit。

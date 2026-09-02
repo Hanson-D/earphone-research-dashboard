@@ -125,6 +125,28 @@ sshd_service_name() {
   fi
 }
 
+reload_sshd_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl reload ssh.service >/dev/null 2>&1; then
+      printf '%s\n' 'systemctl reload ssh.service'
+      return
+    fi
+    if systemctl reload sshd.service >/dev/null 2>&1; then
+      printf '%s\n' 'systemctl reload sshd.service'
+      return
+    fi
+  fi
+  if command -v service >/dev/null 2>&1 && service ssh reload >/dev/null 2>&1; then
+    printf '%s\n' 'service ssh reload'
+    return
+  fi
+  if [[ -x /etc/init.d/ssh ]] && /etc/init.d/ssh reload >/dev/null 2>&1; then
+    printf '%s\n' '/etc/init.d/ssh reload'
+    return
+  fi
+  die "Unable to reload OpenSSH with systemctl, service, or /etc/init.d/ssh."
+}
+
 service_unit_path() {
   printf '/etc/systemd/system/%s.service\n' "${SERVICE_NAME}"
 }

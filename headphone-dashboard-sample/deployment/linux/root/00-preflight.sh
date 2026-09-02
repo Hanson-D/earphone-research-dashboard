@@ -111,6 +111,17 @@ else
   failures=$((failures + 1))
 fi
 
+if ssh_service="$(sshd_service_name 2>/dev/null)"; then
+  printf 'OK      ssh reload      systemctl reload %s.service\n' "${ssh_service}"
+elif command -v service >/dev/null 2>&1; then
+  printf 'OK      ssh reload      service ssh reload fallback\n'
+elif [[ -x /etc/init.d/ssh ]]; then
+  printf 'OK      ssh reload      /etc/init.d/ssh reload fallback\n'
+else
+  printf 'MISSING ssh reload      systemctl, service, or /etc/init.d/ssh\n'
+  failures=$((failures + 1))
+fi
+
 if [[ -f "${APP_ROOT}/server/server.py" ]]; then
   printf 'OK      application     %s\n' "${APP_ROOT}"
 else

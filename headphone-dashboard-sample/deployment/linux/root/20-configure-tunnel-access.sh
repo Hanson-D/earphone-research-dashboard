@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_root
-require_command systemctl
 
 sshd_binary="$(sshd_path)" || die "sshd was not found."
 sshd_main=/etc/ssh/sshd_config
@@ -86,9 +85,9 @@ if ! "${sshd_binary}" -t; then
   die "Installed sshd configuration failed validation and was rolled back."
 fi
 
-ssh_service="$(sshd_service_name)" || die "The OpenSSH systemd service was not found."
-systemctl reload "${ssh_service}.service"
+reload_command="$(reload_sshd_service)"
 
 log "Restricted SSH tunnel access configured for group ${TUNNEL_GROUP}."
 printf 'Backup: %s\n' "${backup}"
+printf 'SSH reload: %s\n' "${reload_command}"
 printf 'Future client additions do not need an SSH reload.\n'
