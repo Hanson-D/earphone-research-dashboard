@@ -66,7 +66,7 @@ fi
 
 getent group "${TUNNEL_GROUP}" >/dev/null || \
   die "Tunnel access is not configured. Run 20_configure_tunnel_access.bat first."
-[[ -f /etc/ssh/sshd_config.d/earphone-dashboard.conf ]] || \
+grep -Fqx '# BEGIN EARPHONE DASHBOARD MANAGED BLOCK' /etc/ssh/sshd_config || \
   die "Restricted SSH configuration is missing. Run 20_configure_tunnel_access.bat first."
 
 ssh_user="$(client_ssh_user "${client_id}")"
@@ -91,7 +91,7 @@ private_key="${temp_dir}/kanban_${client_id}"
 ssh-keygen -q -t ed25519 -N '' -C "earphone-dashboard:${client_id}" -f "${private_key}"
 
 public_key="$(cat "${private_key}.pub")"
-printf 'restrict,port-forwarding,permitopen="%s:%s" %s\n' \
+printf 'no-agent-forwarding,no-X11-forwarding,no-pty,permitopen="%s:%s" %s\n' \
   "${DASHBOARD_HOST}" "${DASHBOARD_PORT}" "${public_key}" \
   >"${home_dir}/.ssh/authorized_keys"
 chown "${ssh_user}:${TUNNEL_GROUP}" "${home_dir}/.ssh/authorized_keys"

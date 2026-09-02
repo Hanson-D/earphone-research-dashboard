@@ -66,3 +66,7 @@ deployment/windows-admin/downloads/win1
 ## 网络边界
 
 Linux 看板只监听 `127.0.0.1:7362`。公司网络只需要允许客户端访问 Linux SSH 端口。Windows 客户端通过独立密钥和本地端口建立 SSH 隧道，不应直接开放 Linux 的 `7362/tcp`。
+
+SSH 隧道配置使用 `/etc/ssh/sshd_config` 末尾带边界标记的受管块。脚本会先用
+`sshd -t -f` 验证候选文件，再备份、安装和重载；对于不支持 `Include` 的旧版
+OpenSSH，会自动移除本工具此前添加的 `sshd_config.d` Include 行。
