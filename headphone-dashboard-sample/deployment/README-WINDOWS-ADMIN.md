@@ -21,13 +21,31 @@
 4. `15_prepare_python_runtime.bat`
 5. `20_configure_service.bat`
 6. `21_initialize_dashboard.bat`
-7. `22_dashboard_self_check.bat`
-8. `30_configure_tunnel_access.bat`
-9. `50_enable_service.bat`
-10. `51_start_service.bat`
-11. `55_service_health.bat`
+7. `60_add_dashboard_user.bat`（首次至少创建一个管理员）
+8. `22_dashboard_self_check.bat`
+9. `30_configure_tunnel_access.bat`
+10. `50_enable_service.bat`
+11. `51_start_service.bat`
+12. `55_service_health.bat`
 
 配置服务不会启动服务；配置 SSH 通道不会创建客户端；启停服务不会重写配置。
+
+## 看板账号和项目权限
+
+SSH 客户端密钥只决定一台 Windows 电脑能否建立隧道。浏览器打开看板后，还需要
+使用看板账号登录。看板账号配置保存在 `/etc/earphone-dashboard/access.json`，密码只
+保存 PBKDF2-SHA256 哈希。
+
+- `60_add_dashboard_user.bat`：添加账号。管理员可以看到全部项目并创建项目；普通账号输入允许访问的项目 ID，多个 ID 用英文逗号分隔。
+- `61_list_dashboard_users.bat`：列出账号、管理员状态和项目授权。
+- `62_set_dashboard_access.bat`：修改管理员状态或项目 ID 列表，同时撤销该账号已有登录会话。
+- `63_reset_dashboard_password.bat`：重置密码，同时撤销已有登录会话。
+- `64_delete_dashboard_user.bat`：删除账号并使其会话立即失效。
+
+服务会在每次请求时读取授权配置，因此增删账号、修改权限和重置密码都不需要重启服务。
+服务器部署只允许旧路径接口访问统一 `projects` 根目录内的文件；顶层项目文件夹名就是
+权限配置中的项目 ID，根目录下单个 JSON 则使用文件名作为项目 ID。项目列表、项目
+JSON、照片和缩略图都由后端按登录账号校验，不能通过直接输入项目 URL 绕过列表过滤。
 
 `15_prepare_python_runtime.bat` 默认从 `/root/anaconda3/bin/python3` 离线克隆
 Conda 环境到 `/opt/earphone-dashboard/python`。服务和自检始终使用克隆后的绝对路径，
@@ -62,6 +80,7 @@ deployment/windows-admin/downloads/win1
 - `54_service_status.bat`：查看状态和监听地址。
 - `55_service_health.bat`：执行 HTTP 健康检查。
 - `56_service_logs.bat`：持续查看日志，按 Ctrl+C 退出。
+- `60` 到 `64`：管理看板登录账号和项目授权。
 
 ## 网络边界
 

@@ -4,6 +4,7 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/home/earphone/kanban/app}"
 PROJECTS_ROOT="${PROJECTS_ROOT:-/home/earphone/kanban/projects}"
 CONFIG_ROOT="${CONFIG_ROOT:-/etc/earphone-dashboard}"
+AUTH_CONFIG_PATH="${AUTH_CONFIG_PATH:-${CONFIG_ROOT}/access.json}"
 CLIENTS_ROOT="${CLIENTS_ROOT:-${CONFIG_ROOT}/clients}"
 EXPORT_ROOT="${EXPORT_ROOT:-/root/kanban-export}"
 DASHBOARD_USER="${DASHBOARD_USER:-dashboard}"
@@ -153,6 +154,10 @@ service_unit_path() {
 
 dashboard_env_path() {
   printf '%s/dashboard.env\n' "${CONFIG_ROOT}"
+}
+
+auth_config_path() {
+  printf '%s\n' "${AUTH_CONFIG_PATH}"
 }
 
 client_config_path() {

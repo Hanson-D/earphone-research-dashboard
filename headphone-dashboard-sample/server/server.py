@@ -6,9 +6,14 @@ import os
 import re
 import shutil
 import socket
+import sys
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dashboard_auth as auth
 
 try:
     from PIL import Image, ImageOps, UnidentifiedImageError
@@ -26,6 +31,8 @@ PORT_SEARCH_LIMIT = 100
 DEFAULT_HOST = "0.0.0.0"
 PHOTO_SCAN_CACHE_VERSION = 1
 PHOTO_THUMB_CACHE_VERSION = 1
+SESSION_COOKIE = "dashboard_session"
+CSRF_COOKIE = "dashboard_csrf"
 
 
 def app_root():
@@ -343,12 +350,49 @@ def list_local_project_files():
             except json.JSONDecodeError:
                 continue
             projects.append({
+                "id": project_access_id(path),
                 "path": display_path(path),
                 "title": project.get("title") or path.stem,
                 "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
                 "updatedAt": __import__("datetime").datetime.fromtimestamp(path.stat().st_mtime, __import__("datetime").timezone.utc).isoformat(),
             })
     return projects
+
+
+def project_access_id(path):
+    resolved = Path(path).expanduser().resolve()
+    try:
+        relative = resolved.relative_to(project_root())
+    except ValueError:
+        return None
+    if not relative.parts or resolved.suffix.lower() != ".json":
+        return None
+    return relative.stem if len(relative.parts) == 1 else relative.parts[0]
+
+
+def can_access_project_path(user, path):
+    project_id = project_access_id(path)
+    return bool(project_id and auth.can_access_project(user, project_id))
+
+
+def project_asset_access_id(path):
+    resolved = Path(path).expanduser().resolve()
+    try:
+        relative = resolved.relative_to(project_root())
+    except ValueError:
+        return None
+    return relative.parts[0] if relative.parts else None
+
+
+def can_access_project_asset_path(user, path):
+    project_id = project_asset_access_id(path)
+    return bool(project_id and auth.can_access_project(user, project_id))
+
+
+def is_direct_project_static_path(url_path):
+    requested = (app_root() / unquote(str(url_path or "")).lstrip("/")).resolve()
+    root = project_root()
+    return requested == root or root in requested.parents
 
 
 def list_local_project_scan_root_info():
@@ -514,17 +558,116 @@ def create_server(host, preferred_port, allow_fallback=True):
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
-    def send_json(self, payload, status=200):
+    def send_json(self, payload, status=200, headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        for key, value in headers or []:
+            self.send_header(key, value)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def request_cookies(self):
+        cookies = SimpleCookie()
+        try:
+            cookies.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return {}
+        return {key: morsel.value for key, morsel in cookies.items()}
+
+    def auth_config(self):
+        if not hasattr(self, "_auth_config"):
+            self._auth_config = auth.load_config()
+        return self._auth_config
+
+    def current_user(self):
+        if not auth.auth_required():
+            return None
+        if not hasattr(self, "_current_user"):
+            token = self.request_cookies().get(SESSION_COOKIE, "")
+            try:
+                self._current_user = auth.read_session(self.auth_config(), token)
+                self._auth_config_error = None
+            except (OSError, ValueError, json.JSONDecodeError) as error:
+                self._current_user = None
+                self._auth_config_error = str(error)
+        return self._current_user
+
+    def require_login(self):
+        if not auth.auth_required():
+            return True
+        if self.current_user():
+            return True
+        if getattr(self, "_auth_config_error", None):
+            self.send_json({"error": "看板账号配置不可用，请联系管理员。"}, 503)
+        else:
+            self.send_json({"error": "请先登录看板。", "login": "/server/login.html"}, 401)
+        return False
+
+    def require_csrf(self):
+        if not auth.auth_required():
+            return True
+        expected = self.request_cookies().get(CSRF_COOKIE, "")
+        actual = self.headers.get("X-Dashboard-CSRF", "")
+        if expected and actual and __import__("hmac").compare_digest(expected, actual):
+            return True
+        self.send_json({"error": "请求校验失败，请刷新页面后重试。"}, 403)
+        return False
+
+    def require_admin(self):
+        if not auth.auth_required() or bool((self.current_user() or {}).get("admin")):
+            return True
+        self.send_json({"error": "此操作仅限看板管理员。"}, 403)
+        return False
+
+    def require_project(self, project_id):
+        if not auth.auth_required() or auth.can_access_project(self.current_user(), project_id):
+            return True
+        self.send_json({"error": "你没有此项目的访问权限。"}, 403)
+        return False
+
+    def login(self):
+        try:
+            payload = self.read_json_body()
+            username = str(payload.get("username") or "").strip()
+            password = str(payload.get("password") or "")
+            config = self.auth_config()
+        except (OSError, ValueError, json.JSONDecodeError):
+            self.send_json({"error": "看板账号配置不可用，请联系管理员。"}, 503)
+            return
+        user = auth.authenticate(config, username, password)
+        if not user:
+            self.send_json({"error": "用户名或密码错误。"}, 401)
+            return
+        session = auth.create_session(config, username)
+        csrf = __import__("secrets").token_urlsafe(24)
+        max_age = auth.SESSION_TTL_SECONDS
+        self.send_json({"user": user}, headers=[
+            ("Set-Cookie", "{}={}; Path=/; Max-Age={}; HttpOnly; SameSite=Strict".format(SESSION_COOKIE, session, max_age)),
+            ("Set-Cookie", "{}={}; Path=/; Max-Age={}; SameSite=Strict".format(CSRF_COOKIE, csrf, max_age)),
+        ])
+
+    def logout(self):
+        self.send_json({"ok": True}, headers=[
+            ("Set-Cookie", "{}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict".format(SESSION_COOKIE)),
+            ("Set-Cookie", "{}=; Path=/; Max-Age=0; SameSite=Strict".format(CSRF_COOKIE)),
+        ])
+
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/login":
+            self.login()
+            return
+        if not self.require_login() or not self.require_csrf():
+            return
+        if parsed.path == "/api/auth/logout":
+            self.logout()
+            return
         if parsed.path == "/api/bare-ear-library":
+            if not self.require_admin():
+                return
             if not legacy_paths_enabled():
                 self.send_json({"error": "服务器部署已关闭本地空耳库写入接口。"}, 403)
                 return
@@ -537,13 +680,21 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
             return
         if parsed.path == "/api/server/projects":
+            if not self.require_admin():
+                return
             self.create_server_project()
             return
         if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) < 4 or not self.require_project(parts[3]):
+                return
             self.upload_server_project_photo(parsed)
             return
         if parsed.path.startswith("/api/server/projects/"):
-            self.save_server_project_endpoint(parsed.path.rsplit("/", 1)[-1])
+            project_id = parsed.path.rsplit("/", 1)[-1]
+            if not self.require_project(project_id):
+                return
+            self.save_server_project_endpoint(project_id)
             return
         if parsed.path == "/api/project-assets":
             if not legacy_paths_enabled():
@@ -557,6 +708,14 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 payload = self.read_json_body()
+                project_path = resolve_client_path(payload.get("projectPath"))
+                source_root = Path(str(payload.get("root") or "")).expanduser().resolve()
+                if auth.auth_required() and (
+                    not can_access_project_path(self.current_user(), project_path) or
+                    not can_access_project_asset_path(self.current_user(), source_root)
+                ):
+                    self.send_json({"error": "你没有此项目照片目录的访问权限。"}, 403)
+                    return
                 result = copy_project_photos_from_root(payload.get("projectPath"), payload.get("root"))
             except (ValueError, TypeError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, 400)
@@ -575,6 +734,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 payload = self.read_json_body()
+                if auth.auth_required() and not can_access_project_path(self.current_user(), payload.get("projectPath")):
+                    self.send_json({"error": "你没有此项目的导出权限。"}, 403)
+                    return
                 result = save_project_csv_export(payload.get("projectPath"), payload.get("csv"), payload.get("projectName") or "project")
             except (ValueError, TypeError, json.JSONDecodeError) as error:
                 self.send_json({"error": str(error)}, 400)
@@ -601,9 +763,25 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": f"照片根目录不存在：{root}"}, 400)
             return
 
+        if auth.auth_required() and not can_access_project_asset_path(self.current_user(), root):
+            self.send_json({"error": "你没有此照片目录的访问权限。"}, 403)
+            return
+
         ALLOWED_ROOTS.add(root)
         photos, cached = scan_photo_root(root, force=force)
         self.send_json({"root": str(root), "photos": photos, "cached": cached})
+
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        if auth.auth_required() and is_direct_project_static_path(parsed.path):
+            self.send_error(403, "Direct project file access is disabled")
+            return
+        if auth.auth_required() and not self.current_user() and parsed.path.endswith(".html"):
+            self.send_response(401)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        super().do_HEAD()
 
     def save_project(self):
         try:
@@ -618,6 +796,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if not project_path.name.endswith(".json"):
             self.send_json({"error": "项目文件必须是 .json。"}, 400)
             return
+        if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
+            self.send_json({"error": "你没有此项目的保存权限。"}, 403)
+            return
         project_path.parent.mkdir(parents=True, exist_ok=True)
         if not isinstance(project, dict):
             self.send_json({"error": "项目内容必须是 JSON 对象。"}, 400)
@@ -630,6 +811,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         try:
             query = parse_qs(parsed.query)
             project_path = query.get("projectPath", [""])[0]
+            if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
+                self.send_json({"error": "你没有此项目的资源写入权限。"}, 403)
+                return
             kind = query.get("kind", [""])[0]
             path = query.get("path", [""])[0]
             length = int(self.headers.get("Content-Length", "0"))
@@ -716,23 +900,55 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/me":
+            if not auth.auth_required():
+                self.send_json({"enabled": False, "user": None})
+                return
+            if not self.require_login():
+                return
+            self.send_json({"enabled": True, "user": self.current_user()})
+            return
+        if auth.auth_required() and not self.current_user():
+            if parsed.path.startswith("/api/"):
+                self.require_login()
+                return
+            if parsed.path in ("/", "/server/") or parsed.path.endswith(".html"):
+                target = quote(self.path, safe="")
+                self.send_response(302)
+                self.send_header("Location", "/server/login.html?next={}".format(target))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+        if auth.auth_required() and is_direct_project_static_path(parsed.path):
+            self.send_error(403, "Direct project file access is disabled")
+            return
         if parsed.path == "/api/bare-ear-library":
+            if not self.require_admin():
+                return
             self.send_json({"photos": bare_ear_library_index()})
             return
         if parsed.path == "/api/bare-ear-photo":
+            if not self.require_admin():
+                return
             self.serve_bare_ear_photo(parsed)
             return
         if parsed.path == "/api/photo-thumb":
             self.serve_photo_thumbnail(parsed)
             return
         if parsed.path == "/api/server/projects":
-            self.send_json({"projects": list_server_projects()})
+            projects = list_server_projects()
+            if auth.auth_required():
+                projects = [item for item in projects if auth.can_access_project(self.current_user(), item["id"])]
+            self.send_json({"projects": projects})
             return
         if parsed.path == "/api/list-projects":
             if not legacy_paths_enabled():
                 self.send_json({"error": "服务器部署已关闭本地项目列表接口。"}, 403)
                 return
-            self.send_json({"projects": list_local_project_files(), "roots": list_local_project_scan_root_info()})
+            projects = list_local_project_files()
+            if auth.auth_required():
+                projects = [item for item in projects if auth.can_access_project(self.current_user(), item.get("id"))]
+            self.send_json({"projects": projects, "roots": list_local_project_scan_root_info()})
             return
         if parsed.path == "/api/project-asset-status":
             if not legacy_paths_enabled():
@@ -740,8 +956,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 query = parse_qs(parsed.query)
+                project_path = query.get("projectPath", [""])[0]
+                if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
+                    self.send_json({"error": "你没有此项目的资源访问权限。"}, 403)
+                    return
                 result = project_asset_status(
-                    query.get("projectPath", [""])[0],
+                    project_path,
                     query.get("kind", [""])[0],
                     query.get("path", [""])[0],
                     query.get("size", [""])[0],
@@ -752,6 +972,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
             return
         if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photos"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) < 4 or not self.require_project(parts[3]):
+                return
             self.serve_server_project_photo(parsed)
             return
         if parsed.path == "/api/project-photo":
@@ -759,6 +982,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/server/projects/"):
             project_id = parsed.path.rsplit("/", 1)[-1]
+            if not self.require_project(project_id):
+                return
             try:
                 _, project, revision = read_server_project(project_id)
             except ValueError as error:
@@ -786,6 +1011,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 self.send_error(400, "Missing path")
                 return
             project_path = resolve_client_path(values[0])
+            if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
+                self.send_json({"error": "你没有此项目的访问权限。"}, 403)
+                return
             if not project_path.is_file():
                 self.send_json({"error": f"项目文件不存在：{project_path}"}, 404)
                 return
@@ -809,7 +1037,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return
 
         path = Path(values[0]).expanduser()
-        if not path.is_file() or not is_within_allowed_root(path):
+        if (not path.is_file() or not is_within_allowed_root(path) or
+                (auth.auth_required() and not can_access_project_asset_path(self.current_user(), path))):
             self.send_error(403, "Photo path is not inside a scanned root")
             return
 
@@ -834,13 +1063,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 project_path = resolve_client_path(project_values[0])
                 if not project_path.name.endswith(".json"):
                     raise ValueError("项目路径必须是 JSON 文件。")
+                if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
+                    raise PermissionError("Project access denied")
                 base = (project_path.parent / root).resolve()
             else:
+                if auth.auth_required():
+                    raise PermissionError("Project identity is required")
                 base = (app_root() / root).resolve()
             path = (base / relative_path).resolve()
             if base not in path.parents or not path.is_file():
                 self.send_error(404, "Project photo not found")
                 return
+        except PermissionError as error:
+            self.send_error(403, str(error))
+            return
         except ValueError as error:
             self.send_json({"error": str(error)}, 400)
             return
@@ -870,7 +1106,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             if not legacy_paths_enabled():
                 raise PermissionError("Legacy local photo endpoint is disabled")
             path = Path(query.get("path", [""])[0]).expanduser()
-            if not path.is_file() or not is_within_allowed_root(path):
+            if (not path.is_file() or not is_within_allowed_root(path) or
+                    (auth.auth_required() and not can_access_project_asset_path(self.current_user(), path))):
                 raise PermissionError("Photo path is not inside a scanned root")
             return path.resolve()
         if kind == "project":
@@ -881,8 +1118,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 project_path = resolve_client_path(project_values[0])
                 if not project_path.name.endswith(".json"):
                     raise ValueError("项目路径必须是 JSON 文件。")
+                if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
+                    raise PermissionError("Project access denied")
                 base = (project_path.parent / root).resolve()
             else:
+                if auth.auth_required():
+                    raise PermissionError("Project identity is required")
                 base = (app_root() / root).resolve()
             path = (base / relative_path).resolve()
             if base not in path.parents or not path.is_file():
@@ -890,6 +1131,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return path
         if kind == "server-project":
             project_id = query.get("projectId", [""])[0]
+            if auth.auth_required() and not auth.can_access_project(self.current_user(), project_id):
+                raise PermissionError("Project access denied")
             relative_path = safe_relative_photo_path(query.get("path", [""])[0])
             root = server_project_photo_root(project_id).resolve()
             path = (root / relative_path).resolve()
@@ -897,6 +1140,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 raise FileNotFoundError("Photo not found")
             return path
         if kind == "bare-ear":
+            if auth.auth_required() and not bool((self.current_user() or {}).get("admin")):
+                raise PermissionError("Bare ear library access denied")
             relative = safe_relative_photo_path(query.get("path", [""])[0])
             root = bare_ear_library_root().resolve()
             path = (root / relative).resolve()

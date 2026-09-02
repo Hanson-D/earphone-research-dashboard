@@ -165,6 +165,12 @@ h1 { margin-bottom: 0; font-family: "Songti SC", "STSong", serif; font-size: cla
 h2 { margin-bottom: 0; font-family: "Songti SC", "STSong", serif; font-size: 22px; }
 
 .top-actions { display: flex; gap: 10px; }
+.dashboard-identity {
+  align-self: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
 
 .page-nav {
   display: flex;

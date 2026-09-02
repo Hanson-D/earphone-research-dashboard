@@ -8,6 +8,15 @@ const els = {
   title: document.getElementById("newProjectTitle"),
 };
 
+async function applyAccessControls() {
+  const response = await fetch("/api/auth/me", { cache: "no-store" });
+  if (!response.ok) return;
+  const result = await response.json();
+  if (result.enabled && !result.user?.admin) {
+    els.form.closest(".server-create-panel").hidden = true;
+  }
+}
+
 function dashboardUrl(projectId) {
   const url = new URL("../index.html", window.location.href);
   url.searchParams.set("projectId", projectId);
@@ -81,6 +90,7 @@ els.form.addEventListener("submit", event => {
   createProject(event).catch(error => setStatus(error.message));
 });
 
+applyAccessControls().catch(() => {});
 loadProjects().catch(error => {
   els.list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   setStatus(error.message);

@@ -404,3 +404,19 @@ test("dashboard declares a local favicon", () => {
   assert.match(html, /<link rel="icon" href="favicon\.svg" type="image\/svg\+xml">/);
   assert.match(icon, /<svg[^>]+viewBox="0 0 64 64"/);
 });
+
+test("server deployment exposes authenticated project access controls", () => {
+  const html = read("index.html");
+  const serverHtml = read("server/server.html");
+  const loginHtml = read("server/login.html");
+  const authClient = read("server/auth-client.js");
+  const serviceScript = read("deployment/linux/root/10-configure-dashboard-service.sh");
+
+  assert.match(html, /server\/auth-client\.js/);
+  assert.match(serverHtml, /auth-client\.js/);
+  assert.match(loginHtml, /dashboardLoginForm/);
+  assert.match(authClient, /X-Dashboard-CSRF/);
+  assert.match(authClient, /\/api\/auth\/logout/);
+  assert.match(serviceScript, /DASHBOARD_AUTH_REQUIRED=1/);
+  assert.match(serviceScript, /DASHBOARD_AUTH_CONFIG=/);
+});

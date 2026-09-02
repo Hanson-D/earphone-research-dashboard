@@ -9,6 +9,7 @@ require_dashboard_python
 require_command systemctl
 
 [[ -f "${APP_ROOT}/server/server.py" ]] || die "Missing ${APP_ROOT}/server/server.py"
+[[ -f "${APP_ROOT}/server/manage-users.py" ]] || die "Missing ${APP_ROOT}/server/manage-users.py"
 
 if ! getent group "${DASHBOARD_GROUP}" >/dev/null; then
   groupadd --system "${DASHBOARD_GROUP}"
@@ -54,12 +55,19 @@ if ! run_as_user "${DASHBOARD_USER}" "${python_binary}" -c 'import sys; raise Sy
   die "${DASHBOARD_USER} cannot execute dashboard Python: ${python_binary}"
 fi
 
+auth_config="$(auth_config_path)"
+"${python_binary}" "${APP_ROOT}/server/manage-users.py" --config "${auth_config}" init
+chown root:"${DASHBOARD_GROUP}" "${auth_config}"
+chmod 0640 "${auth_config}"
+
 env_path="$(dashboard_env_path)"
 cat >"${env_path}.tmp" <<EOF
 HOST=${DASHBOARD_HOST}
 PORT=${DASHBOARD_PORT}
 DASHBOARD_PROJECTS_ROOT=${PROJECTS_ROOT}
 DASHBOARD_LEGACY_PATHS=1
+DASHBOARD_AUTH_REQUIRED=1
+DASHBOARD_AUTH_CONFIG=${auth_config}
 EOF
 install -o root -g "${DASHBOARD_GROUP}" -m 0640 "${env_path}.tmp" "${env_path}"
 rm -f "${env_path}.tmp"
@@ -97,5 +105,6 @@ else
 fi
 
 log "Dashboard service configuration installed."
+printf 'Authentication is enabled. Add at least one dashboard administrator before starting the service.\n'
 printf 'Service was not enabled or started.\n'
 printf 'Next: run 21_initialize_dashboard.bat, then 50_enable_service.bat and 51_start_service.bat.\n'

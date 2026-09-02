@@ -2,7 +2,12 @@ import importlib.util
 import json
 import os
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.cookiejar import CookieJar
 from pathlib import Path
 
 
@@ -296,6 +301,149 @@ class ServerProjectTests(unittest.TestCase):
         server.save_server_project("study-01", {"version": 1, "rows": []}, title="标题 A", create=True)
         ok = server.save_server_project("study-01", {"version": 1, "rows": []}, expected_revision=1)
         self.assertEqual(ok["project"]["_server"]["title"], "标题 A")
+
+
+class DashboardAuthTests(unittest.TestCase):
+    def test_password_hash_round_trip(self):
+        encoded = server.auth.hash_password("correct-horse-battery", iterations=1000)
+
+        self.assertTrue(server.auth.verify_password("correct-horse-battery", encoded))
+        self.assertFalse(server.auth.verify_password("wrong-password", encoded))
+        self.assertNotIn("correct-horse-battery", encoded)
+
+    def test_session_uses_current_user_revision(self):
+        config = server.auth.new_config()
+        config["users"]["zhangsan"] = {
+            "displayName": "张三",
+            "password": server.auth.hash_password("correct-horse-battery", iterations=1000),
+            "projects": ["study-a"],
+            "revision": 1,
+        }
+        token = server.auth.create_session(config, "zhangsan", now=100, ttl=60)
+
+        self.assertEqual(server.auth.read_session(config, token, now=120)["username"], "zhangsan")
+        config["users"]["zhangsan"]["revision"] = 2
+        self.assertIsNone(server.auth.read_session(config, token, now=120))
+
+    def test_project_access_is_filtered_by_user(self):
+        user = {"username": "zhangsan", "admin": False, "projects": ["study-a"]}
+        admin = {"username": "admin", "admin": True, "projects": ["*"]}
+
+        self.assertTrue(server.auth.can_access_project(user, "study-a"))
+        self.assertFalse(server.auth.can_access_project(user, "study-b"))
+        self.assertTrue(server.auth.can_access_project(admin, "study-b"))
+
+    def test_project_path_access_uses_top_level_folder(self):
+        with tempfile.TemporaryDirectory() as root:
+            previous = os.environ.get("DASHBOARD_PROJECTS_ROOT")
+            os.environ["DASHBOARD_PROJECTS_ROOT"] = root
+            try:
+                project = Path(root) / "study-a" / "study-a.json"
+                outside = Path(root).parent / "outside.json"
+                self.assertEqual(server.project_access_id(project), "study-a")
+                self.assertEqual(server.project_asset_access_id(project.parent / "photos" / "front.jpg"), "study-a")
+                self.assertIsNone(server.project_access_id(outside))
+            finally:
+                if previous is None:
+                    os.environ.pop("DASHBOARD_PROJECTS_ROOT", None)
+                else:
+                    os.environ["DASHBOARD_PROJECTS_ROOT"] = previous
+
+    def test_direct_static_project_path_is_detected(self):
+        previous = os.environ.get("DASHBOARD_PROJECTS_ROOT")
+        os.environ["DASHBOARD_PROJECTS_ROOT"] = str(server.app_root() / "projects")
+        try:
+            self.assertTrue(server.is_direct_project_static_path("/projects/private/project.json"))
+            self.assertFalse(server.is_direct_project_static_path("/server/server.html"))
+        finally:
+            if previous is None:
+                os.environ.pop("DASHBOARD_PROJECTS_ROOT", None)
+            else:
+                os.environ["DASHBOARD_PROJECTS_ROOT"] = previous
+
+
+class DashboardAuthHttpTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.previous_env = {
+            key: os.environ.get(key)
+            for key in ("DASHBOARD_PROJECTS_ROOT", "DASHBOARD_AUTH_REQUIRED", "DASHBOARD_AUTH_CONFIG")
+        }
+        auth_path = Path(self.tmp.name) / "access.json"
+        os.environ["DASHBOARD_PROJECTS_ROOT"] = str(Path(self.tmp.name) / "projects")
+        os.environ["DASHBOARD_AUTH_REQUIRED"] = "1"
+        os.environ["DASHBOARD_AUTH_CONFIG"] = str(auth_path)
+        config = server.auth.new_config()
+        config["users"]["zhangsan"] = {
+            "displayName": "张三",
+            "password": server.auth.hash_password("correct-horse-battery", iterations=1000),
+            "admin": False,
+            "projects": ["study-a"],
+            "revision": 1,
+        }
+        server.auth.save_config(config, auth_path)
+        server.save_server_project("study-a", {"version": 1, "rows": []}, create=True)
+        server.save_server_project("study-b", {"version": 1, "rows": []}, create=True)
+
+        class QuietDashboardHandler(server.DashboardHandler):
+            def log_message(self, format_value, *args):
+                pass
+
+        self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), QuietDashboardHandler)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        self.base_url = "http://127.0.0.1:{}".format(self.httpd.server_address[1])
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(timeout=2)
+        for key, value in self.previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        self.tmp.cleanup()
+
+    def login(self):
+        cookies = CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+        request = urllib.request.Request(
+            self.base_url + "/api/auth/login",
+            data=json.dumps({"username": "zhangsan", "password": "correct-horse-battery"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with opener.open(request) as response:
+            self.assertEqual(response.status, 200)
+        return opener
+
+    def test_project_list_requires_login_and_filters_projects(self):
+        with self.assertRaises(urllib.error.HTTPError) as unauthenticated:
+            urllib.request.urlopen(self.base_url + "/api/server/projects")
+        self.assertEqual(unauthenticated.exception.code, 401)
+
+        opener = self.login()
+        with opener.open(self.base_url + "/api/server/projects") as response:
+            payload = json.load(response)
+
+        self.assertEqual([item["id"] for item in payload["projects"]], ["study-a"])
+        with opener.open(self.base_url + "/api/list-projects") as response:
+            local_payload = json.load(response)
+        self.assertEqual([item["id"] for item in local_payload["projects"]], ["study-a"])
+
+    def test_direct_project_url_cannot_bypass_access_list(self):
+        opener = self.login()
+
+        with self.assertRaises(urllib.error.HTTPError) as forbidden:
+            opener.open(self.base_url + "/api/server/projects/study-b")
+
+        self.assertEqual(forbidden.exception.code, 403)
+        project_path = server.server_project_path("study-b")
+        url = self.base_url + "/api/load-project?path=" + urllib.parse.quote(str(project_path))
+        with self.assertRaises(urllib.error.HTTPError) as forbidden_path:
+            opener.open(url)
+        self.assertEqual(forbidden_path.exception.code, 403)
 
 
 if __name__ == "__main__":
