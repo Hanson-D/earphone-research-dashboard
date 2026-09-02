@@ -47,7 +47,7 @@ awk -v begin="${managed_begin}" -v end="${managed_end}" -v remove_include="${inc
   $0 == begin { managed = 1; next }
   $0 == end { managed = 0; next }
   managed { next }
-  remove_include == 0 && $0 ~ /^[[:space:]]*Include[[:space:]]+\/etc\/ssh\/sshd_config\.d\/\*\.conf[[:space:]]*$/ { next }
+  remove_include == 0 && $0 ~ /^[[:space:]]*[Ii][Nn][Cc][Ll][Uu][Dd][Ee][[:space:]]+\/etc\/ssh\/sshd_config\.d\/\*\.conf[[:space:]]*$/ { next }
   { print }
 ' "${sshd_main}" >"${temp_main}"
 
@@ -57,7 +57,6 @@ ${managed_begin}
 Match Group ${TUNNEL_GROUP}
     PubkeyAuthentication yes
     PasswordAuthentication no
-    ChallengeResponseAuthentication no
     AllowTcpForwarding local
     PermitOpen ${DASHBOARD_HOST}:${DASHBOARD_PORT}
     X11Forwarding no
