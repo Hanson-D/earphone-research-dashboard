@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/../lib/client-bundle.sh"
 require_root
 require_command ssh-keygen
 require_command chpasswd
-require_command python3
+require_dashboard_python
 require_command sha256sum
 
 client_id=""
@@ -79,7 +79,7 @@ nologin_path="$(command -v nologin || true)"
 useradd --create-home --gid "${TUNNEL_GROUP}" --shell "${nologin_path}" "${ssh_user}"
 created_user=1
 
-random_password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+random_password="$("${DASHBOARD_PYTHON}" -c 'import secrets; print(secrets.token_urlsafe(48))')"
 printf '%s:%s\n' "${ssh_user}" "${random_password}" | chpasswd
 unset random_password
 

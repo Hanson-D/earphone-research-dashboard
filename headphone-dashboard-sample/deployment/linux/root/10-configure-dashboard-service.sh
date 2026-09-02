@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_root
-require_command python3
+require_dashboard_python
 require_command systemctl
 
 [[ -f "${APP_ROOT}/server/server.py" ]] || die "Missing ${APP_ROOT}/server/server.py"
@@ -49,8 +49,10 @@ for parent in "$(dirname "${APP_ROOT}")" "$(dirname "$(dirname "${APP_ROOT}")")"
   fi
 done
 
-python_binary="$(python_path)"
-[[ -n "${python_binary}" ]] || die "python3 was not found."
+python_binary="$(dashboard_python_path)"
+if ! run_as_user "${DASHBOARD_USER}" "${python_binary}" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 7) else 1)'; then
+  die "${DASHBOARD_USER} cannot execute dashboard Python: ${python_binary}"
+fi
 
 env_path="$(dashboard_env_path)"
 cat >"${env_path}.tmp" <<EOF
@@ -86,12 +88,14 @@ install -o root -g root -m 0644 "${unit_path}.tmp" "${unit_path}"
 rm -f "${unit_path}.tmp"
 
 systemctl daemon-reload
-if command -v systemd-analyze >/dev/null 2>&1; then
+if systemd_analyze_supports_verify; then
   systemd-analyze verify "${unit_path}" >/dev/null
+elif command -v systemd-analyze >/dev/null 2>&1; then
+  warn "This systemd-analyze version has no verify operation; unit validation will occur when the service starts."
 else
   warn "systemd-analyze is unavailable; unit verification will occur when the service starts."
 fi
 
 log "Dashboard service configuration installed."
 printf 'Service was not enabled or started.\n'
-printf 'Next: run 12_initialize_dashboard.bat, then 40_enable_service.bat and 41_start_service.bat.\n'
+printf 'Next: run 21_initialize_dashboard.bat, then 50_enable_service.bat and 51_start_service.bat.\n'

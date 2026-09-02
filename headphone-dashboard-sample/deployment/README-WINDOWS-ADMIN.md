@@ -18,15 +18,22 @@
 1. `00_configure_connection.bat`
 2. `01_test_connection.bat`
 3. `10_preflight.bat`
-4. `20_configure_service.bat`
-5. `21_initialize_dashboard.bat`
-6. `22_dashboard_self_check.bat`
-7. `30_configure_tunnel_access.bat`
-8. `50_enable_service.bat`
-9. `51_start_service.bat`
-10. `55_service_health.bat`
+4. `15_prepare_python_runtime.bat`
+5. `20_configure_service.bat`
+6. `21_initialize_dashboard.bat`
+7. `22_dashboard_self_check.bat`
+8. `30_configure_tunnel_access.bat`
+9. `50_enable_service.bat`
+10. `51_start_service.bat`
+11. `55_service_health.bat`
 
 配置服务不会启动服务；配置 SSH 通道不会创建客户端；启停服务不会重写配置。
+
+`15_prepare_python_runtime.bat` 默认从 `/root/anaconda3/bin/python3` 离线克隆
+Conda 环境到 `/opt/earphone-dashboard/python`。服务和自检始终使用克隆后的绝对路径，
+不会调用 `dashboard` 账号 PATH 中的 `/usr/bin/python3`，也不会开放 `/root` 目录权限。
+如果克隆环境中没有 Pillow，脚本会按服务器架构自动查找 `/tmp` 下对应的
+Pillow 9.5.0 manylinux 2.17 wheel 并离线安装。
 
 ## 添加客户端
 

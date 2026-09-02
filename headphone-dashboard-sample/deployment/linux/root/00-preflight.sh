@@ -36,6 +36,27 @@ for command_name in \
   check_command "${command_name}"
 done
 
+printf '\nPython runtime:\n'
+if [[ -x "${DASHBOARD_SOURCE_PYTHON}" ]]; then
+  if python_is_supported "${DASHBOARD_SOURCE_PYTHON}"; then
+    printf 'OK      source Python   %s (%s)\n' \
+      "${DASHBOARD_SOURCE_PYTHON}" "$(python_version "${DASHBOARD_SOURCE_PYTHON}")"
+  else
+    printf 'FAILED  source Python   %s is older than Python 3.7\n' "${DASHBOARD_SOURCE_PYTHON}"
+    failures=$((failures + 1))
+  fi
+else
+  printf 'MISSING source Python   %s\n' "${DASHBOARD_SOURCE_PYTHON}"
+  failures=$((failures + 1))
+fi
+
+if [[ -x "${DASHBOARD_PYTHON}" ]]; then
+  printf 'OK      dashboard Python %s (%s)\n' \
+    "${DASHBOARD_PYTHON}" "$(python_version "${DASHBOARD_PYTHON}")"
+else
+  printf 'PENDING dashboard Python %s; run 15_prepare_python_runtime.bat\n' "${DASHBOARD_PYTHON}"
+fi
+
 printf '\nCompatibility helpers:\n'
 if command -v runuser >/dev/null 2>&1; then
   printf 'OK      user switch     runuser\n'
@@ -56,8 +77,10 @@ else
   printf 'OK      port inspection python3 socket fallback\n'
 fi
 
-if command -v systemd-analyze >/dev/null 2>&1; then
-  printf 'OK      unit validation systemd-analyze\n'
+if systemd_analyze_supports_verify; then
+  printf 'OK      unit validation systemd-analyze verify\n'
+elif command -v systemd-analyze >/dev/null 2>&1; then
+  printf 'OPTIONAL unit validation systemd-analyze has no verify operation; start-time validation will be used\n'
 else
   printf 'OPTIONAL unit validation systemd-analyze not found; start-time validation will be used\n'
 fi

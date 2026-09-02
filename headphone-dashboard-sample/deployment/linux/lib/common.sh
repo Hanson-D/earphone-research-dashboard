@@ -12,6 +12,9 @@ TUNNEL_GROUP="${TUNNEL_GROUP:-kanban-tunnel}"
 SERVICE_NAME="${SERVICE_NAME:-earphone-dashboard}"
 DASHBOARD_HOST="${DASHBOARD_HOST:-127.0.0.1}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-7362}"
+DASHBOARD_SOURCE_PYTHON="${DASHBOARD_SOURCE_PYTHON:-/root/anaconda3/bin/python3}"
+DASHBOARD_RUNTIME_ROOT="${DASHBOARD_RUNTIME_ROOT:-/opt/earphone-dashboard/python}"
+DASHBOARD_PYTHON="${DASHBOARD_PYTHON:-${DASHBOARD_RUNTIME_ROOT}/bin/python3}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -78,8 +81,28 @@ validate_port() {
   (( 1 <= 10#$1 && 10#$1 <= 65535 )) || die "Port must be between 1 and 65535."
 }
 
-python_path() {
-  command -v python3 || true
+python_version() {
+  "$1" -c 'import sys; print("{}.{}.{}".format(*sys.version_info[:3]))'
+}
+
+python_is_supported() {
+  "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 7) else 1)'
+}
+
+dashboard_python_path() {
+  [[ -x "${DASHBOARD_PYTHON}" ]] && printf '%s\n' "${DASHBOARD_PYTHON}"
+}
+
+require_dashboard_python() {
+  [[ -x "${DASHBOARD_PYTHON}" ]] || \
+    die "Dashboard Python is missing: ${DASHBOARD_PYTHON}. Run 15_prepare_python_runtime.bat first."
+  python_is_supported "${DASHBOARD_PYTHON}" || \
+    die "Dashboard Python $(python_version "${DASHBOARD_PYTHON}") is unsupported; Python 3.7+ is required."
+}
+
+systemd_analyze_supports_verify() {
+  command -v systemd-analyze >/dev/null 2>&1 &&
+    systemd-analyze --help 2>&1 | grep -Eq '(^|[[:space:]])verify([[:space:]]|$)'
 }
 
 sshd_path() {
@@ -173,7 +196,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 try:
     sock.bind((host, port))
 except OSError:
-    print(f"{host}:{port} is already in use; process details are unavailable.")
+    print("{}:{} is already in use; process details are unavailable.".format(host, port))
 finally:
     sock.close()
 PY

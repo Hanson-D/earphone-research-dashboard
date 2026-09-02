@@ -13,4 +13,5 @@ run_as_user "${DASHBOARD_USER}" env \
   DASHBOARD_USER="${DASHBOARD_USER}" \
   DASHBOARD_HOST="${DASHBOARD_HOST}" \
   DASHBOARD_PORT="${DASHBOARD_PORT}" \
+  DASHBOARD_PYTHON="${DASHBOARD_PYTHON}" \
   bash "${SCRIPT_DIR}/../dashboard/dashboard-self-check.sh"
