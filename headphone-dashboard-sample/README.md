@@ -85,7 +85,7 @@ http://localhost:7362
 
 当前 Linux/内网部署默认使用本地版看板入口，也就是根路径 `/`。不要把普通用户引导到旧的 `server/server.html`。
 
-如果管理员希望全部从 Windows 远程完成 Linux 配置、服务启停和 SSH 隧道客户端发放，请使用 `deployment/windows-admin` 下的 BAT 脚本。完整顺序见 `deployment/README-WINDOWS-ADMIN.md`。BAT 通过 SSH 调用拆分后的 Linux 模块，新增客户端不会重新配置或重启看板服务。
+如果管理员希望全部从 Windows 远程完成 Linux 配置、服务启停和 SSH 隧道客户端发放，推荐使用 `deployment/windows-admin-gui` 构建统一管理 EXE；同一次连接只需输入一次 root 密码。`deployment/windows-admin` 下的 BAT 仍作为兼容和单步排障方式保留。完整说明见 `deployment/README-WINDOWS-ADMIN.md`；新增客户端不会重新配置或重启看板服务。
 
 在服务器上进入 `headphone-dashboard-sample` 后启动：
 

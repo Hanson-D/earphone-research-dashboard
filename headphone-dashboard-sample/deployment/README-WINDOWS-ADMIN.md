@@ -1,6 +1,8 @@
 # Windows 远程部署说明
 
-这一套脚本让管理员只在 Windows 上操作。Windows BAT 通过 SSH 调用 Linux 脚本；看板服务和数据仍然运行、保存在 Linux。
+管理员可以只在 Windows 上操作；看板服务和数据仍然运行、保存在 Linux。
+
+推荐使用 `windows-admin-gui` 中构建出的统一管理 EXE：每次启动并连接服务器只输入一次 root 密码，即可连续运行部署、启停、账号和客户端管理操作。构建与使用方法见 `windows-admin-gui/README.md`。原有 `windows-admin` BAT 继续保留，适合旧环境和单步排障；BAT 每次调用 `ssh.exe`，因此可能重复询问 root 密码。
 
 ## 前提
 

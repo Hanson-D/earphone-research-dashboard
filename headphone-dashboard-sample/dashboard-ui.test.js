@@ -431,3 +431,21 @@ test("windows upload uses one ssh session and excludes private client bundles", 
   assert.match(upload, /--exclude=__pycache__/);
   assert.match(upload, /Upload received and verified/);
 });
+
+test("windows admin gui reuses ssh and keeps secrets out of settings", () => {
+  const core = read("deployment/windows-admin-gui/admin_core.py");
+  const gui = read("deployment/windows-admin-gui/dashboard_admin.py");
+  const build = read("deployment/windows-admin-gui/build-admin-tool.bat");
+
+  assert.match(gui, /class AdminConnection/);
+  assert.match(gui, /transport\.set_keepalive\(30\)/);
+  assert.match(gui, /look_for_keys=False/);
+  assert.match(gui, /allow_agent=False/);
+  assert.match(gui, /InteractiveHostKeyPolicy/);
+  assert.match(gui, /download_client_bundle/);
+  assert.match(core, /"client-download"/);
+  assert.match(core, /"projects"/);
+  assert.doesNotMatch(core, /for key in \([^)]*password/);
+  assert.match(build, /--onefile --windowed/);
+  assert.equal([...build].every((character) => character.codePointAt(0) < 128), true);
+});

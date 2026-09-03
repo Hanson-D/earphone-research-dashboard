@@ -1,0 +1,48 @@
+name: Build Windows admin tool
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "headphone-dashboard-sample/deployment/windows-admin-gui/**"
+      - ".github/workflows/build-windows-admin.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: headphone-dashboard-sample/deployment/windows-admin-gui/requirements-build.txt
+
+      - name: Install build dependencies
+        working-directory: headphone-dashboard-sample/deployment/windows-admin-gui
+        run: python -m pip install --requirement requirements-build.txt
+
+      - name: Run core tests
+        working-directory: headphone-dashboard-sample/deployment/windows-admin-gui
+        run: python admin_core_test.py
+
+      - name: Build EXE
+        working-directory: headphone-dashboard-sample/deployment/windows-admin-gui
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name EarphoneDashboardAdmin --collect-all paramiko dashboard_admin.py
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EarphoneDashboardAdmin-windows
+          path: headphone-dashboard-sample/deployment/windows-admin-gui/dist/EarphoneDashboardAdmin.exe
+          if-no-files-found: error
+          retention-days: 30
