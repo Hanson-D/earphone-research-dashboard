@@ -361,6 +361,17 @@ class DashboardAuthTests(unittest.TestCase):
             else:
                 os.environ["DASHBOARD_PROJECTS_ROOT"] = previous
 
+    def test_sensitive_windows_admin_files_are_not_static(self):
+        self.assertTrue(server.is_sensitive_admin_static_path(
+            "/deployment/windows-admin/downloads/win1/key/kanban_win1"
+        ))
+        self.assertTrue(server.is_sensitive_admin_static_path(
+            "/deployment/windows-admin/.admin-connection.bat"
+        ))
+        self.assertFalse(server.is_sensitive_admin_static_path(
+            "/deployment/windows-admin/40_add_client.bat"
+        ))
+
 
 class DashboardAuthHttpTests(unittest.TestCase):
     def setUp(self):

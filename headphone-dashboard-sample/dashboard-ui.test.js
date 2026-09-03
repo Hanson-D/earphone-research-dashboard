@@ -420,3 +420,14 @@ test("server deployment exposes authenticated project access controls", () => {
   assert.match(serviceScript, /DASHBOARD_AUTH_REQUIRED=1/);
   assert.match(serviceScript, /DASHBOARD_AUTH_CONFIG=/);
 });
+
+test("windows upload uses one ssh session and excludes private client bundles", () => {
+  const upload = read("deployment/windows-admin/02_upload_app.bat");
+  const sshCalls = upload.match(/ssh\.exe/g) || [];
+
+  assert.equal(sshCalls.length, 1);
+  assert.match(upload, /--exclude=deployment\/windows-admin\/downloads/);
+  assert.match(upload, /--exclude=\.admin-connection\.bat/);
+  assert.match(upload, /--exclude=__pycache__/);
+  assert.match(upload, /Upload received and verified/);
+});

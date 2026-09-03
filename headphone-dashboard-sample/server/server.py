@@ -395,6 +395,14 @@ def is_direct_project_static_path(url_path):
     return requested == root or root in requested.parents
 
 
+def is_sensitive_admin_static_path(url_path):
+    normalized = "/" + unquote(str(url_path or "")).lstrip("/")
+    return (
+        normalized == "/deployment/windows-admin/.admin-connection.bat" or
+        normalized.startswith("/deployment/windows-admin/downloads/")
+    )
+
+
 def list_local_project_scan_root_info():
     return [{"path": display_path(root), "exists": root.is_dir()} for root in project_scan_roots()]
 
@@ -773,6 +781,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_HEAD(self):
         parsed = urlparse(self.path)
+        if is_sensitive_admin_static_path(parsed.path):
+            self.send_error(404)
+            return
         if auth.auth_required() and is_direct_project_static_path(parsed.path):
             self.send_error(403, "Direct project file access is disabled")
             return
@@ -900,6 +911,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if is_sensitive_admin_static_path(parsed.path):
+            self.send_error(404)
+            return
         if parsed.path == "/api/auth/me":
             if not auth.auth_required():
                 self.send_json({"enabled": False, "user": None})

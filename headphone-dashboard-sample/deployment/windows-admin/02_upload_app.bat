@@ -20,13 +20,8 @@ if /i not "%CONFIRM_UPLOAD%"=="y" (
   exit /b 0
 )
 
-ssh.exe -p "%REMOTE_SSH_PORT%" "%REMOTE_ROOT_USER%@%REMOTE_HOST%" "command -v tar >/dev/null"
-if errorlevel 1 (
-  echo Remote tar command was not found.
-  goto :failed
-)
-
-tar.exe --exclude=.git --exclude=projects --exclude=.cache -C "%LOCAL_APP_ROOT%" -cf - . | ssh.exe -p "%REMOTE_SSH_PORT%" "%REMOTE_ROOT_USER%@%REMOTE_HOST%" "mkdir -p '%REMOTE_APP_ROOT%' && tar -C '%REMOTE_APP_ROOT%' -xf -"
+echo Authenticate once to upload and verify the application.
+tar.exe --exclude=.git --exclude=projects --exclude=.cache --exclude=.pycache --exclude=__pycache__ --exclude=*.pyc --exclude=.DS_Store --exclude=.admin-connection.bat --exclude=deployment/windows-admin/downloads --exclude=downloads -C "%LOCAL_APP_ROOT%" -cf - . | ssh.exe -p "%REMOTE_SSH_PORT%" "%REMOTE_ROOT_USER%@%REMOTE_HOST%" "command -v tar >/dev/null 2>&1 || { echo 'Remote tar command was not found.' >&2; exit 127; }; mkdir -p '%REMOTE_APP_ROOT%' && tar -C '%REMOTE_APP_ROOT%' -xf - && test -f '%REMOTE_APP_ROOT%/server/server.py' && test -f '%REMOTE_APP_ROOT%/deployment/linux/root/10-configure-dashboard-service.sh' && echo 'Upload received and verified.'"
 if errorlevel 1 goto :failed
 
 echo.
