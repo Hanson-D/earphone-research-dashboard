@@ -38,6 +38,7 @@ check "server.py readable" test -r "${APP_ROOT}/server/server.py"
 check "projects directory writable" test -w "${PROJECTS_ROOT}"
 check "thumbnail cache writable" test -w "${PROJECTS_ROOT}/.cache/photo-thumbnails"
 if [[ "${DASHBOARD_CLIENT_ACCESS_REQUIRED}" == "1" ]]; then
+  check "client access config parent traversable" test -x "$(dirname "${DASHBOARD_CLIENT_ACCESS_CONFIG}")"
   check "client access config readable" test -r "${DASHBOARD_CLIENT_ACCESS_CONFIG}"
   check "client access config valid" "${DASHBOARD_PYTHON}" -c \
     'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); raise SystemExit(0 if isinstance(data.get("clients"), dict) else 1)' \

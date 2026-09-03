@@ -411,6 +411,7 @@ test("server deployment binds project access to SSH client listener identity", (
   const authClient = read("server/auth-client.js");
   const server = read("server/server.py");
   const listeners = read("server/client_listeners.py");
+  const common = read("deployment/linux/lib/common.sh");
   const serviceScript = read("deployment/linux/root/10-configure-dashboard-service.sh");
   const clientScript = read("deployment/linux/root/30-add-client.sh");
   const installer = read("deployment/windows-client-template/install-client.ps1");
@@ -420,6 +421,7 @@ test("server deployment binds project access to SSH client listener identity", (
   assert.match(authClient, /X-Dashboard-CSRF/);
   assert.doesNotMatch(authClient, /login\.html/);
   assert.match(listeners, /dashboard_client_id/);
+  assert.match(common, /install -d -o root -g "\$\{DASHBOARD_GROUP\}" -m 0750 "\$\{CONFIG_ROOT\}"/);
   assert.match(server, /client_token_cookie_name/);
   assert.match(server, /redact_access_tokens/);
   assert.match(serviceScript, /DASHBOARD_CLIENT_ACCESS_REQUIRED=1/);

@@ -169,7 +169,10 @@ client_ssh_user() {
 }
 
 ensure_config_dirs() {
-  install -d -o root -g root -m 0750 "${CONFIG_ROOT}" "${CLIENTS_ROOT}"
+  getent group "${DASHBOARD_GROUP}" >/dev/null || \
+    die "Dashboard group does not exist: ${DASHBOARD_GROUP}. Configure the dashboard service first."
+  install -d -o root -g "${DASHBOARD_GROUP}" -m 0750 "${CONFIG_ROOT}"
+  install -d -o root -g root -m 0750 "${CLIENTS_ROOT}"
   install -d -o root -g root -m 0700 "${EXPORT_ROOT}"
 }
 
