@@ -4,7 +4,7 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/home/earphone/kanban/app}"
 PROJECTS_ROOT="${PROJECTS_ROOT:-/home/earphone/kanban/projects}"
 CONFIG_ROOT="${CONFIG_ROOT:-/etc/earphone-dashboard}"
-AUTH_CONFIG_PATH="${AUTH_CONFIG_PATH:-${CONFIG_ROOT}/access.json}"
+ACCESS_CONFIG_PATH="${ACCESS_CONFIG_PATH:-${AUTH_CONFIG_PATH:-${CONFIG_ROOT}/access.json}}"
 CLIENTS_ROOT="${CLIENTS_ROOT:-${CONFIG_ROOT}/clients}"
 EXPORT_ROOT="${EXPORT_ROOT:-/root/kanban-export}"
 DASHBOARD_USER="${DASHBOARD_USER:-dashboard}"
@@ -157,7 +157,7 @@ dashboard_env_path() {
 }
 
 auth_config_path() {
-  printf '%s\n' "${AUTH_CONFIG_PATH}"
+  printf '%s\n' "${ACCESS_CONFIG_PATH}"
 }
 
 client_config_path() {
@@ -169,7 +169,10 @@ client_ssh_user() {
 }
 
 ensure_config_dirs() {
-  install -d -o root -g root -m 0750 "${CONFIG_ROOT}" "${CLIENTS_ROOT}"
+  getent group "${DASHBOARD_GROUP}" >/dev/null || \
+    die "Dashboard group does not exist: ${DASHBOARD_GROUP}. Configure the dashboard service first."
+  install -d -o root -g "${DASHBOARD_GROUP}" -m 0750 "${CONFIG_ROOT}"
+  install -d -o root -g root -m 0750 "${CLIENTS_ROOT}"
   install -d -o root -g root -m 0700 "${EXPORT_ROOT}"
 }
 
@@ -202,6 +205,17 @@ read_client_value() {
   config="$(client_config_path "${client_id}")"
   [[ -f "${config}" ]] || die "Client not found: ${client_id}"
   sed -n "s/^${key}=//p" "${config}" | head -n 1
+}
+
+write_client_value() {
+  local config="$1"
+  local key="$2"
+  local value="$3"
+  if grep -q "^${key}=" "${config}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${config}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >>"${config}"
+  fi
 }
 
 dashboard_listener() {

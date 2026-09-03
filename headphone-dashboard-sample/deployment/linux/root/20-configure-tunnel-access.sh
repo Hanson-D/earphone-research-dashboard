@@ -57,7 +57,7 @@ Match Group ${TUNNEL_GROUP}
     PubkeyAuthentication yes
     PasswordAuthentication no
     AllowTcpForwarding local
-    PermitOpen ${DASHBOARD_HOST}:${DASHBOARD_PORT}
+    PermitOpen any
     X11Forwarding no
     AllowAgentForwarding no
     PermitTTY no

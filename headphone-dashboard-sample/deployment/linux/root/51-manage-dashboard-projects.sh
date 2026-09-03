@@ -27,4 +27,4 @@ if [[ -f "$(auth_config_path)" ]]; then
   chmod 0640 "$(auth_config_path)"
 fi
 
-printf 'Dashboard service restart is not required.\n'
+printf 'Client permissions and listeners reload automatically; dashboard service restart is not required.\n'

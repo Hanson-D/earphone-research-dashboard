@@ -5,11 +5,12 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $stateRoot = Join-Path $env:LOCALAPPDATA "EarphoneDashboardTunnel\$ClientId"
 $pidPath = Join-Path $stateRoot "tunnel.pid"
-$url = "http://127.0.0.1:$LocalPort/"
+$baseUrl = "http://127.0.0.1:$LocalPort/"
+$url = "${baseUrl}?access_token=$([uri]::EscapeDataString($AccessToken))"
 
 Write-Host "Client ID: $ClientId"
 Write-Host "Server: ${ServerHost}:$SshPort"
-Write-Host "Dashboard URL: $url"
+Write-Host "Dashboard URL: $baseUrl"
 
 $running = $false
 if (Test-Path -LiteralPath $pidPath) {
