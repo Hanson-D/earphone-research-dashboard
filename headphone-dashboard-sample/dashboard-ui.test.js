@@ -431,6 +431,8 @@ test("server deployment binds project access to SSH client listener identity", (
   assert.match(clientScript, /manage-clients\.py/);
   assert.match(installer, /sourceKeyAvailable/);
   assert.match(installer, /no existing key was found/);
+  assert.match(installer, /Stopped the previous tunnel/);
+  assert.match(installer, /Stop-Process -Id \$existingPid/);
 });
 
 test("windows upload uses one ssh session and excludes private client bundles", () => {

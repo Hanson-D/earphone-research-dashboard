@@ -16,6 +16,21 @@ if (-not (Test-Path -LiteralPath $sourceKnownHosts)) {
 $stateRoot = Join-Path $env:LOCALAPPDATA "EarphoneDashboardTunnel\$ClientId"
 New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
 
+$pidPath = Join-Path $stateRoot "tunnel.pid"
+if (Test-Path -LiteralPath $pidPath) {
+  [int]$existingPid = 0
+  $recordedPid = (Get-Content -LiteralPath $pidPath -Raw).Trim()
+  if ([int]::TryParse($recordedPid, [ref]$existingPid)) {
+    $existingTunnel = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
+    if ($existingTunnel -and $existingTunnel.ProcessName -eq "ssh") {
+      Stop-Process -Id $existingPid -Force
+      Wait-Process -Id $existingPid -Timeout 5 -ErrorAction SilentlyContinue
+      Write-Host "Stopped the previous tunnel so the updated routing can take effect."
+    }
+  }
+  Remove-Item -LiteralPath $pidPath -Force -ErrorAction SilentlyContinue
+}
+
 $targetKey = Join-Path $stateRoot $KeyName
 $targetKnownHosts = Join-Path $stateRoot "known_hosts"
 $targetConfig = Join-Path $stateRoot "client-config.ps1"
