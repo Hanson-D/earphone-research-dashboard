@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>项目制作器 · Headphone Research</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="grain"></div>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">HEADPHONE RESEARCH / PROJECT BUILDER</p>
+        <h1>把原始材料，整理成<br><em>可直接分析的项目。</em></h1>
+      </div>
+      <div class="build-mark"><span>LOCAL</span><strong>01</strong><small>数据不离开本机</small></div>
+    </header>
+
+    <section class="workspace">
+      <form id="builderForm" class="intake">
+        <div class="section-heading"><span>01</span><div><h2>项目材料</h2><p>选择 CSV、照片目录和项目输出位置。</p></div></div>
+        <label class="field"><span>项目名称</span><input id="projectName" name="projectName" placeholder="例如 ANC_Study_01" required></label>
+        <div class="path-field"><label class="field"><span>源 CSV</span><input id="csvPath" name="csvPath" placeholder="C:\研究\study.csv" required></label><button type="button" data-pick="csv">选择</button></div>
+        <div class="path-field"><label class="field"><span>照片根目录</span><input id="photoRoot" name="photoRoot" placeholder="C:\研究\photos" required></label><button type="button" data-pick="photos">选择</button></div>
+        <div class="path-field"><label class="field"><span>项目输出目录</span><input id="outputRoot" name="outputRoot" placeholder="C:\Dashboard\projects" required></label><button type="button" data-pick="output">选择</button></div>
+
+        <div class="section-heading compact"><span>02</span><div><h2>映射规则</h2><p>留空的字段会根据 CSV 表头自动识别。</p></div></div>
+        <div class="grid two">
+          <label class="field"><span>映射模式</span><select id="mode"><option value="auto">自动判断</option><option value="folders">子文件夹识别</option><option value="sequence">按拍摄顺序</option></select></label>
+          <label class="field"><span>视角</span><input id="views" placeholder="正面, 侧面, 后侧"></label>
+          <label class="field"><span>用户字段</span><input id="userField" list="csvHeaders" placeholder="自动识别"></label>
+          <label class="field"><span>设备字段</span><input id="deviceField" list="csvHeaders" placeholder="自动识别"></label>
+          <label class="field"><span>耳侧字段</span><input id="earField" list="csvHeaders" placeholder="自动识别"></label>
+          <label class="field"><span>预期耳侧</span><input id="expectedEars" placeholder="左耳, 右耳"></label>
+        </div>
+        <div class="switches">
+          <label><input id="noDeviceField" type="checkbox"><span>CSV 无设备列</span></label>
+          <label><input id="noEarField" type="checkbox"><span>CSV 无耳侧列</span></label>
+          <label><input id="singleEarMode" type="checkbox"><span>强制单耳模式</span></label>
+          <label><input id="photoEarMode" type="checkbox"><span>照片区分左右耳</span></label>
+          <label><input id="includeBareEarPhotos" type="checkbox"><span>包含空耳照片</span></label>
+        </div>
+        <datalist id="csvHeaders"></datalist>
+        <div class="actions">
+          <button class="secondary" type="button" id="previewButton"><span>先检查</span><small>不写入文件</small></button>
+          <button class="primary" type="submit"><span>生成项目</span><small>复制 CSV 与照片</small></button>
+        </div>
+      </form>
+
+      <aside class="report" aria-live="polite">
+        <div class="report-top"><p>BUILD REPORT</p><span id="statusDot" class="status-dot idle"></span></div>
+        <div id="emptyState" class="empty-state"><div class="radar"></div><h2>等待材料</h2><p>先选择输入，再运行检查。这里会显示自动识别结果和照片异常。</p></div>
+        <div id="resultPanel" hidden>
+          <div class="result-title"><div><p id="resultState">CHECK COMPLETE</p><h2 id="resultProject">—</h2></div><strong id="issueCount">0</strong></div>
+          <div id="metrics" class="metrics"></div>
+          <div class="detected"><span>识别结果</span><p id="detectedFields"></p><p id="detectedViews"></p></div>
+          <div class="audit-head"><h3>映射检查</h3><span id="auditMeta"></span></div>
+          <div class="audit-wrap"><table><thead><tr><th>状态</th><th>用户</th><th>设备</th><th>视角</th><th>说明</th></tr></thead><tbody id="auditBody"></tbody></table></div>
+          <p id="outputPath" class="output-path"></p>
+        </div>
+        <div id="errorPanel" class="error-panel" hidden><strong>无法继续</strong><p id="errorMessage"></p></div>
+      </aside>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

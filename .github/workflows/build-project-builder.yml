@@ -1,0 +1,54 @@
+name: Build project builder
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - project-builder-cross-platform
+    paths:
+      - "headphone-dashboard-sample/dashboard-core.js"
+      - "headphone-dashboard-sample/project-builder/**"
+      - ".github/workflows/build-project-builder.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    strategy:
+      matrix:
+        include:
+          - runner: windows-latest
+            target: node22-win-x64
+            filename: dashboard-project-builder.exe
+            artifact: dashboard-project-builder-windows-x64
+          - runner: ubuntu-latest
+            target: node22-linux-x64
+            filename: dashboard-project-builder-linux-x64
+            artifact: dashboard-project-builder-linux-x64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: headphone-dashboard-sample/project-builder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test project builder
+        run: npm test
+      - name: Build executable
+        run: npx --yes @yao-pkg/pkg@6.22.0 package.json --targets ${{ matrix.target }} --output dist/${{ matrix.filename }} --compress GZip
+      - name: Smoke test Linux executable CLI
+        if: runner.os == 'Linux'
+        shell: bash
+        run: chmod +x ./dist/${{ matrix.filename }} && ./dist/${{ matrix.filename }} --help
+      - name: Smoke test Windows executable CLI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\dist\${{ matrix.filename }} --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: headphone-dashboard-sample/project-builder/dist/${{ matrix.filename }}
+          if-no-files-found: error
