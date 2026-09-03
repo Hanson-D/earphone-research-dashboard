@@ -2,6 +2,16 @@
 
 该目录用于确认数据结构，不包含真实受试者数据。
 
+## 独立项目制作器
+
+如果需要在打开看板前自动完成 CSV、照片映射和项目文件夹生成，可使用跨平台命令行工具：
+
+```bash
+node project-builder/cli.js build --help
+```
+
+它与看板复用同一套映射核心，不依赖第三方 npm 包，适合在 Linux 批处理或定时任务中运行。完整说明见 [`project-builder/README.md`](project-builder/README.md)。
+
 ## 数据粒度
 
 - `headphone_sample.csv` 每行代表一个用户对一个设备的测试结果。
