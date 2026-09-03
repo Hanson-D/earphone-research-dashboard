@@ -1,16 +1,7 @@
 @echo off
 setlocal EnableExtensions
-call "%~dp0_load_connection.bat"
-if errorlevel 1 goto :failed
-
-ssh.exe -tt -p "%REMOTE_SSH_PORT%" "%REMOTE_ROOT_USER%@%REMOTE_HOST%" "bash '%REMOTE_ROOT_SCRIPTS%/50-manage-dashboard-users.sh' add"
-if errorlevel 1 goto :failed
-
-pause
-exit /b 0
-
-:failed
 echo.
-echo Dashboard user creation failed.
+echo Dashboard password accounts are no longer used.
+echo Run 40_add_client.bat to create a key-bound client and assign projects.
 pause
-exit /b 1
+exit /b 2

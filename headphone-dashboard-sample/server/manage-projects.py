@@ -51,20 +51,19 @@ def main():
         record = catalog.set_project_code(root, current_code, new_code)
         current_code = current_code.upper()
         new_code = new_code.upper()
-        updated_users = []
+        updated_clients = []
         if args.auth_config and Path(args.auth_config).is_file():
             access = auth.load_config(args.auth_config)
-            for username, user in access.get("users", {}).items():
-                projects = auth.normalize_projects(user.get("projects"))
+            for client_id, client in access.get("clients", {}).items():
+                projects = auth.normalize_projects(client.get("projects"))
                 if current_code in projects:
-                    user["projects"] = [new_code if code == current_code else code for code in projects]
-                    user["revision"] = int(user.get("revision") or 1) + 1
-                    updated_users.append(username)
-            if updated_users:
+                    client["projects"] = [new_code if code == current_code else code for code in projects]
+                    updated_clients.append(client_id)
+            if updated_clients:
                 auth.save_config(access, args.auth_config)
         print("UPDATED\t{}\t{}\t{}".format(new_code, record.get("title"), record.get("path")))
-        if updated_users:
-            print("UPDATED USERS\t{}".format(",".join(sorted(updated_users))))
+        if updated_clients:
+            print("UPDATED CLIENTS\t{}".format(",".join(sorted(updated_clients))))
         return
 
     code = input("Project code: ").strip()

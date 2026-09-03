@@ -1,50 +1,109 @@
 #!/usr/bin/env python3
-import base64
-import hashlib
-import hmac
 import json
+import hmac
 import os
 import re
-import secrets
 import tempfile
-import time
 from pathlib import Path
 
 
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-PASSWORD_SCHEME = "pbkdf2_sha256"
-PASSWORD_ITERATIONS = 260000
-SESSION_TTL_SECONDS = 8 * 60 * 60
+CLIENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
+ACCESS_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,}$")
+MIN_ACCESS_PORT = 1024
+MAX_ACCESS_PORT = 65535
 
 
 def auth_required():
-    return os.environ.get("DASHBOARD_AUTH_REQUIRED", "0") == "1"
+    legacy = os.environ.get("DASHBOARD_AUTH_REQUIRED", "0")
+    return os.environ.get("DASHBOARD_CLIENT_ACCESS_REQUIRED", legacy) == "1"
 
 
 def auth_config_path():
-    return Path(os.environ.get("DASHBOARD_AUTH_CONFIG", "/etc/earphone-dashboard/access.json"))
+    configured = os.environ.get("DASHBOARD_CLIENT_ACCESS_CONFIG") or os.environ.get("DASHBOARD_AUTH_CONFIG")
+    return Path(configured or "/etc/earphone-dashboard/access.json")
 
 
 def new_config():
-    return {
-        "version": 1,
-        "sessionSecret": secrets.token_hex(32),
-        "users": {},
-    }
+    return {"version": 2, "clients": {}}
+
+
+def normalize_projects(projects):
+    if isinstance(projects, str):
+        projects = [item.strip() for item in projects.split(",")]
+    values = []
+    for project_id in projects or []:
+        project_id = str(project_id).strip().upper()
+        if project_id and project_id not in values:
+            values.append(project_id)
+    return values
+
+
+def validate_client_id(client_id):
+    value = str(client_id or "").strip()
+    if not CLIENT_ID_PATTERN.fullmatch(value):
+        raise ValueError("Client ID must use 1-32 letters, numbers, underscore, or hyphen.")
+    return value
+
+
+def validate_access_port(port):
+    try:
+        value = int(port)
+    except (TypeError, ValueError):
+        raise ValueError("Client access port must be numeric.")
+    if not MIN_ACCESS_PORT <= value <= MAX_ACCESS_PORT:
+        raise ValueError("Client access port must be between {} and {}.".format(MIN_ACCESS_PORT, MAX_ACCESS_PORT))
+    return value
+
+
+def validate_access_token(token):
+    value = str(token or "")
+    if not ACCESS_TOKEN_PATTERN.fullmatch(value):
+        raise ValueError("Client access token must contain at least 32 URL-safe characters.")
+    return value
+
+
+def _upgrade_config(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Client access config must be a JSON object.")
+    if "clients" not in payload:
+        payload["clients"] = {}
+    if not isinstance(payload["clients"], dict):
+        raise ValueError("Client access config must contain a clients object.")
+    payload["version"] = 2
+    return payload
+
+
+def validate_config(payload):
+    payload = _upgrade_config(payload)
+    ports = {}
+    for client_id, record in payload["clients"].items():
+        validate_client_id(client_id)
+        if not isinstance(record, dict):
+            raise ValueError("Client record must be an object: {}".format(client_id))
+        port = validate_access_port(record.get("port"))
+        if port in ports:
+            raise ValueError("Client access port {} is assigned to both {} and {}.".format(port, ports[port], client_id))
+        ports[port] = client_id
+        record["port"] = port
+        record["admin"] = bool(record.get("admin"))
+        record["projects"] = ["*"] if record["admin"] else normalize_projects(record.get("projects"))
+        record["displayName"] = str(record.get("displayName") or client_id)
+        record["disabled"] = bool(record.get("disabled"))
+        try:
+            record["token"] = validate_access_token(record.get("token"))
+        except ValueError:
+            raise ValueError("Client access token is invalid: {}".format(client_id))
+    return payload
 
 
 def load_config(path=None):
     target = Path(path) if path else auth_config_path()
     payload = json.loads(target.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("users"), dict):
-        raise ValueError("Authentication config must contain a users object.")
-    secret = payload.get("sessionSecret")
-    if not isinstance(secret, str) or len(secret) < 32:
-        raise ValueError("Authentication config sessionSecret is missing or too short.")
-    return payload
+    return validate_config(payload)
 
 
 def save_config(payload, path=None):
+    payload = validate_config(payload)
     target = Path(path) if path else auth_config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(prefix=target.name + ".", dir=str(target.parent))
@@ -64,130 +123,47 @@ def save_config(payload, path=None):
 
 def initialize_config(path=None):
     target = Path(path) if path else auth_config_path()
-    if target.exists():
-        return False
-    save_config(new_config(), target)
-    return True
+    if not target.exists():
+        save_config(new_config(), target)
+        return True
+    original = json.loads(target.read_text(encoding="utf-8"))
+    needs_upgrade = original.get("version") != 2 or "clients" not in original
+    upgraded = _upgrade_config(original)
+    if needs_upgrade:
+        save_config(upgraded, target)
+    return False
 
 
-def validate_username(username):
-    if not USERNAME_PATTERN.fullmatch(str(username or "")):
-        raise ValueError("Username must use 1-64 letters, numbers, dot, underscore, or hyphen.")
-    return str(username)
-
-
-def normalize_projects(projects):
-    if isinstance(projects, str):
-        projects = [item.strip() for item in projects.split(",")]
-    values = []
-    for project_id in projects or []:
-        project_id = str(project_id).strip()
-        if project_id and project_id not in values:
-            values.append(project_id)
-    return values
-
-
-def hash_password(password, iterations=PASSWORD_ITERATIONS):
-    if len(str(password or "")) < 10:
-        raise ValueError("Password must contain at least 10 characters.")
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return "$".join([
-        PASSWORD_SCHEME,
-        str(iterations),
-        base64.urlsafe_b64encode(salt).decode("ascii").rstrip("="),
-        base64.urlsafe_b64encode(digest).decode("ascii").rstrip("="),
-    ])
-
-
-def _decode_base64(value):
-    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-
-
-def verify_password(password, encoded):
-    try:
-        scheme, iterations, salt, expected = str(encoded).split("$", 3)
-        if scheme != PASSWORD_SCHEME:
-            return False
-        actual = hashlib.pbkdf2_hmac(
-            "sha256",
-            str(password).encode("utf-8"),
-            _decode_base64(salt),
-            int(iterations),
-        )
-        return hmac.compare_digest(actual, _decode_base64(expected))
-    except (TypeError, ValueError):
-        return False
-
-
-def public_user(username, record):
+def public_user(client_id, record):
     return {
-        "username": username,
-        "displayName": record.get("displayName") or username,
+        "username": client_id,
+        "clientId": client_id,
+        "displayName": record.get("displayName") or client_id,
         "admin": bool(record.get("admin")),
         "projects": ["*"] if record.get("admin") else normalize_projects(record.get("projects")),
     }
 
 
-def authenticate(config, username, password):
-    record = config.get("users", {}).get(str(username))
+def client_for_id(config, client_id, token):
+    if not client_id or not token:
+        return None
+    record = config.get("clients", {}).get(str(client_id))
     if not isinstance(record, dict) or record.get("disabled"):
         return None
-    if not verify_password(password, record.get("password")):
+    if not hmac.compare_digest(str(record.get("token") or ""), str(token)):
         return None
-    return public_user(str(username), record)
+    return public_user(str(client_id), record)
+
+
+def active_client_ports(config):
+    return {
+        int(record["port"]): client_id
+        for client_id, record in config.get("clients", {}).items()
+        if isinstance(record, dict) and not record.get("disabled")
+    }
 
 
 def can_access_project(user, project_id):
     if not user:
         return False
-    return bool(user.get("admin")) or str(project_id) in set(user.get("projects") or [])
-
-
-def _encode_json(payload):
-    data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
-
-
-def create_session(config, username, now=None, ttl=SESSION_TTL_SECONDS):
-    record = config.get("users", {}).get(username)
-    if not isinstance(record, dict):
-        raise ValueError("Unknown user.")
-    now = int(now if now is not None else time.time())
-    payload = _encode_json({
-        "u": username,
-        "r": int(record.get("revision") or 1),
-        "iat": now,
-        "exp": now + int(ttl),
-    })
-    signature = hmac.new(
-        config["sessionSecret"].encode("utf-8"),
-        payload.encode("ascii"),
-        hashlib.sha256,
-    ).digest()
-    return payload + "." + base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
-
-
-def read_session(config, token, now=None):
-    try:
-        payload, signature = str(token).split(".", 1)
-        expected = hmac.new(
-            config["sessionSecret"].encode("utf-8"),
-            payload.encode("ascii"),
-            hashlib.sha256,
-        ).digest()
-        if not hmac.compare_digest(expected, _decode_base64(signature)):
-            return None
-        data = json.loads(_decode_base64(payload).decode("utf-8"))
-        now = int(now if now is not None else time.time())
-        if int(data.get("exp") or 0) <= now:
-            return None
-        username = data.get("u")
-        record = config.get("users", {}).get(username)
-        if not isinstance(record, dict) or record.get("disabled"):
-            return None
-        if int(data.get("r") or 0) != int(record.get("revision") or 1):
-            return None
-        return public_user(username, record)
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return None
+    return bool(user.get("admin")) or str(project_id).upper() in set(user.get("projects") or [])

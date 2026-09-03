@@ -10,10 +10,11 @@ import sys
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dashboard_auth as auth
+from client_listeners import ClientListenerManager
 import project_catalog as catalog
 
 try:
@@ -32,8 +33,17 @@ PORT_SEARCH_LIMIT = 100
 DEFAULT_HOST = "0.0.0.0"
 PHOTO_SCAN_CACHE_VERSION = 1
 PHOTO_THUMB_CACHE_VERSION = 1
-SESSION_COOKIE = "dashboard_session"
 CSRF_COOKIE = "dashboard_csrf"
+CLIENT_TOKEN_COOKIE_PREFIX = "dashboard_client_token_"
+
+
+def client_token_cookie_name(client_id):
+    value = re.sub(r"[^A-Za-z0-9_-]", "_", str(client_id or ""))
+    return CLIENT_TOKEN_COOKIE_PREFIX + (value or "unknown")
+
+
+def redact_access_tokens(value):
+    return re.sub(r"(access_token=)[^&\s\"]+", r"\1[REDACTED]", str(value))
 
 
 def app_root():
@@ -595,6 +605,25 @@ def create_server(host, preferred_port, allow_fallback=True):
 
 
 class DashboardHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format_value, *args):
+        super().log_message(format_value, *(redact_access_tokens(item) for item in args))
+
+    def end_headers(self):
+        client_token = getattr(self, "_client_token_to_set", None)
+        if client_token:
+            cookie_name = client_token_cookie_name(getattr(self.server, "dashboard_client_id", None))
+            self.send_header(
+                "Set-Cookie",
+                "{}={}; Path=/; HttpOnly; SameSite=Strict".format(cookie_name, client_token),
+            )
+        if auth.auth_required() and self.current_user() and not self.request_cookies().get(CSRF_COOKIE):
+            csrf = __import__("secrets").token_urlsafe(24)
+            self.send_header(
+                "Set-Cookie",
+                "{}={}; Path=/; SameSite=Strict".format(CSRF_COOKIE, csrf),
+            )
+        super().end_headers()
+
     def send_json(self, payload, status=200, headers=None):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -623,9 +652,18 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if not auth.auth_required():
             return None
         if not hasattr(self, "_current_user"):
-            token = self.request_cookies().get(SESSION_COOKIE, "")
+            client_id = getattr(self.server, "dashboard_client_id", None)
             try:
-                self._current_user = auth.read_session(self.auth_config(), token)
+                config = self.auth_config()
+                parsed = urlparse(self.path)
+                query_token = parse_qs(parsed.query).get("access_token", [""])[0]
+                cookie_name = client_token_cookie_name(client_id)
+                cookie_token = self.request_cookies().get(cookie_name, "")
+                self._current_user = auth.client_for_id(config, client_id, query_token)
+                if self._current_user:
+                    self._client_token_to_set = query_token
+                else:
+                    self._current_user = auth.client_for_id(config, client_id, cookie_token)
                 self._auth_config_error = None
             except (OSError, ValueError, json.JSONDecodeError) as error:
                 self._current_user = None
@@ -638,9 +676,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if self.current_user():
             return True
         if getattr(self, "_auth_config_error", None):
-            self.send_json({"error": "看板账号配置不可用，请联系管理员。"}, 503)
+            self.send_json({"error": "客户端权限配置不可用，请联系管理员。"}, 503)
         else:
-            self.send_json({"error": "请先登录看板。", "login": "/server/login.html"}, 401)
+            self.send_json({"error": "此入口没有有效的客户端身份。"}, 403)
         return False
 
     def require_csrf(self):
@@ -668,42 +706,9 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.send_json({"error": "你没有此项目的访问权限。"}, 403)
         return False
 
-    def login(self):
-        try:
-            payload = self.read_json_body()
-            username = str(payload.get("username") or "").strip()
-            password = str(payload.get("password") or "")
-            config = self.auth_config()
-        except (OSError, ValueError, json.JSONDecodeError):
-            self.send_json({"error": "看板账号配置不可用，请联系管理员。"}, 503)
-            return
-        user = auth.authenticate(config, username, password)
-        if not user:
-            self.send_json({"error": "用户名或密码错误。"}, 401)
-            return
-        session = auth.create_session(config, username)
-        csrf = __import__("secrets").token_urlsafe(24)
-        max_age = auth.SESSION_TTL_SECONDS
-        self.send_json({"user": user}, headers=[
-            ("Set-Cookie", "{}={}; Path=/; Max-Age={}; HttpOnly; SameSite=Strict".format(SESSION_COOKIE, session, max_age)),
-            ("Set-Cookie", "{}={}; Path=/; Max-Age={}; SameSite=Strict".format(CSRF_COOKIE, csrf, max_age)),
-        ])
-
-    def logout(self):
-        self.send_json({"ok": True}, headers=[
-            ("Set-Cookie", "{}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict".format(SESSION_COOKIE)),
-            ("Set-Cookie", "{}=; Path=/; Max-Age=0; SameSite=Strict".format(CSRF_COOKIE)),
-        ])
-
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/auth/login":
-            self.login()
-            return
         if not self.require_login() or not self.require_csrf():
-            return
-        if parsed.path == "/api/auth/logout":
-            self.logout()
             return
         if parsed.path == "/api/bare-ear-library":
             if not self.require_admin():
@@ -819,8 +824,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if auth.auth_required() and is_direct_project_static_path(parsed.path):
             self.send_error(403, "Direct project file access is disabled")
             return
-        if auth.auth_required() and not self.current_user() and parsed.path.endswith(".html"):
-            self.send_response(401)
+        if auth.auth_required() and not self.current_user():
+            self.send_response(403)
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
@@ -943,8 +948,24 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path in ("/server/login.html", "/server/login.js"):
+            self.send_error(410, "Dashboard passwords are no longer used")
+            return
         if is_sensitive_admin_static_path(parsed.path):
             self.send_error(404)
+            return
+        if auth.auth_required() and "access_token" in parse_qs(parsed.query) and self.current_user():
+            query = urlencode([
+                (key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if key != "access_token"
+            ])
+            location = parsed.path or "/"
+            if query:
+                location += "?" + query
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
             return
         if parsed.path == "/api/auth/me":
             if not auth.auth_required():
@@ -954,17 +975,15 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             self.send_json({"enabled": True, "user": self.current_user()})
             return
+        if parsed.path == "/api/health":
+            self.send_json({"ok": True})
+            return
         if auth.auth_required() and not self.current_user():
             if parsed.path.startswith("/api/"):
                 self.require_login()
                 return
-            if parsed.path in ("/", "/server/") or parsed.path.endswith(".html"):
-                target = quote(self.path, safe="")
-                self.send_response(302)
-                self.send_header("Location", "/server/login.html?next={}".format(target))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                return
+            self.send_error(403, "Use an authorized SSH client tunnel")
+            return
         if auth.auth_required() and is_direct_project_static_path(parsed.path):
             self.send_error(403, "Direct project file access is disabled")
             return
@@ -1270,5 +1289,19 @@ if __name__ == "__main__":
         print(f"Dashboard: http://{host}:{port}")
         if not legacy_paths_enabled():
             print(f"Legacy server entry: http://{host}:{port}/server/server.html")
+    listener_manager = None
+    if auth.auth_required():
+        listener_manager = ClientListenerManager(
+            DashboardHandler,
+            ThreadingHTTPServer,
+            auth.auth_config_path(),
+            reserved_ports={port},
+        )
+        listener_manager.start()
     print("Press Ctrl+C to stop.")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        if listener_manager:
+            listener_manager.close()
+        server.server_close()

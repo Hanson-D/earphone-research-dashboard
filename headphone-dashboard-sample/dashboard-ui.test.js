@@ -405,20 +405,30 @@ test("dashboard declares a local favicon", () => {
   assert.match(icon, /<svg[^>]+viewBox="0 0 64 64"/);
 });
 
-test("server deployment exposes authenticated project access controls", () => {
+test("server deployment binds project access to SSH client listener identity", () => {
   const html = read("index.html");
   const serverHtml = read("server/server.html");
-  const loginHtml = read("server/login.html");
   const authClient = read("server/auth-client.js");
+  const server = read("server/server.py");
+  const listeners = read("server/client_listeners.py");
   const serviceScript = read("deployment/linux/root/10-configure-dashboard-service.sh");
+  const clientScript = read("deployment/linux/root/30-add-client.sh");
+  const installer = read("deployment/windows-client-template/install-client.ps1");
 
   assert.match(html, /server\/auth-client\.js/);
   assert.match(serverHtml, /auth-client\.js/);
-  assert.match(loginHtml, /dashboardLoginForm/);
   assert.match(authClient, /X-Dashboard-CSRF/);
-  assert.match(authClient, /\/api\/auth\/logout/);
-  assert.match(serviceScript, /DASHBOARD_AUTH_REQUIRED=1/);
-  assert.match(serviceScript, /DASHBOARD_AUTH_CONFIG=/);
+  assert.doesNotMatch(authClient, /login\.html/);
+  assert.match(listeners, /dashboard_client_id/);
+  assert.match(server, /client_token_cookie_name/);
+  assert.match(server, /redact_access_tokens/);
+  assert.match(serviceScript, /DASHBOARD_CLIENT_ACCESS_REQUIRED=1/);
+  assert.match(serviceScript, /DASHBOARD_CLIENT_ACCESS_CONFIG=/);
+  assert.match(clientScript, /permitopen=/);
+  assert.match(clientScript, /"\$\{DASHBOARD_HOST\}" "\$\{local_port\}"/);
+  assert.match(clientScript, /manage-clients\.py/);
+  assert.match(installer, /sourceKeyAvailable/);
+  assert.match(installer, /no existing key was found/);
 });
 
 test("windows upload uses one ssh session and excludes private client bundles", () => {

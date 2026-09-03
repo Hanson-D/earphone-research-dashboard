@@ -7,8 +7,8 @@ DASHBOARD_USER="${DASHBOARD_USER:-dashboard}"
 DASHBOARD_HOST="${DASHBOARD_HOST:-127.0.0.1}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-7362}"
 DASHBOARD_PYTHON="${DASHBOARD_PYTHON:-/opt/earphone-dashboard/python/bin/python3}"
-DASHBOARD_AUTH_REQUIRED="${DASHBOARD_AUTH_REQUIRED:-0}"
-DASHBOARD_AUTH_CONFIG="${DASHBOARD_AUTH_CONFIG:-/etc/earphone-dashboard/access.json}"
+DASHBOARD_CLIENT_ACCESS_REQUIRED="${DASHBOARD_CLIENT_ACCESS_REQUIRED:-0}"
+DASHBOARD_CLIENT_ACCESS_CONFIG="${DASHBOARD_CLIENT_ACCESS_CONFIG:-/etc/earphone-dashboard/access.json}"
 
 [[ "$(id -un)" == "${DASHBOARD_USER}" ]] || {
   printf 'ERROR: Run as %s.\n' "${DASHBOARD_USER}" >&2
@@ -37,11 +37,12 @@ check "dashboard Python 3.7+" "${DASHBOARD_PYTHON}" -c \
 check "server.py readable" test -r "${APP_ROOT}/server/server.py"
 check "projects directory writable" test -w "${PROJECTS_ROOT}"
 check "thumbnail cache writable" test -w "${PROJECTS_ROOT}/.cache/photo-thumbnails"
-if [[ "${DASHBOARD_AUTH_REQUIRED}" == "1" ]]; then
-  check "authentication config readable" test -r "${DASHBOARD_AUTH_CONFIG}"
-  check "authentication config valid" "${DASHBOARD_PYTHON}" -c \
-    'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); raise SystemExit(0 if isinstance(data.get("users"), dict) and len(data.get("sessionSecret", "")) >= 32 else 1)' \
-    "${DASHBOARD_AUTH_CONFIG}"
+if [[ "${DASHBOARD_CLIENT_ACCESS_REQUIRED}" == "1" ]]; then
+  check "client access config readable" test -r "${DASHBOARD_CLIENT_ACCESS_CONFIG}"
+  check "client access config valid" "${DASHBOARD_PYTHON}" -c \
+    'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); raise SystemExit(0 if isinstance(data.get("clients"), dict) else 1)' \
+    "${DASHBOARD_CLIENT_ACCESS_CONFIG}"
+  check "client listener module readable" test -r "${APP_ROOT}/server/client_listeners.py"
   if [[ -f "${PROJECTS_ROOT}/.dashboard-project-index.json" ]]; then
     check "project code index valid" "${DASHBOARD_PYTHON}" \
       "${APP_ROOT}/server/manage-projects.py" --root "${PROJECTS_ROOT}" list
@@ -67,7 +68,7 @@ fi
 
 if command -v curl >/dev/null 2>&1; then
   if curl --fail --silent --show-error --max-time 3 \
-    "http://${DASHBOARD_HOST}:${DASHBOARD_PORT}/" >/dev/null; then
+    "http://${DASHBOARD_HOST}:${DASHBOARD_PORT}/api/health" >/dev/null; then
     printf 'PASS  running service HTTP check\n'
   else
     printf 'INFO  running service HTTP check unavailable; the service may be stopped.\n'

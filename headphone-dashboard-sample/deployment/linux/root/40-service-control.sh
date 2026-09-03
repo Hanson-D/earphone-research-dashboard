@@ -42,8 +42,8 @@ case "${action}" in
   health)
     require_command curl
     curl --fail --silent --show-error --max-time 5 \
-      "http://${DASHBOARD_HOST}:${DASHBOARD_PORT}/" >/dev/null
-    printf 'Dashboard health check passed: http://%s:%s/\n' \
+      "http://${DASHBOARD_HOST}:${DASHBOARD_PORT}/api/health" >/dev/null
+    printf 'Dashboard health check passed: http://%s:%s/api/health\n' \
       "${DASHBOARD_HOST}" "${DASHBOARD_PORT}"
     ;;
   *)

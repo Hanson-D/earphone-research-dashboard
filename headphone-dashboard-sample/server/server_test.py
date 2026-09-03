@@ -304,30 +304,33 @@ class ServerProjectTests(unittest.TestCase):
 
 
 class DashboardAuthTests(unittest.TestCase):
-    def test_password_hash_round_trip(self):
-        encoded = server.auth.hash_password("correct-horse-battery", iterations=1000)
-
-        self.assertTrue(server.auth.verify_password("correct-horse-battery", encoded))
-        self.assertFalse(server.auth.verify_password("wrong-password", encoded))
-        self.assertNotIn("correct-horse-battery", encoded)
-
-    def test_session_uses_current_user_revision(self):
+    def test_client_identity_is_resolved_from_listener_assignment(self):
         config = server.auth.new_config()
-        config["users"]["zhangsan"] = {
+        config["clients"]["win1"] = {
             "displayName": "张三",
-            "password": server.auth.hash_password("correct-horse-battery", iterations=1000),
-            "projects": ["study-a"],
-            "revision": 1,
+            "port": 17361,
+            "admin": False,
+            "projects": ["P0001"],
+            "disabled": False,
+            "token": "w" * 32,
         }
-        token = server.auth.create_session(config, "zhangsan", now=100, ttl=60)
 
-        self.assertEqual(server.auth.read_session(config, token, now=120)["username"], "zhangsan")
-        config["users"]["zhangsan"]["revision"] = 2
-        self.assertIsNone(server.auth.read_session(config, token, now=120))
+        self.assertEqual(server.auth.client_for_id(config, "win1", "w" * 32)["displayName"], "张三")
+        self.assertIsNone(server.auth.client_for_id(config, "win1", "x" * 32))
+        self.assertIsNone(server.auth.client_for_id(config, "win2", "w" * 32))
+        config["clients"]["win1"]["disabled"] = True
+        self.assertIsNone(server.auth.client_for_id(config, "win1", "w" * 32))
+
+    def test_client_access_ports_must_be_unique(self):
+        config = server.auth.new_config()
+        config["clients"]["win1"] = {"port": 17361, "token": "w" * 32}
+        config["clients"]["win2"] = {"port": 17361, "token": "x" * 32}
+        with self.assertRaises(ValueError):
+            server.auth.validate_config(config)
 
     def test_project_access_is_filtered_by_user(self):
-        user = {"username": "zhangsan", "admin": False, "projects": ["study-a"]}
-        admin = {"username": "admin", "admin": True, "projects": ["*"]}
+        user = {"clientId": "win1", "admin": False, "projects": ["STUDY-A"]}
+        admin = {"clientId": "admin-pc", "admin": True, "projects": ["*"]}
 
         self.assertTrue(server.auth.can_access_project(user, "study-a"))
         self.assertFalse(server.auth.can_access_project(user, "study-b"))
@@ -371,6 +374,60 @@ class DashboardAuthTests(unittest.TestCase):
         self.assertFalse(server.is_sensitive_admin_static_path(
             "/deployment/windows-admin/40_add_client.bat"
         ))
+
+
+class ClientListenerManagerTests(unittest.TestCase):
+    class FakeServer:
+        instances = []
+
+        def __init__(self, address, handler):
+            self.address = address
+            self.handler = handler
+            self.dashboard_client_id = None
+            self.closed = False
+            self.__class__.instances.append(self)
+
+        def serve_forever(self):
+            return
+
+        def shutdown(self):
+            return
+
+        def server_close(self):
+            self.closed = True
+
+    def test_listener_reconcile_adds_and_removes_client_identity_ports(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "access.json"
+            config = server.auth.new_config()
+            config["clients"]["win1"] = {"port": 17361, "projects": ["P0001"], "token": "w" * 32}
+            server.auth.save_config(config, path)
+            manager = server.ClientListenerManager(object, self.FakeServer, path, logger=lambda message: None)
+
+            manager.reconcile(force=True)
+            self.assertEqual(manager.listeners[17361][0], "win1")
+            self.assertEqual(manager.listeners[17361][1].dashboard_client_id, "win1")
+
+            config["clients"]["win1"]["disabled"] = True
+            server.auth.save_config(config, path)
+            manager.reconcile(force=True)
+            self.assertEqual(manager.listeners, {})
+
+    def test_listener_rejects_private_backend_port(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "access.json"
+            config = server.auth.new_config()
+            config["clients"]["win1"] = {"port": 7362, "token": "w" * 32}
+            server.auth.save_config(config, path)
+            manager = server.ClientListenerManager(
+                object,
+                self.FakeServer,
+                path,
+                logger=lambda message: None,
+                reserved_ports={7362},
+            )
+            with self.assertRaises(ValueError):
+                manager.reconcile(force=True)
 
 
 class ProjectCatalogTests(unittest.TestCase):
@@ -434,22 +491,23 @@ class DashboardAuthHttpTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.previous_env = {
             key: os.environ.get(key)
-            for key in ("DASHBOARD_PROJECTS_ROOT", "DASHBOARD_AUTH_REQUIRED", "DASHBOARD_AUTH_CONFIG")
+            for key in ("DASHBOARD_PROJECTS_ROOT", "DASHBOARD_CLIENT_ACCESS_REQUIRED", "DASHBOARD_CLIENT_ACCESS_CONFIG")
         }
         auth_path = Path(self.tmp.name) / "access.json"
         os.environ["DASHBOARD_PROJECTS_ROOT"] = str(Path(self.tmp.name) / "projects")
-        os.environ["DASHBOARD_AUTH_REQUIRED"] = "1"
-        os.environ["DASHBOARD_AUTH_CONFIG"] = str(auth_path)
+        os.environ["DASHBOARD_CLIENT_ACCESS_REQUIRED"] = "1"
+        os.environ["DASHBOARD_CLIENT_ACCESS_CONFIG"] = str(auth_path)
         server.save_server_project("study-a", {"version": 1, "rows": []}, create=True)
         server.save_server_project("study-b", {"version": 1, "rows": []}, create=True)
         server.catalog.sync_catalog(server.project_root())
         config = server.auth.new_config()
-        config["users"]["zhangsan"] = {
+        config["clients"]["win1"] = {
             "displayName": "张三",
-            "password": server.auth.hash_password("correct-horse-battery", iterations=1000),
+            "port": 17361,
             "admin": False,
             "projects": ["P0001"],
-            "revision": 1,
+            "disabled": False,
+            "token": "w" * 32,
         }
         server.auth.save_config(config, auth_path)
 
@@ -458,9 +516,11 @@ class DashboardAuthHttpTests(unittest.TestCase):
                 pass
 
         self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), QuietDashboardHandler)
+        self.httpd.dashboard_client_id = "win1"
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = "http://127.0.0.1:{}".format(self.httpd.server_address[1])
+        self.client_url = self.base_url + "/?access_token=" + "w" * 32
 
     def tearDown(self):
         self.httpd.shutdown()
@@ -473,25 +533,16 @@ class DashboardAuthHttpTests(unittest.TestCase):
                 os.environ[key] = value
         self.tmp.cleanup()
 
-    def login(self):
+    def test_project_list_uses_ssh_client_identity_and_filters_projects(self):
         cookies = CookieJar()
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
-        request = urllib.request.Request(
-            self.base_url + "/api/auth/login",
-            data=json.dumps({"username": "zhangsan", "password": "correct-horse-battery"}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with opener.open(request) as response:
+        with opener.open(self.client_url) as response:
             self.assertEqual(response.status, 200)
-        return opener
+            self.assertNotIn("access_token", response.geturl())
+        with opener.open(self.base_url + "/api/auth/me") as response:
+            identity = json.load(response)
+        self.assertEqual(identity["user"]["clientId"], "win1")
 
-    def test_project_list_requires_login_and_filters_projects(self):
-        with self.assertRaises(urllib.error.HTTPError) as unauthenticated:
-            urllib.request.urlopen(self.base_url + "/api/server/projects")
-        self.assertEqual(unauthenticated.exception.code, 401)
-
-        opener = self.login()
         with opener.open(self.base_url + "/api/server/projects") as response:
             payload = json.load(response)
 
@@ -500,9 +551,35 @@ class DashboardAuthHttpTests(unittest.TestCase):
             local_payload = json.load(response)
         self.assertEqual([item["id"] for item in local_payload["projects"]], ["P0001"])
 
-    def test_direct_project_url_cannot_bypass_access_list(self):
-        opener = self.login()
+    def test_client_listener_requires_its_paired_token(self):
+        with self.assertRaises(urllib.error.HTTPError) as missing:
+            urllib.request.urlopen(self.base_url + "/")
+        self.assertEqual(missing.exception.code, 403)
 
+        wrong = self.base_url + "/?access_token=" + "x" * 32
+        with self.assertRaises(urllib.error.HTTPError) as invalid:
+            urllib.request.urlopen(wrong)
+        self.assertEqual(invalid.exception.code, 403)
+
+    def test_client_token_cookie_name_isolated_between_local_ports(self):
+        self.assertEqual(
+            server.client_token_cookie_name("win1"),
+            "dashboard_client_token_win1",
+        )
+        self.assertNotEqual(
+            server.client_token_cookie_name("win1"),
+            server.client_token_cookie_name("win2"),
+        )
+
+    def test_access_token_is_redacted_from_request_logs(self):
+        message = server.redact_access_tokens('GET /?access_token=secret-value&x=1 HTTP/1.1')
+        self.assertNotIn("secret-value", message)
+        self.assertIn("access_token=[REDACTED]&x=1", message)
+
+    def test_direct_project_url_cannot_bypass_access_list(self):
+        cookies = CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+        opener.open(self.client_url).close()
         with self.assertRaises(urllib.error.HTTPError) as forbidden:
             opener.open(self.base_url + "/api/server/projects/study-b")
 
@@ -512,6 +589,18 @@ class DashboardAuthHttpTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as forbidden_path:
             opener.open(url)
         self.assertEqual(forbidden_path.exception.code, 403)
+
+    def test_private_backend_without_client_identity_is_denied_without_redirect(self):
+        del self.httpd.dashboard_client_id
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as forbidden:
+                urllib.request.urlopen(self.base_url + "/")
+            self.assertEqual(forbidden.exception.code, 403)
+            self.assertIsNone(forbidden.exception.headers.get("Location"))
+            with urllib.request.urlopen(self.base_url + "/api/health") as response:
+                self.assertEqual(json.load(response), {"ok": True})
+        finally:
+            self.httpd.dashboard_client_id = "win1"
 
 
 if __name__ == "__main__":

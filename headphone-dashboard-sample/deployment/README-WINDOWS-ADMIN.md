@@ -1,106 +1,99 @@
 # Windows 远程部署说明
 
-管理员可以只在 Windows 上操作；看板服务和数据仍然运行、保存在 Linux。
+管理员可以只在 Windows 上操作；看板服务和数据仍运行、保存在 Linux。推荐使用 `windows-admin-gui` 构建出的统一管理 EXE，同一次管理连接只输入一次 root 密码。原有 `windows-admin` BAT 继续作为旧环境和单步排障入口。
 
-推荐使用 `windows-admin-gui` 中构建出的统一管理 EXE：每次启动并连接服务器只输入一次 root 密码，即可连续运行部署、启停、账号和客户端管理操作。构建与使用方法见 `windows-admin-gui/README.md`。原有 `windows-admin` BAT 继续保留，适合旧环境和单步排障；BAT 每次调用 `ssh.exe`，因此可能重复询问 root 密码。
+## 权限模型
+
+客户端 SSH 密钥同时决定能否建立隧道和能看到哪些项目，不再使用第二套看板密码：
+
+```text
+win1 密钥 -> 服务器专属端口 17361 -> 客户端身份 win1 -> P0001,P0003
+win2 密钥 -> 服务器专属端口 17362 -> 客户端身份 win2 -> P0002
+```
+
+每个受限 SSH 账号的 `authorized_keys` 只允许转发到自己的服务端端口，不能直接转发到私有后端 `127.0.0.1:7362`。看板进程读取 `/etc/earphone-dashboard/access.json`，动态创建仅监听 loopback 的客户端入口；新增、撤销和修改权限会自动热加载。
+
+客户端包还包含与该 SSH 密钥同时生成和撤销的随机访问令牌。它在首次本地访问时换成该客户端专用的 HttpOnly Cookie，并立即从地址栏移除，用于阻止服务器上的其他普通 Linux 账号直接访问或冒充某个客户端端口。不同客户端在同一浏览器中打开时不会覆盖彼此身份。管理员只需按完整客户端包分发，不需要单独维护这枚令牌。
+
+项目编码仍单独保存在 `/home/earphone/kanban/projects/.dashboard-project-index.json`，不会修改项目 JSON。程序上传会排除整个 `projects`，不会覆盖项目数据、编码表或权限配置。
 
 ## 前提
 
-- 应用目录已经位于 `/home/earphone/kanban/app`；也可以使用可选的 `02_upload_app.bat` 上传。
-- Windows 已安装 OpenSSH Client，命令行中存在 `ssh.exe` 和 `scp.exe`。
-- Windows 管理员能够通过 SSH 登录 Linux root。
-- Linux 使用 systemd 和 OpenSSH Server。
+- Windows 管理员能通过 SSH 登录 Linux root。
+- Windows 存在 OpenSSH Client；使用 BAT 时需要 `ssh.exe` 和 `scp.exe`。
+- Linux 使用 OpenSSH Server 和 systemd。
+- 默认应用目录为 `/home/earphone/kanban/app`。
 
-所有 BAT 文件都只包含 ASCII 英文文本，避免 Windows 命令行编码问题。
+所有 BAT 只包含 ASCII 英文文本，避免 Windows 命令行编码问题。
 
-## 首次部署顺序
+## 全新部署顺序
 
-在 Windows 中进入 `deployment/windows-admin`，依次双击：
+使用统一管理 EXE 时依次运行：
 
-1. `00_configure_connection.bat`
-2. `01_test_connection.bat`
-3. `10_preflight.bat`
-4. `15_prepare_python_runtime.bat`
-5. `20_configure_service.bat`
-6. `21_initialize_dashboard.bat`
-7. `65_sync_dashboard_projects.bat`（扫描项目并建立外挂编码表）
-8. `60_add_dashboard_user.bat`（首次至少创建一个管理员）
-9. `22_dashboard_self_check.bat`
-10. `30_configure_tunnel_access.bat`
-11. `50_enable_service.bat`
-12. `51_start_service.bat`
-13. `55_service_health.bat`
+1. 上传程序
+2. 部署前检查
+3. 准备 Python 环境
+4. 配置看板服务
+5. 初始化数据目录
+6. 同步项目编码
+7. 配置 SSH 隧道
+8. 添加并下载客户端，同时选择管理员权限或项目编码
+9. 看板自检
+10. 启用开机启动
+11. 启动服务
+12. 健康检查
 
-配置服务不会启动服务；配置 SSH 通道不会创建客户端；启停服务不会重写配置。
+使用 BAT 时执行对应的 `00`、`01`、`10`、`15`、`20`、`21`、`65`、`30`、`40`、`22`、`50`、`51`、`55` 脚本。
 
-## 看板账号和项目权限
-
-SSH 客户端密钥只决定一台 Windows 电脑能否建立隧道。浏览器打开看板后，还需要
-使用看板账号登录。看板账号配置保存在 `/etc/earphone-dashboard/access.json`，密码只
-保存 PBKDF2-SHA256 哈希。
-
-项目编码单独保存在 `/home/earphone/kanban/projects/.dashboard-project-index.json`，不会
-写入或修改项目 JSON。编码表中的 title 来自项目 JSON 已有的 `title`（服务器项目优先
-使用 `_server.title`）。`02_upload_app.bat` 会排除整个 `projects`，因此程序更新不会覆盖
-编码表和项目数据。
-
-- `60_add_dashboard_user.bat`：添加账号。管理员可以看到全部项目并创建项目；普通账号输入允许访问的项目编码，多个编码用英文逗号分隔。
-- `61_list_dashboard_users.bat`：列出账号、管理员状态和项目授权。
-- `62_set_dashboard_access.bat`：修改管理员状态或项目编码列表，同时撤销该账号已有登录会话。
-- `63_reset_dashboard_password.bat`：重置密码，同时撤销已有登录会话。
-- `64_delete_dashboard_user.bat`：删除账号并使其会话立即失效。
-- `65_sync_dashboard_projects.bat`：扫描项目，给新增项目自动分配 `P0001` 格式的稳定编码；路径变化且 title 唯一时自动保留原编码。
-- `66_list_dashboard_projects.bat`：列出编码、状态、title 和相对路径。
-- `67_change_dashboard_project_code.bat`：修改编码，并同步替换用户授权中的旧编码、撤销受影响账号的已有会话。
-- `68_relink_dashboard_project.bat`：重名等情况无法自动识别移动时，把已有编码重新关联到指定相对 JSON 路径。
-
-服务会在每次请求时读取授权配置，因此增删账号、修改权限和重置密码都不需要重启服务。
-服务器部署只允许旧路径接口访问统一 `projects` 根目录内的文件；权限使用外挂索引中的
-稳定编码，并暂时兼容升级前按文件夹名配置的旧授权。项目列表、项目 JSON、照片和缩略图
-都由后端按登录账号校验，不能通过直接输入项目 URL 绕过列表过滤。
-
-`15_prepare_python_runtime.bat` 默认从 `/root/anaconda3/bin/python3` 离线克隆
-Conda 环境到 `/opt/earphone-dashboard/python`。服务和自检始终使用克隆后的绝对路径，
-不会调用 `dashboard` 账号 PATH 中的 `/usr/bin/python3`，也不会开放 `/root` 目录权限。
-如果克隆环境中没有 Pillow，脚本会按服务器架构自动查找 `/tmp` 下对应的
-Pillow 9.5.0 manylinux 2.17 wheel 并离线安装。
+配置服务不会启动服务；配置 SSH 通道不会创建客户端。新客户端的增删和权限修改不需要重启看板服务。
 
 ## 添加客户端
 
-双击 `40_add_client.bat`，交互输入：
+在统一管理工具中运行“添加并下载客户端”，或双击 `40_add_client.bat`，输入：
 
 - 客户端编号，例如 `win1`。
-- 该客户端可访问的服务器 IP 或 DNS 名称。
-- Windows 本地端口；留空自动从 `17361` 开始分配。
+- 使用者显示名称。
+- 服务器 IP 或 DNS 名称。
+- Windows 本地端口；留空从 `17361` 自动分配。
+- 是否为管理员；普通客户端填写允许访问的项目编码。
 
-成功后客户端包下载到：
+客户端包交付到目标 Windows 电脑后，使用实际运行看板的 Windows 账号执行一次 `install-client.bat`，以后运行 `start-kanban.bat` 即可打开，无需看板密码。
 
-```text
-deployment/windows-admin/downloads/win1
-```
+确认安装成功后，可删除服务器 `/root/kanban-export/<客户端编号>` 中的私钥导出副本。服务器只保留公钥和权限映射。
 
-将整个目录交付给指定 Windows 电脑。该电脑先运行 `install-client.bat`，以后运行 `start-kanban.bat` 打开看板。
+## 从旧版迁移
 
-确认 Windows 客户端安装和连接成功后，管理员运行 `43_delete_server_export.bat` 删除 Linux root 目录内的私钥导出副本。
+旧客户端密钥可以保留，但旧配置仍会把隧道直接指向 `7362`。升级时：
+
+1. 上传新版程序。
+2. 运行“配置看板服务”。
+3. 运行“配置 SSH 隧道”，安装按密钥限制专属端口的新规则。
+4. 运行“迁移已有客户端”，逐个分配项目权限。
+5. 重启一次看板服务，使运行中的旧代码切换到客户端端口模式。
+6. 下载刷新的客户端包，在目标 Windows 账号下重新运行 `install-client.bat`。
+
+迁移会更新服务器公钥限制和客户端 `RemotePort`，不会重新生成密钥。如果服务器导出副本已经删除，迁移会生成一个不含私钥的升级包；它只能在已经安装过该客户端密钥的原 Windows 账号下运行。无需手工修改账号目录。如果原 Windows 密钥也不存在，则撤销并重新创建客户端。
+
+新版安装器支持覆盖同一 Windows 用户以前安装的只读私钥：覆盖前临时解锁旧目标文件，完成后立即重新设置为当前用户只读。
 
 ## 日常管理
 
-- `41_list_clients.bat`：列出已登记客户端。
-- `42_revoke_client.bat`：撤销指定客户端，不删除项目数据。
-- `52_stop_service.bat`：停止看板。
-- `53_restart_service.bat`：重启看板。
-- `54_service_status.bat`：查看状态和监听地址。
-- `55_service_health.bat`：执行 HTTP 健康检查。
-- `56_service_logs.bat`：持续查看日志，按 Ctrl+C 退出。
-- `60` 到 `64`：管理看板登录账号和项目授权。
-- `65` 到 `68`：维护外挂项目编码表；新增、移动或重命名项目后先运行 `65`。
+- 查看客户端及权限：列出 SSH 用户、专属端口、状态和项目编码。
+- 修改客户端权限：切换管理员或修改项目编码，自动生效。
+- 撤销客户端：同时撤销 SSH 公钥和项目入口。
+- 同步项目编码：新增、移动或重命名项目后运行。
+- 修改项目编码：同步替换所有客户端权限中的旧编码。
+- 服务日志：持续查看 journal，按停止按钮或 Ctrl+C 退出。
+
+旧 BAT 中 `61_list_dashboard_users.bat` 和 `62_set_dashboard_access.bat` 为兼容文件名，实际管理客户端权限；`60_add_dashboard_user.bat`、`63_reset_dashboard_password.bat`、`64_delete_dashboard_user.bat` 只会提示看板密码账号已经停用。
 
 ## 网络边界
 
-Linux 看板只监听 `127.0.0.1:7362`。公司网络只需要允许客户端访问 Linux SSH 端口。Windows 客户端通过独立密钥和本地端口建立 SSH 隧道，不应直接开放 Linux 的 `7362/tcp`。
+- Linux 私有后端只监听 `127.0.0.1:7362`，没有客户端身份时除 `/api/health` 外拒绝访问。
+- 每个客户端入口只监听自己的 `127.0.0.1:<专属端口>`。
+- 公司网络只需允许访问 Linux SSH 端口，不应开放 `7362` 或任何客户端专属端口。
+- SSH 用户属于 `kanban-tunnel`，禁止密码、TTY、Shell、代理转发和 X11；每把公钥用 `permitopen` 限定到自己的端口。
 
-SSH 隧道配置使用 `/etc/ssh/sshd_config` 末尾带边界标记的受管块。脚本会先用
-`sshd -t -f` 验证候选文件，再备份、安装和重载；对于不支持 `Include` 的旧版
-OpenSSH，会自动移除本工具此前添加的 `sshd_config.d` Include 行。
-SSH 重载依次尝试 `systemctl`、Ubuntu 14.04 常用的 `service ssh reload`，以及
-`/etc/init.d/ssh reload`，不要求 SSH 服务必须注册为 systemd unit。
+SSH 配置脚本兼容不支持 `Include` 的旧 OpenSSH，并依次尝试 `systemctl`、`service ssh reload` 和 `/etc/init.d/ssh reload`。
+
+运行环境仍从 `/root/anaconda3/bin/python3` 离线克隆到 `/opt/earphone-dashboard/python`，服务不会使用 `dashboard` 账号 PATH 中的旧 `/usr/bin/python3`。

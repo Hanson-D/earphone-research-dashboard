@@ -5,3 +5,4 @@ $SshPort = __SSH_PORT__
 $LocalPort = __LOCAL_PORT__
 $RemotePort = __REMOTE_PORT__
 $KeyName = "__KEY_NAME__"
+$AccessToken = "__ACCESS_TOKEN__"

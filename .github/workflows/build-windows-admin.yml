@@ -3,8 +3,6 @@ name: Build Windows admin tool
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
     paths:
       - "headphone-dashboard-sample/deployment/windows-admin-gui/**"
       - ".github/workflows/build-windows-admin.yml"

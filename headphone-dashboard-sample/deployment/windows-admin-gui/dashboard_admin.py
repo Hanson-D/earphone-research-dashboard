@@ -545,6 +545,29 @@ class DashboardAdminApp:
         if local_port and (not local_port.isdigit() or not 1 <= int(local_port) <= 65535):
             messagebox.showerror("端口错误", "端口必须在 1 到 65535 之间。", parent=self.root)
             return
+        display_name = simpledialog.askstring("添加客户端", "使用者显示名称：", initialvalue=client_id, parent=self.root)
+        if display_name is None:
+            return
+        administrator = messagebox.askyesnocancel(
+            "添加客户端",
+            "这个客户端是否拥有全部项目和管理权限？",
+            parent=self.root,
+        )
+        if administrator is None:
+            return
+        projects = ""
+        if not administrator:
+            projects = simpledialog.askstring(
+                "添加客户端",
+                "允许访问的项目编码，多个用英文逗号分隔：",
+                parent=self.root,
+            )
+            if projects is None:
+                return
+            projects = projects.strip().upper()
+            if projects and not re.fullmatch(r"[A-Z][A-Z0-9_-]{0,31}(,[A-Z][A-Z0-9_-]{0,31})*", projects):
+                messagebox.showerror("项目编码错误", "请输入有效项目编码，多个编码用英文逗号分隔。", parent=self.root)
+                return
         remote_root = self.settings.get("remoteAppRoot") or DEFAULT_REMOTE_APP_ROOT
         script = remote_root.rstrip("/") + "/deployment/linux/root/30-add-client.sh"
         command = "bash {} --client-id {} --server-host {} --ssh-port {}".format(
@@ -552,6 +575,11 @@ class DashboardAdminApp:
         )
         if local_port:
             command += " --local-port {}".format(shlex.quote(local_port))
+        command += " --display-name {} --admin {} --projects {}".format(
+            shlex.quote(display_name.strip() or client_id),
+            "y" if administrator else "n",
+            shlex.quote(projects),
+        )
         destination = Path(self.settings.get("downloadRoot") or (Path.home() / "Downloads" / "EarphoneDashboardClients")) / client_id
         if destination.exists():
             messagebox.showerror("下载目录已存在", "请先处理已有目录：{}".format(destination), parent=self.root)

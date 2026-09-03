@@ -25,7 +25,7 @@ OPERATIONS = (
     Operation("upload", "部署", "上传程序", "打包本地程序并通过当前 SSH 连接上传；projects 和客户端密钥不会进入压缩包。", kind="upload", confirm="将覆盖服务器上同名程序文件，但不会删除服务器独有文件。继续吗？"),
     Operation("preflight", "部署", "部署前检查", "检查 Ubuntu、Python、OpenSSH、systemd、目录权限和端口状态。", "00-preflight.sh"),
     Operation("python", "部署", "准备 Python 环境", "从服务器现有 Conda 环境离线克隆看板运行时，并检查 Pillow。", "05-prepare-python-runtime.sh"),
-    Operation("service-config", "部署", "配置看板服务", "创建 dashboard 服务账号、认证配置和 systemd unit；不会启动服务。", "10-configure-dashboard-service.sh", interactive=True),
+    Operation("service-config", "部署", "配置看板服务", "创建 dashboard 服务账号、客户端权限配置和 systemd unit；不会启动服务。", "10-configure-dashboard-service.sh", interactive=True),
     Operation("initialize", "部署", "初始化数据目录", "以 dashboard 账号初始化 projects 缓存及写入权限。", "11-initialize-dashboard.sh"),
     Operation("self-check", "部署", "看板自检", "检查运行时、项目目录、外挂编码表和后端测试。", "12-dashboard-self-check.sh"),
     Operation("tunnel-config", "部署", "配置 SSH 隧道", "安装受限 SSH Match 配置并安全重载 sshd。", "20-configure-tunnel-access.sh", interactive=True, confirm="此操作会修改并验证 sshd 配置。继续吗？"),
@@ -38,21 +38,17 @@ OPERATIONS = (
     Operation("health", "服务", "健康检查", "从服务器本机验证看板 HTTP 入口。", "40-service-control.sh health"),
     Operation("logs", "服务", "实时日志", "持续跟踪 journal 日志；可用“停止当前任务”结束。", "40-service-control.sh logs", kind="stream"),
 
-    Operation("client-add", "客户端", "添加并下载客户端", "创建受限 SSH 账号和密钥，并把完整 Windows 客户端包下载到本机。", kind="add-client"),
+    Operation("client-add", "客户端", "添加并下载客户端", "创建受限 SSH 账号、密钥及项目权限，并把 Windows 客户端包下载到本机。", kind="add-client"),
     Operation("client-download", "客户端", "下载已有客户端包", "创建成功但下载中断时，从服务器导出目录重新下载，不重复创建账号。", kind="download-client"),
-    Operation("client-list", "客户端", "查看客户端", "列出客户端编号、SSH 用户、端口、指纹和状态。", "31-list-clients.sh"),
+    Operation("client-list", "客户端", "查看客户端及权限", "列出客户端编号、SSH 用户、专属端口、项目编码和状态。", "31-list-clients.sh"),
+    Operation("client-access", "客户端", "修改客户端权限", "按客户端编号修改管理员状态或可访问项目；自动热加载。", "50-manage-client-access.sh set-projects", interactive=True),
+    Operation("client-migrate", "客户端", "迁移已有客户端", "保留已有密钥，为旧客户端分配专属端口和项目权限并刷新导出包。", "50-manage-client-access.sh migrate", interactive=True, confirm="迁移会修改旧客户端的 SSH 目标端口；Windows 端之后需要用刷新后的客户端包重新安装。继续吗？"),
     Operation("client-revoke", "客户端", "撤销客户端", "锁定指定隧道账号并撤销公钥，不删除项目。", "33-revoke-client.sh", interactive=True),
     Operation("client-delete-export", "客户端", "删除服务器导出副本", "确认 Windows 已安装后删除 /root 下的私钥导出副本。", "34-delete-client-export.sh", interactive=True),
 
-    Operation("user-add", "看板账号", "添加看板账号", "先显示项目编码，再创建管理员或按编码授权的普通账号。", "50-manage-dashboard-users.sh add", interactive=True),
-    Operation("user-list", "看板账号", "查看看板账号", "列出账号、管理员状态、项目编码和显示名称。", "50-manage-dashboard-users.sh list"),
-    Operation("user-access", "看板账号", "修改项目权限", "修改管理员状态或项目编码，并撤销该账号已有会话。", "50-manage-dashboard-users.sh set-projects", interactive=True),
-    Operation("user-password", "看板账号", "重置密码", "更新密码哈希并撤销该账号已有会话。", "50-manage-dashboard-users.sh reset-password", interactive=True),
-    Operation("user-delete", "看板账号", "删除看板账号", "删除账号并立即使会话失效。", "50-manage-dashboard-users.sh delete", interactive=True),
-
     Operation("project-sync", "项目编码", "同步项目编码", "扫描 projects，为新增项目分配 P0001 格式编码并识别路径移动。", "51-manage-dashboard-projects.sh sync"),
     Operation("project-list", "项目编码", "查看项目编码", "列出编码、状态、项目 title 和相对 JSON 路径。", "51-manage-dashboard-projects.sh list"),
-    Operation("project-code", "项目编码", "修改项目编码", "修改外挂编码，并同步替换用户授权中的旧编码。", "51-manage-dashboard-projects.sh set-code", interactive=True),
+    Operation("project-code", "项目编码", "修改项目编码", "修改外挂编码，并同步替换客户端授权中的旧编码。", "51-manage-dashboard-projects.sh set-code", interactive=True),
     Operation("project-relink", "项目编码", "重新关联路径", "同名项目无法自动匹配时，将编码关联到新的相对 JSON 路径。", "51-manage-dashboard-projects.sh relink", interactive=True),
 )
 
