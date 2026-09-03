@@ -8,7 +8,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.cookiejar import CookieJar
+from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("server.py")
@@ -575,6 +577,15 @@ class DashboardAuthHttpTests(unittest.TestCase):
         message = server.redact_access_tokens('GET /?access_token=secret-value&x=1 HTTP/1.1')
         self.assertNotIn("secret-value", message)
         self.assertIn("access_token=[REDACTED]&x=1", message)
+        self.assertEqual(server.redact_log_argument(200), 200)
+
+        handler = object.__new__(server.DashboardHandler)
+        with mock.patch.object(SimpleHTTPRequestHandler, "log_message") as parent_log:
+            handler.log_message('%s %d', 'GET /?access_token=secret-value', 200)
+        forwarded = parent_log.call_args[0]
+        self.assertEqual(forwarded[0], '%s %d')
+        self.assertIn("[REDACTED]", forwarded[1])
+        self.assertEqual(forwarded[2], 200)
 
     def test_direct_project_url_cannot_bypass_access_list(self):
         cookies = CookieJar()

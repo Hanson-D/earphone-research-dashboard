@@ -46,6 +46,10 @@ def redact_access_tokens(value):
     return re.sub(r"(access_token=)[^&\s\"]+", r"\1[REDACTED]", str(value))
 
 
+def redact_log_argument(value):
+    return redact_access_tokens(value) if isinstance(value, str) else value
+
+
 def app_root():
     return Path(__file__).resolve().parents[1]
 
@@ -606,7 +610,7 @@ def create_server(host, preferred_port, allow_fallback=True):
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     def log_message(self, format_value, *args):
-        super().log_message(format_value, *(redact_access_tokens(item) for item in args))
+        super().log_message(format_value, *(redact_log_argument(item) for item in args))
 
     def end_headers(self):
         client_token = getattr(self, "_client_token_to_set", None)
