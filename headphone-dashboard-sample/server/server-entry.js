@@ -41,7 +41,7 @@ function renderProjects(projects) {
     <article class="server-project-card">
       <div>
         <strong>${escapeHtml(project.title || project.id)}</strong>
-        <span>${escapeHtml(project.id)} · rev ${Number(project.revision) || 1} · ${Number(project.rows) || 0} 行</span>
+        <span>${escapeHtml(project.accessId || project.id)} · rev ${Number(project.revision) || 1} · ${Number(project.rows) || 0} 行</span>
       </div>
       <a class="outline-button" href="${escapeHtml(dashboardUrl(project.id))}" target="_blank" rel="noopener">打开看板</a>
     </article>

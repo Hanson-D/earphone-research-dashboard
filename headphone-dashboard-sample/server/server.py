@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dashboard_auth as auth
+import project_catalog as catalog
 
 try:
     from PIL import Image, ImageOps, UnidentifiedImageError
@@ -208,7 +209,7 @@ def safe_relative_asset_path(value, allowed_suffixes=None):
 
 def local_project_path_from_payload(value):
     project_path = resolve_client_path(value)
-    if not project_path.name.endswith(".json"):
+    if not project_path.name.endswith(".json") or project_path.name == catalog.CATALOG_FILENAME:
         raise ValueError("项目路径必须是 JSON 文件。")
     project_path.parent.mkdir(parents=True, exist_ok=True)
     return project_path
@@ -320,6 +321,7 @@ def list_server_projects():
         meta = project.get("_server", {}) if isinstance(project.get("_server"), dict) else {}
         projects.append({
             "id": project_id,
+            "accessId": project_access_id(path),
             "title": project_title(project_id, project),
             "revision": int(meta.get("revision") or 1),
             "updatedAt": meta.get("updatedAt") or "",
@@ -338,6 +340,8 @@ def list_local_project_files():
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*.json")):
+            if path.name == catalog.CATALOG_FILENAME:
+                continue
             resolved = path.resolve()
             if resolved in seen:
                 continue
@@ -351,6 +355,7 @@ def list_local_project_files():
                 continue
             projects.append({
                 "id": project_access_id(path),
+                "accessId": project_access_id(path),
                 "path": display_path(path),
                 "title": project.get("title") or path.stem,
                 "rows": len(project.get("rows", [])) if isinstance(project.get("rows"), list) else 0,
@@ -359,23 +364,33 @@ def list_local_project_files():
     return projects
 
 
-def project_access_id(path):
+def legacy_project_access_id(path):
     resolved = Path(path).expanduser().resolve()
     try:
         relative = resolved.relative_to(project_root())
     except ValueError:
         return None
-    if not relative.parts or resolved.suffix.lower() != ".json":
+    if not relative.parts or resolved.suffix.lower() != ".json" or resolved.name == catalog.CATALOG_FILENAME:
         return None
     return relative.stem if len(relative.parts) == 1 else relative.parts[0]
 
 
+def project_access_ids(path):
+    stable = catalog.code_for_project_path(project_root(), path)
+    legacy = legacy_project_access_id(path)
+    return [value for index, value in enumerate((stable, legacy)) if value and value not in (stable, legacy)[:index]]
+
+
+def project_access_id(path):
+    values = project_access_ids(path)
+    return values[0] if values else None
+
+
 def can_access_project_path(user, path):
-    project_id = project_access_id(path)
-    return bool(project_id and auth.can_access_project(user, project_id))
+    return any(auth.can_access_project(user, project_id) for project_id in project_access_ids(path))
 
 
-def project_asset_access_id(path):
+def legacy_project_asset_access_id(path):
     resolved = Path(path).expanduser().resolve()
     try:
         relative = resolved.relative_to(project_root())
@@ -384,9 +399,23 @@ def project_asset_access_id(path):
     return relative.parts[0] if relative.parts else None
 
 
+def project_asset_access_ids(path):
+    stable = catalog.code_for_asset_path(project_root(), path)
+    legacy = legacy_project_asset_access_id(path)
+    return [value for index, value in enumerate((stable, legacy)) if value and value not in (stable, legacy)[:index]]
+
+
+def project_asset_access_id(path):
+    values = project_asset_access_ids(path)
+    return values[0] if values else None
+
+
 def can_access_project_asset_path(user, path):
-    project_id = project_asset_access_id(path)
-    return bool(project_id and auth.can_access_project(user, project_id))
+    return any(auth.can_access_project(user, project_id) for project_id in project_asset_access_ids(path))
+
+
+def server_project_access_ids(project_id):
+    return project_access_ids(server_project_path(project_id)) or [project_id]
 
 
 def is_direct_project_static_path(url_path):
@@ -631,7 +660,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         return False
 
     def require_project(self, project_id):
-        if not auth.auth_required() or auth.can_access_project(self.current_user(), project_id):
+        if not auth.auth_required() or any(
+            auth.can_access_project(self.current_user(), access_id)
+            for access_id in server_project_access_ids(project_id)
+        ):
             return True
         self.send_json({"error": "你没有此项目的访问权限。"}, 403)
         return False
@@ -804,7 +836,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "无效的项目保存请求。"}, 400)
             return
 
-        if not project_path.name.endswith(".json"):
+        if not project_path.name.endswith(".json") or project_path.name == catalog.CATALOG_FILENAME:
             self.send_json({"error": "项目文件必须是 .json。"}, 400)
             return
         if auth.auth_required() and not can_access_project_path(self.current_user(), project_path):
@@ -952,7 +984,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/server/projects":
             projects = list_server_projects()
             if auth.auth_required():
-                projects = [item for item in projects if auth.can_access_project(self.current_user(), item["id"])]
+                projects = [item for item in projects if any(
+                    auth.can_access_project(self.current_user(), access_id)
+                    for access_id in server_project_access_ids(item["id"])
+                )]
             self.send_json({"projects": projects})
             return
         if parsed.path == "/api/list-projects":
@@ -961,7 +996,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 return
             projects = list_local_project_files()
             if auth.auth_required():
-                projects = [item for item in projects if auth.can_access_project(self.current_user(), item.get("id"))]
+                projects = [item for item in projects if can_access_project_path(self.current_user(), item["path"])]
             self.send_json({"projects": projects, "roots": list_local_project_scan_root_info()})
             return
         if parsed.path == "/api/project-asset-status":
@@ -1145,7 +1180,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             return path
         if kind == "server-project":
             project_id = query.get("projectId", [""])[0]
-            if auth.auth_required() and not auth.can_access_project(self.current_user(), project_id):
+            if auth.auth_required() and not any(
+                auth.can_access_project(self.current_user(), access_id)
+                for access_id in server_project_access_ids(project_id)
+            ):
                 raise PermissionError("Project access denied")
             relative_path = safe_relative_photo_path(query.get("path", [""])[0])
             root = server_project_photo_root(project_id).resolve()

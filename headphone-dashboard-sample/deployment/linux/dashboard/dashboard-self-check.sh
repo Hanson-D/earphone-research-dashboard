@@ -42,6 +42,12 @@ if [[ "${DASHBOARD_AUTH_REQUIRED}" == "1" ]]; then
   check "authentication config valid" "${DASHBOARD_PYTHON}" -c \
     'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); raise SystemExit(0 if isinstance(data.get("users"), dict) and len(data.get("sessionSecret", "")) >= 32 else 1)' \
     "${DASHBOARD_AUTH_CONFIG}"
+  if [[ -f "${PROJECTS_ROOT}/.dashboard-project-index.json" ]]; then
+    check "project code index valid" "${DASHBOARD_PYTHON}" \
+      "${APP_ROOT}/server/manage-projects.py" --root "${PROJECTS_ROOT}" list
+  else
+    printf 'WARN  Project code index is missing; run 65_sync_dashboard_projects.bat.\n'
+  fi
 fi
 
 if "${DASHBOARD_PYTHON}" -c 'import PIL' >/dev/null 2>&1; then

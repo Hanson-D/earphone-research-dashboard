@@ -373,6 +373,62 @@ class DashboardAuthTests(unittest.TestCase):
         ))
 
 
+class ProjectCatalogTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write_project(self, relative_path, title):
+        path = self.root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"title": title, "rows": []}, ensure_ascii=False, indent=4), encoding="utf-8")
+        return path
+
+    def test_sync_assigns_external_code_without_modifying_project_json(self):
+        project = self.write_project("study-a/study-a.json", "研究 A")
+        original = project.read_bytes()
+
+        result = server.catalog.sync_catalog(self.root)
+
+        self.assertEqual(result["assigned"][0]["code"], "P0001")
+        self.assertEqual(result["catalog"]["projects"]["P0001"]["title"], "研究 A")
+        self.assertEqual(project.read_bytes(), original)
+        self.assertTrue((self.root / server.catalog.CATALOG_FILENAME).is_file())
+
+    def test_sync_preserves_code_after_unique_title_move(self):
+        project = self.write_project("old-name/project.json", "唯一标题")
+        server.catalog.sync_catalog(self.root)
+        moved = self.root / "new-name" / "renamed.json"
+        moved.parent.mkdir()
+        project.rename(moved)
+        project.parent.rmdir()
+
+        result = server.catalog.sync_catalog(self.root)
+
+        self.assertEqual(result["moved"][0]["code"], "P0001")
+        self.assertEqual(result["catalog"]["projects"]["P0001"]["path"], "new-name/renamed.json")
+
+    def test_code_lookup_covers_project_and_assets(self):
+        project = self.write_project("study-a/study-a.json", "研究 A")
+        server.catalog.sync_catalog(self.root)
+
+        self.assertEqual(server.catalog.code_for_project_path(self.root, project), "P0001")
+        self.assertEqual(server.catalog.code_for_asset_path(self.root, project.parent / "photos" / "front.jpg"), "P0001")
+
+    def test_code_can_be_changed_without_touching_project(self):
+        project = self.write_project("study-a/study-a.json", "研究 A")
+        original = project.read_bytes()
+        server.catalog.sync_catalog(self.root)
+
+        record = server.catalog.set_project_code(self.root, "P0001", "FIT_A")
+
+        self.assertEqual(record["path"], "study-a/study-a.json")
+        self.assertEqual(project.read_bytes(), original)
+
+
 class DashboardAuthHttpTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -384,17 +440,18 @@ class DashboardAuthHttpTests(unittest.TestCase):
         os.environ["DASHBOARD_PROJECTS_ROOT"] = str(Path(self.tmp.name) / "projects")
         os.environ["DASHBOARD_AUTH_REQUIRED"] = "1"
         os.environ["DASHBOARD_AUTH_CONFIG"] = str(auth_path)
+        server.save_server_project("study-a", {"version": 1, "rows": []}, create=True)
+        server.save_server_project("study-b", {"version": 1, "rows": []}, create=True)
+        server.catalog.sync_catalog(server.project_root())
         config = server.auth.new_config()
         config["users"]["zhangsan"] = {
             "displayName": "张三",
             "password": server.auth.hash_password("correct-horse-battery", iterations=1000),
             "admin": False,
-            "projects": ["study-a"],
+            "projects": ["P0001"],
             "revision": 1,
         }
         server.auth.save_config(config, auth_path)
-        server.save_server_project("study-a", {"version": 1, "rows": []}, create=True)
-        server.save_server_project("study-b", {"version": 1, "rows": []}, create=True)
 
         class QuietDashboardHandler(server.DashboardHandler):
             def log_message(self, format_value, *args):
@@ -441,7 +498,7 @@ class DashboardAuthHttpTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in payload["projects"]], ["study-a"])
         with opener.open(self.base_url + "/api/list-projects") as response:
             local_payload = json.load(response)
-        self.assertEqual([item["id"] for item in local_payload["projects"]], ["study-a"])
+        self.assertEqual([item["id"] for item in local_payload["projects"]], ["P0001"])
 
     def test_direct_project_url_cannot_bypass_access_list(self):
         opener = self.login()

@@ -10,6 +10,7 @@ require_command systemctl
 
 [[ -f "${APP_ROOT}/server/server.py" ]] || die "Missing ${APP_ROOT}/server/server.py"
 [[ -f "${APP_ROOT}/server/manage-users.py" ]] || die "Missing ${APP_ROOT}/server/manage-users.py"
+[[ -f "${APP_ROOT}/server/manage-projects.py" ]] || die "Missing ${APP_ROOT}/server/manage-projects.py"
 
 if ! getent group "${DASHBOARD_GROUP}" >/dev/null; then
   groupadd --system "${DASHBOARD_GROUP}"

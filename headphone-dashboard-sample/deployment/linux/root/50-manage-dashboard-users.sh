@@ -14,7 +14,13 @@ case "${operation}" in
 esac
 
 config="$(auth_config_path)"
-"${DASHBOARD_PYTHON}" "${APP_ROOT}/server/manage-users.py" --config "${config}" "${operation}"
+if [[ "${operation}" == "add" || "${operation}" == "set-projects" ]]; then
+  printf 'Available project codes:\n'
+  "${DASHBOARD_PYTHON}" "${APP_ROOT}/server/manage-projects.py" --root "${PROJECTS_ROOT}" list
+  printf '\n'
+fi
+"${DASHBOARD_PYTHON}" "${APP_ROOT}/server/manage-users.py" \
+  --config "${config}" --projects-root "${PROJECTS_ROOT}" "${operation}"
 chown root:"${DASHBOARD_GROUP}" "${config}"
 chmod 0640 "${config}"
 

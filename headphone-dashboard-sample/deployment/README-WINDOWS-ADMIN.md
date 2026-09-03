@@ -21,12 +21,13 @@
 4. `15_prepare_python_runtime.bat`
 5. `20_configure_service.bat`
 6. `21_initialize_dashboard.bat`
-7. `60_add_dashboard_user.bat`（首次至少创建一个管理员）
-8. `22_dashboard_self_check.bat`
-9. `30_configure_tunnel_access.bat`
-10. `50_enable_service.bat`
-11. `51_start_service.bat`
-12. `55_service_health.bat`
+7. `65_sync_dashboard_projects.bat`（扫描项目并建立外挂编码表）
+8. `60_add_dashboard_user.bat`（首次至少创建一个管理员）
+9. `22_dashboard_self_check.bat`
+10. `30_configure_tunnel_access.bat`
+11. `50_enable_service.bat`
+12. `51_start_service.bat`
+13. `55_service_health.bat`
 
 配置服务不会启动服务；配置 SSH 通道不会创建客户端；启停服务不会重写配置。
 
@@ -36,16 +37,25 @@ SSH 客户端密钥只决定一台 Windows 电脑能否建立隧道。浏览器�
 使用看板账号登录。看板账号配置保存在 `/etc/earphone-dashboard/access.json`，密码只
 保存 PBKDF2-SHA256 哈希。
 
-- `60_add_dashboard_user.bat`：添加账号。管理员可以看到全部项目并创建项目；普通账号输入允许访问的项目 ID，多个 ID 用英文逗号分隔。
+项目编码单独保存在 `/home/earphone/kanban/projects/.dashboard-project-index.json`，不会
+写入或修改项目 JSON。编码表中的 title 来自项目 JSON 已有的 `title`（服务器项目优先
+使用 `_server.title`）。`02_upload_app.bat` 会排除整个 `projects`，因此程序更新不会覆盖
+编码表和项目数据。
+
+- `60_add_dashboard_user.bat`：添加账号。管理员可以看到全部项目并创建项目；普通账号输入允许访问的项目编码，多个编码用英文逗号分隔。
 - `61_list_dashboard_users.bat`：列出账号、管理员状态和项目授权。
-- `62_set_dashboard_access.bat`：修改管理员状态或项目 ID 列表，同时撤销该账号已有登录会话。
+- `62_set_dashboard_access.bat`：修改管理员状态或项目编码列表，同时撤销该账号已有登录会话。
 - `63_reset_dashboard_password.bat`：重置密码，同时撤销已有登录会话。
 - `64_delete_dashboard_user.bat`：删除账号并使其会话立即失效。
+- `65_sync_dashboard_projects.bat`：扫描项目，给新增项目自动分配 `P0001` 格式的稳定编码；路径变化且 title 唯一时自动保留原编码。
+- `66_list_dashboard_projects.bat`：列出编码、状态、title 和相对路径。
+- `67_change_dashboard_project_code.bat`：修改编码，并同步替换用户授权中的旧编码、撤销受影响账号的已有会话。
+- `68_relink_dashboard_project.bat`：重名等情况无法自动识别移动时，把已有编码重新关联到指定相对 JSON 路径。
 
 服务会在每次请求时读取授权配置，因此增删账号、修改权限和重置密码都不需要重启服务。
-服务器部署只允许旧路径接口访问统一 `projects` 根目录内的文件；顶层项目文件夹名就是
-权限配置中的项目 ID，根目录下单个 JSON 则使用文件名作为项目 ID。项目列表、项目
-JSON、照片和缩略图都由后端按登录账号校验，不能通过直接输入项目 URL 绕过列表过滤。
+服务器部署只允许旧路径接口访问统一 `projects` 根目录内的文件；权限使用外挂索引中的
+稳定编码，并暂时兼容升级前按文件夹名配置的旧授权。项目列表、项目 JSON、照片和缩略图
+都由后端按登录账号校验，不能通过直接输入项目 URL 绕过列表过滤。
 
 `15_prepare_python_runtime.bat` 默认从 `/root/anaconda3/bin/python3` 离线克隆
 Conda 环境到 `/opt/earphone-dashboard/python`。服务和自检始终使用克隆后的绝对路径，
@@ -81,6 +91,7 @@ deployment/windows-admin/downloads/win1
 - `55_service_health.bat`：执行 HTTP 健康检查。
 - `56_service_logs.bat`：持续查看日志，按 Ctrl+C 退出。
 - `60` 到 `64`：管理看板登录账号和项目授权。
+- `65` 到 `68`：维护外挂项目编码表；新增、移动或重命名项目后先运行 `65`。
 
 ## 网络边界
 

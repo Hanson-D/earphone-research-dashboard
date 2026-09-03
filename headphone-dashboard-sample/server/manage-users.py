@@ -4,6 +4,7 @@ import getpass
 from pathlib import Path
 
 import dashboard_auth as auth
+import project_catalog as catalog
 
 
 def read_value(prompt, default=""):
@@ -20,19 +21,36 @@ def read_password():
     return password
 
 
+def validate_projects(projects, projects_root):
+    if not projects_root:
+        return
+    index = catalog.load_catalog(projects_root)
+    active = {
+        code for code, record in index.get("projects", {}).items()
+        if not record.get("missing")
+    }
+    unknown = [code for code in projects if code not in active]
+    if unknown:
+        raise ValueError("Unknown or missing project codes: {}. Run project sync first.".format(", ".join(unknown)))
+
+
 def load_or_initialize(path):
     auth.initialize_config(path)
     return auth.load_config(path)
 
 
-def add_user(path):
+def add_user(path, projects_root=None):
     config = load_or_initialize(path)
     username = auth.validate_username(read_value("Username"))
     if username in config["users"]:
         raise ValueError("User already exists: {}".format(username))
     display_name = read_value("Display name", username)
     admin = read_value("Administrator (y/N)", "N").lower() == "y"
-    projects = ["*"] if admin else auth.normalize_projects(read_value("Project IDs, comma separated"))
+    projects = ["*"] if admin else [
+        code.upper() for code in auth.normalize_projects(read_value("Project codes, comma separated"))
+    ]
+    if not admin:
+        validate_projects(projects, projects_root)
     config["users"][username] = {
         "displayName": display_name,
         "password": auth.hash_password(read_password()),
@@ -44,7 +62,7 @@ def add_user(path):
     print("Added dashboard user: {}".format(username))
 
 
-def list_users(path):
+def list_users(path, projects_root=None):
     config = load_or_initialize(path)
     if not config["users"]:
         print("No dashboard users configured.")
@@ -61,17 +79,21 @@ def list_users(path):
         ))
 
 
-def set_projects(path):
+def set_projects(path, projects_root=None):
     config = load_or_initialize(path)
     username = auth.validate_username(read_value("Username"))
     record = config["users"].get(username)
     if not record:
         raise ValueError("Unknown user: {}".format(username))
     admin = read_value("Administrator (y/N)", "y" if record.get("admin") else "N").lower() == "y"
-    projects = ["*"] if admin else auth.normalize_projects(read_value(
-        "Project IDs, comma separated",
-        ",".join(auth.normalize_projects(record.get("projects"))),
-    ))
+    projects = ["*"] if admin else [
+        code.upper() for code in auth.normalize_projects(read_value(
+            "Project codes, comma separated",
+            ",".join(auth.normalize_projects(record.get("projects"))),
+        ))
+    ]
+    if not admin:
+        validate_projects(projects, projects_root)
     record["admin"] = admin
     record["projects"] = projects
     record["revision"] = int(record.get("revision") or 1) + 1
@@ -79,7 +101,7 @@ def set_projects(path):
     print("Updated dashboard access: {}".format(username))
 
 
-def reset_password(path):
+def reset_password(path, projects_root=None):
     config = load_or_initialize(path)
     username = auth.validate_username(read_value("Username"))
     record = config["users"].get(username)
@@ -91,7 +113,7 @@ def reset_password(path):
     print("Reset password and revoked existing sessions: {}".format(username))
 
 
-def delete_user(path):
+def delete_user(path, projects_root=None):
     config = load_or_initialize(path)
     username = auth.validate_username(read_value("Username"))
     if username not in config["users"]:
@@ -107,6 +129,7 @@ def delete_user(path):
 def main():
     parser = argparse.ArgumentParser(description="Manage dashboard login users.")
     parser.add_argument("--config", required=True)
+    parser.add_argument("--projects-root")
     parser.add_argument("operation", choices=["init", "add", "list", "set-projects", "reset-password", "delete"])
     args = parser.parse_args()
     path = Path(args.config)
@@ -121,7 +144,7 @@ def main():
         "reset-password": reset_password,
         "delete": delete_user,
     }
-    operations[args.operation](path)
+    operations[args.operation](path, args.projects_root)
 
 
 if __name__ == "__main__":
