@@ -1,10 +1,9 @@
 @echo off
 setlocal
 set "SCRIPT_DIR=%~dp0"
-where node >nul 2>nul
-if errorlevel 1 (
-  echo [ERROR] Node.js 18 or newer is required.
-  exit /b 1
+if exist "%SCRIPT_DIR%dist\EarphoneProjectBuilder\EarphoneProjectBuilder.exe" (
+  "%SCRIPT_DIR%dist\EarphoneProjectBuilder\EarphoneProjectBuilder.exe" %*
+  exit /b %errorlevel%
 )
-node "%SCRIPT_DIR%cli.js" %*
+py.exe -3.11 "%SCRIPT_DIR%native_entry.py" %*
 exit /b %errorlevel%

@@ -1,17 +1,19 @@
 {
-  "csvPath": "./input/study.csv",
-  "photoRoot": "./input/photos",
-  "outputRoot": "./projects",
-  "projectName": "耳机佩戴研究",
-  "mode": "auto",
-  "mappingFields": {
+  "update_mode": "new",
+  "csv_path": "./input/study.csv",
+  "photo_root": "./input/photos",
+  "output_root": "./projects",
+  "project_name": "耳机佩戴研究",
+  "mapping_mode": "auto",
+  "mapping_fields": {
     "userField": "姓名",
     "earField": "耳侧",
     "deviceField": "样机"
   },
-  "views": ["正面", "侧面", "后侧"],
-  "singleEarMode": false,
-  "photoEarMode": false,
-  "includeBareEarPhotos": false,
-  "failOnIssues": false
+  "mapping_views": ["正面", "侧面", "后侧"],
+  "single_ear_mode": false,
+  "photo_ear_mode": false,
+  "include_bare_ear_photos": false,
+  "strict": false,
+  "dry_run": true
 }

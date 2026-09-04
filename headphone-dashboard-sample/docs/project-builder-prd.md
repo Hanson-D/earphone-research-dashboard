@@ -376,7 +376,7 @@
 - **Linux：同一 Python 核心提供 headless CLI。** 不要求 X Server，可由 cron/systemd 调用。
 - **本地索引：SQLite。**
 - **图片处理：Pillow 后端进程池 + Qt 原生图像展示。**
-- **Windows 分发：PyInstaller 或 Nuitka。** 最终选择以启动速度、体积和杀毒误报测试为准。
+- **Windows 分发：PyInstaller onedir。** 只允许在本地 Windows 机器构建和验证；CI 不编译或提供 EXE 交付物。
 
 迁移期间，以现有 dashboard-core.js 测试夹具作为行为基准，把映射规则移植为 Python；同一夹具同时验证看板 JS 与制作器 Python 结果。MVP 后两套入口继续存在，并通过兼容契约和黄金夹具防止行为漂移；是否进一步共享服务不属于 MVP 决策。
 
@@ -481,7 +481,7 @@ projects/<项目名>/.cache/project-builder/
 | Question | 默认稳定行键还需包含哪些常用条件字段 | Hanson | Open |
 | Question | Windows 基准机和典型最大照片量/尺寸 | Hanson | Open |
 | Decision | 分析状态继续写主 JSON，还是以后拆为 analysis state | Hanson / Eng | P0 先兼容 |
-| Decision | Windows 打包采用 PyInstaller 还是 Nuitka | Engineering | Benchmark required |
+| Decision | Windows 打包采用 PyInstaller onedir，并且只在本地 Windows 构建 | Engineering | Decided for MVP |
 | Question | 项目是否常驻网络共享盘；若是需定义断网与锁策略 | Hanson | Open |
 
 ## 21. 现有首页双入口核对表
