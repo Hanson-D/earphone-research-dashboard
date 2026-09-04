@@ -2,6 +2,8 @@
 
 管理员可以只在 Windows 上操作；看板服务和数据仍运行、保存在 Linux。推荐使用 `windows-admin-gui` 构建出的统一管理 EXE，同一次管理连接只输入一次 root 密码。原有 `windows-admin` BAT 继续作为旧环境和单步排障入口。
 
+所有 Windows EXE 都在本地 Windows 通过 `deployment/windows-admin-gui/build-admin-tool.bat` 构建，不使用 GitHub Actions。构建成功后用 `publish-release.bat <版本标签>` 将本地产物上传到 GitHub Release。
+
 ## 权限模型
 
 客户端 SSH 密钥同时决定能否建立隧道和能看到哪些项目，不再使用第二套看板密码：
@@ -57,7 +59,7 @@ win2 密钥 -> 服务器专属端口 17362 -> 客户端身份 win2 -> P0002
 - Windows 本地端口；留空从 `17361` 自动分配。
 - 是否为管理员；普通客户端填写允许访问的项目编码。
 
-客户端包交付到目标 Windows 电脑后，使用实际运行看板的 Windows 账号执行一次 `install-client.bat`，以后运行 `start-kanban.bat` 即可打开，无需看板密码。
+使用统一管理 EXE 下载时，客户端目录只包含 `OpenKanban.exe`、`client.bundle` 和说明文件。交付到目标 Windows 电脑后，保持 EXE 与 bundle 在同一目录，使用实际运行看板的 Windows 账号双击 `OpenKanban.exe` 即可。它会自动安装或更新配置、启动正确的 SSH 隧道并打开浏览器，无需看板密码。服务器导出的旧 BAT/PowerShell 文件继续保留用于排障。
 
 确认安装成功后，可删除服务器 `/root/kanban-export/<客户端编号>` 中的私钥导出副本。服务器只保留公钥和权限映射。
 
@@ -70,11 +72,11 @@ win2 密钥 -> 服务器专属端口 17362 -> 客户端身份 win2 -> P0002
 3. 运行“配置 SSH 隧道”，安装按密钥限制专属端口的新规则。
 4. 运行“迁移已有客户端”，逐个分配项目权限。
 5. 重启一次看板服务，使运行中的旧代码切换到客户端端口模式。
-6. 下载刷新的客户端包，在目标 Windows 账号下重新运行 `install-client.bat`。
+6. 下载刷新的简化客户端，在目标 Windows 账号下双击 `OpenKanban.exe`。
 
 迁移会更新服务器公钥限制和客户端 `RemotePort`，不会重新生成密钥。如果服务器导出副本已经删除，迁移会生成一个不含私钥的升级包；它只能在已经安装过该客户端密钥的原 Windows 账号下运行。无需手工修改账号目录。如果原 Windows 密钥也不存在，则撤销并重新创建客户端。
 
-新版安装器支持覆盖同一 Windows 用户以前安装的只读私钥：覆盖前临时解锁旧目标文件，完成后立即重新设置为当前用户只读。
+`OpenKanban.exe` 支持覆盖同一 Windows 用户以前安装的只读私钥：更新前会停止旧隧道、临时解锁旧目标文件，完成后立即重新限制为当前用户只读。
 
 ## 日常管理
 

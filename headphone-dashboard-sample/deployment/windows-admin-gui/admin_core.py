@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,3 +151,37 @@ def remote_script_command(remote_app_root, command):
     script = scripts + "/" + parts[0]
     suffix = " " + parts[1] if len(parts) == 2 else ""
     return "bash {}{}".format(shlex.quote(script), suffix)
+
+
+def prepare_simple_client_package(package_root, launcher_path):
+    package_root = Path(package_root)
+    launcher_path = Path(launcher_path)
+    bundle_path = package_root / "client.bundle"
+    if not bundle_path.is_file():
+        raise ValueError("下载内容缺少 client.bundle。请先上传并使用新版服务器脚本刷新客户端包。")
+    if not launcher_path.is_file():
+        raise ValueError("找不到 OpenKanban.exe。请使用包含客户端运行程序的新版管理工具。")
+    if launcher_path.read_bytes()[:2] != b"MZ":
+        raise ValueError("OpenKanban.exe 不是有效的 Windows 可执行文件。")
+    try:
+        payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("client.bundle 无效。") from error
+    if payload.get("version") != 1 or not payload.get("clientId"):
+        raise ValueError("client.bundle 版本无效。")
+    for item in list(package_root.iterdir()):
+        if item.name == "client.bundle":
+            continue
+        if item.is_dir():
+            shutil.rmtree(str(item))
+        else:
+            item.unlink()
+    shutil.copy2(str(launcher_path), str(package_root / "OpenKanban.exe"))
+    (package_root / "README.txt").write_text(
+        "Earphone Dashboard client: {}\n\n"
+        "Double-click OpenKanban.exe. It installs or updates this Windows user's "
+        "client configuration, starts the secure SSH tunnel, and opens the dashboard.\n\n"
+        "Keep OpenKanban.exe and client.bundle together. Do not share this folder.\n".format(payload["clientId"]),
+        encoding="utf-8",
+    )
+    return payload["clientId"]

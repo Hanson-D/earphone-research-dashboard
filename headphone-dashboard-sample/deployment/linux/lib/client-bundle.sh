@@ -48,6 +48,34 @@ write_known_hosts() {
   [[ -s "${target_file}" ]] || die "No SSH host public keys were found."
 }
 
+write_portable_client_bundle() {
+  local bundle_root="$1"
+  local client_id="$2"
+  local ssh_user="$3"
+  local server_host="$4"
+  local ssh_port="$5"
+  local local_port="$6"
+  local remote_port="$7"
+  local access_token="$8"
+  local key_name="kanban_${client_id}"
+  local private_key="${bundle_root}/key/${key_name}"
+  local command=(
+    "${DASHBOARD_PYTHON}" "${client_template_root}/make-client-bundle.py"
+    --output "${bundle_root}/client.bundle"
+    --client-id "${client_id}"
+    --ssh-user "${ssh_user}"
+    --server-host "${server_host}"
+    --ssh-port "${ssh_port}"
+    --local-port "${local_port}"
+    --remote-port "${remote_port}"
+    --key-name "${key_name}"
+    --access-token "${access_token}"
+    --known-hosts "${bundle_root}/known_hosts"
+  )
+  [[ ! -f "${private_key}" ]] || command+=(--private-key "${private_key}")
+  "${command[@]}"
+}
+
 create_client_bundle() {
   local bundle_root="$1"
   local private_key="$2"
@@ -79,6 +107,9 @@ create_client_bundle() {
   done
 
   write_known_hosts "${server_host}" "${ssh_port}" "${bundle_root}/known_hosts"
+  write_portable_client_bundle \
+    "${bundle_root}" "${client_id}" "${ssh_user}" "${server_host}" \
+    "${ssh_port}" "${local_port}" "${remote_port}" "${access_token}"
 
   cat >"${bundle_root}/README.txt" <<EOF
 Earphone Dashboard client: ${client_id}
@@ -129,6 +160,9 @@ refresh_client_bundle() {
       "${client_template_root}/${template}" "${bundle_root}/${template}"
   done
   write_known_hosts "${server_host}" "${ssh_port}" "${bundle_root}/known_hosts"
+  write_portable_client_bundle \
+    "${bundle_root}" "${client_id}" "${ssh_user}" "${server_host}" \
+    "${ssh_port}" "${local_port}" "${remote_port}" "${access_token}"
   if [[ -f "${bundle_root}/key/${key_name}" ]]; then
     install_mode='Full installer: the existing private key is included.'
   else

@@ -12,6 +12,8 @@ require_command systemctl
 [[ -f "${APP_ROOT}/server/manage-clients.py" ]] || die "Missing ${APP_ROOT}/server/manage-clients.py"
 [[ -f "${APP_ROOT}/server/client_listeners.py" ]] || die "Missing ${APP_ROOT}/server/client_listeners.py"
 [[ -f "${APP_ROOT}/server/manage-projects.py" ]] || die "Missing ${APP_ROOT}/server/manage-projects.py"
+[[ -f "${APP_ROOT}/deployment/windows-client-template/make-client-bundle.py" ]] || \
+  die "Missing portable Windows client bundle builder. Upload the complete current application."
 
 if ! getent group "${DASHBOARD_GROUP}" >/dev/null; then
   groupadd --system "${DASHBOARD_GROUP}"

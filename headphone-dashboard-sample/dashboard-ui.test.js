@@ -450,6 +450,9 @@ test("windows admin gui reuses ssh and keeps secrets out of settings", () => {
   const core = read("deployment/windows-admin-gui/admin_core.py");
   const gui = read("deployment/windows-admin-gui/dashboard_admin.py");
   const build = read("deployment/windows-admin-gui/build-admin-tool.bat");
+  const localBuild = read("deployment/windows-admin-gui/build-local.ps1");
+  const launcher = read("deployment/windows-client-gui/client_launcher.py");
+  const bundleBuilder = read("deployment/windows-client-template/make-client-bundle.py");
 
   assert.match(gui, /class AdminConnection/);
   assert.match(gui, /transport\.set_keepalive\(30\)/);
@@ -458,8 +461,16 @@ test("windows admin gui reuses ssh and keeps secrets out of settings", () => {
   assert.match(gui, /InteractiveHostKeyPolicy/);
   assert.match(gui, /download_client_bundle/);
   assert.match(core, /"client-download"/);
+  assert.match(core, /prepare_simple_client_package/);
+  assert.match(gui, /OpenKanban\.exe/);
+  assert.match(build, /build-local\.ps1/);
+  assert.match(localBuild, /--add-binary/);
+  assert.match(localBuild, /OpenKanban\.exe/);
+  assert.match(launcher, /Windows OpenSSH Client is not installed/);
+  assert.match(launcher, /access_token/);
+  assert.match(bundleBuilder, /"privateKey"/);
   assert.match(core, /"projects"/);
   assert.doesNotMatch(core, /for key in \([^)]*password/);
-  assert.match(build, /--onefile --windowed/);
+  assert.match(localBuild, /--onefile --windowed/);
   assert.equal([...build].every((character) => character.codePointAt(0) < 128), true);
 });

@@ -29,6 +29,7 @@ from admin_core import (
     remote_script_command,
     save_settings,
     settings_dir,
+    prepare_simple_client_package,
 )
 
 
@@ -635,14 +636,26 @@ class DashboardAdminApp:
             destination.parent.mkdir(parents=True, exist_ok=True)
             with self.connection.sftp() as sftp:
                 self.download_tree(sftp, remote_bundle, partial)
-            required = [partial / "install-client.bat", partial / "start-kanban.bat", partial / "key"]
-            if not all(path.exists() for path in required):
-                raise RuntimeError("Downloaded client package is incomplete.")
+            launcher = self.client_launcher_path()
+            prepare_simple_client_package(partial, launcher)
             partial.replace(destination)
-            self.append_log("[local] Client package downloaded and verified: {}\n".format(destination))
+            self.append_log("[local] Simple Windows client downloaded and verified: {}\n".format(destination))
         finally:
             if partial.exists():
                 shutil.rmtree(str(partial), ignore_errors=True)
+
+    def client_launcher_path(self):
+        candidates = []
+        runtime_root = getattr(sys, "_MEIPASS", None)
+        if runtime_root:
+            candidates.append(Path(runtime_root) / "client-runtime" / "OpenKanban.exe")
+        app_root = Path(self.settings.get("localAppRoot") or "")
+        candidates.append(app_root / "deployment" / "windows-client-gui" / "dist" / "OpenKanban.exe")
+        candidates.append(Path(__file__).resolve().parents[1] / "windows-client-gui" / "dist" / "OpenKanban.exe")
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        raise RuntimeError("OpenKanban.exe is unavailable. Use the current built admin EXE, or build the Windows client first.")
 
     def download_tree(self, sftp, remote_path, local_path):
         local_path.mkdir(parents=True, exist_ok=False)
