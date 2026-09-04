@@ -2,14 +2,11 @@
   "name": "headphone-dashboard-project-builder",
   "version": "0.1.0",
   "private": true,
-  "description": "Cross-platform CSV and photo project builder for the headphone research dashboard",
+  "description": "Legacy web prototype retained as a mapping parity reference",
   "bin": "cli.js",
   "scripts": {
-    "start": "node cli.js gui",
-    "test": "node --test project-builder.test.js gui-server.test.js",
-    "build:win": "npx --yes @yao-pkg/pkg@6.22.0 package.json --targets node22-win-x64 --output dist/dashboard-project-builder.exe --compress GZip",
-    "build:linux": "npx --yes @yao-pkg/pkg@6.22.0 package.json --targets node22-linux-x64 --output dist/dashboard-project-builder-linux-x64 --compress GZip",
-    "build:mac-test": "npx --yes @yao-pkg/pkg@6.22.0 package.json --targets node22-macos-arm64 --output dist/dashboard-project-builder-macos-arm64 --compress GZip"
+    "start:legacy": "node cli.js gui",
+    "test": "node --test project-builder.test.js gui-server.test.js"
   },
   "engines": {
     "node": ">=18"
