@@ -1689,6 +1689,7 @@ async function autoLoadProjectsFolder() {
       }
     }
     if (loaded) {
+      setProjectUrlParam("");
       setProjectStatus(errors.length ?
         `已自动加载 ${loaded} 个项目，${errors.length} 个失败。` :
         `已自动加载 projects 文件夹中的 ${loaded} 个项目。`, false);

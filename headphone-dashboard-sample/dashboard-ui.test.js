@@ -244,6 +244,7 @@ test("project config uses folder selection instead of manual path entry", () => 
 test("startup scans projects folder before falling back to the default project path", () => {
   const js = read("app.js");
   const startBody = js.match(/async function start\(\) \{([\s\S]*?)\n\}\n\nstart\(\)\.catch/)?.[1] || "";
+  const autoLoadBody = js.match(/async function autoLoadProjectsFolder\(\) \{([\s\S]*?)\n\}\n\nasync function loadServerProject/)?.[1] || "";
 
   assert.ok(startBody.includes("const loaded = await autoLoadProjectsFolder();"));
   assert.ok(startBody.includes("projectFromUrl !== defaultProjectPath();"));
@@ -255,6 +256,11 @@ test("startup scans projects folder before falling back to the default project p
   assert.ok(
     startBody.indexOf("const loaded = await autoLoadProjectsFolder();") < startBody.lastIndexOf("setProjectPath(defaultProjectPath());"),
     "startup must try projects folder auto-load before falling back to the default project path"
+  );
+  assert.match(
+    autoLoadBody,
+    /if \(loaded\) \{\s*setProjectUrlParam\(""\);/,
+    "batch auto-load must clear the last project URL so refresh scans every authorized project again"
   );
 });
 
