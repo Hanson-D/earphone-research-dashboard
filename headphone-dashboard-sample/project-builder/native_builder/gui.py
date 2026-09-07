@@ -70,6 +70,36 @@ class Worker(QObject):
             self.finished.emit()
 
 
+class LazyPhotoCombo(QComboBox):
+    """Keep large photo candidate lists out of initial UI construction."""
+
+    def __init__(self, candidates: list[str], current: str):
+        super().__init__()
+        self._candidates = candidates
+        self._loaded = False
+        self.addItem("— 空槽位 —", "")
+        if current:
+            self.addItem(current, current)
+            self.setCurrentIndex(1)
+
+    def showPopup(self) -> None:  # noqa: N802
+        if not self._loaded:
+            current = str(self.currentData() or "")
+            self.blockSignals(True)
+            self.clear()
+            self.addItem("— 空槽位 —", "")
+            for relative in self._candidates:
+                self.addItem(relative, relative)
+            selected = self.findData(current)
+            if selected < 0 and current:
+                self.addItem(current, current)
+                selected = self.count() - 1
+            self.setCurrentIndex(max(0, selected))
+            self.blockSignals(False)
+            self._loaded = True
+        super().showPopup()
+
+
 class PhotoCard(QFrame):
     changed = Signal(int, str)
     selected = Signal(int, bool)
@@ -96,15 +126,7 @@ class PhotoCard(QFrame):
         source = QLabel("人工" if slot["source"] != "automatic" else "自动")
         source.setProperty("kind", slot["source"])
         layout.addWidget(source)
-        combo = QComboBox()
-        combo.addItem("— 空槽位 —", "")
-        for relative in candidates:
-            combo.addItem(relative, relative)
-        current = combo.findData(slot["value"])
-        if current < 0 and slot["value"]:
-            combo.addItem(slot["value"], slot["value"])
-            current = combo.count() - 1
-        combo.setCurrentIndex(max(0, current))
+        combo = LazyPhotoCombo(candidates, str(slot["value"] or ""))
         combo.currentIndexChanged.connect(lambda: self.changed.emit(self.slot_index, str(combo.currentData() or "")))
         layout.addWidget(combo)
         path_label = QLabel(slot["value"] or "缺失")
@@ -128,15 +150,34 @@ class MainWindow(QMainWindow):
         self._threads: list[QThread] = []
         self._workers: list[Worker] = []
         self._thumbnail_jobs: set[str] = set()
+        self._close_pending = False
+        self._service_closed = False
         self._build_ui()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         if any(thread.isRunning() for thread in self._threads):
-            QMessageBox.information(self, "任务进行中", "请等待当前扫描、缩略图或发布任务完成后再关闭。")
+            LOGGER.info("close requested while background tasks are active; hiding until completion")
+            self._close_pending = True
+            self.hide()
             event.ignore()
             return
-        self.service.close()
+        self._close_service()
         super().closeEvent(event)
+
+    def _close_service(self) -> None:
+        if not self._service_closed:
+            self.service.close()
+            self._service_closed = True
+
+    def _thread_finished(self, thread: QThread, worker: Worker) -> None:
+        if thread in self._threads:
+            self._threads.remove(thread)
+        if worker in self._workers:
+            self._workers.remove(worker)
+        if self._close_pending and not any(item.isRunning() for item in self._threads):
+            LOGGER.info("background tasks finished after close request")
+            self._close_service()
+            QApplication.quit()
 
     def _build_ui(self) -> None:
         toolbar = QToolBar("项目")
@@ -372,15 +413,25 @@ class MainWindow(QMainWindow):
         self._run_async(lambda progress: self.service.prepare(request, progress), self._preview_ready, "正在读取 CSV、索引照片并生成映射…")
 
     def _preview_ready(self, prepared: BuildResult) -> None:
+        LOGGER.info(
+            "preview rendering started rows=%s columns=%s photos=%s slots=%s",
+            len(prepared.rows), len(prepared.headers), len(prepared.photos), len(prepared.mapping.slots),
+        )
         self.prepared = prepared
         self.project_name.setText(prepared.project["title"])
         self._fill_csv(prepared)
+        LOGGER.info("preview CSV and role tables rendered")
         self._fill_fields(prepared)
+        LOGGER.info("preview mapping field controls rendered")
         self._fill_users(prepared)
+        LOGGER.info("preview user and initial photo cards rendered")
         self.publish_summary.setPlainText(json.dumps({"更新模式": MODE_LABELS[prepared.request.update_mode], "差异": prepared.diff, "映射问题": len(prepared.mapping.audit), "未使用照片": len(prepared.mapping.unused_photos), "目标": str(prepared.target)}, ensure_ascii=False, indent=2))
         self.status.setText(f"预览完成：{len(prepared.rows)} 行 · {len(prepared.photos)} 张照片 · {len(prepared.mapping.audit)} 个检查项")
+        LOGGER.info("preview rendering completed")
 
     def _fill_csv(self, prepared: BuildResult) -> None:
+        self.csv_table.setUpdatesEnabled(False)
+        self.roles_table.setUpdatesEnabled(False)
         self.csv_table.clear()
         self.csv_table.setColumnCount(len(prepared.headers))
         self.csv_table.setHorizontalHeaderLabels(prepared.headers)
@@ -403,6 +454,8 @@ class MainWindow(QMainWindow):
             combo.setCurrentIndex(combo.findData(final))
             self.roles_table.setCellWidget(index, 2, combo)
             self.role_combos[header] = combo
+        self.csv_table.setUpdatesEnabled(True)
+        self.roles_table.setUpdatesEnabled(True)
 
     def restore_auto_roles(self) -> None:
         if not self.prepared:
@@ -433,10 +486,11 @@ class MainWindow(QMainWindow):
             user_missing.setdefault(user, 0)
             if not slot["value"]:
                 user_missing[user] += 1
-        for user, missing in user_missing.items():
-            self.user_list.addItem(f"{user}  {'缺失 ' + str(missing) if missing else '正常'}")
-        for value in prepared.mapping.unused_photos:
-            self.unused_list.addItem(value)
+        self.user_list.addItems([
+            f"{user}  {'缺失 ' + str(missing) if missing else '正常'}"
+            for user, missing in user_missing.items()
+        ])
+        self.unused_list.addItems(prepared.mapping.unused_photos)
         if self.user_list.count():
             self.user_list.setCurrentRow(0)
 
@@ -460,6 +514,7 @@ class MainWindow(QMainWindow):
         ]
         photo_by_value = {photo.relative_path: photo for photo in self.prepared.photos}
         slots = [(index, slot) for index, slot in enumerate(self.prepared.mapping.slots) if slot["user"] == user]
+        LOGGER.info("rendering user photo cards slots=%s candidates=%s", len(slots), len(candidates))
         missing_thumbnails = []
         photo_root = self.photo_root_for_prepared() if self.prepared.photos else Path(".")
         for position, (index, slot) in enumerate(slots):
@@ -611,8 +666,7 @@ class MainWindow(QMainWindow):
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: self._threads.remove(thread) if thread in self._threads else None)
-        thread.finished.connect(lambda: self._workers.remove(worker) if worker in self._workers else None)
+        thread.finished.connect(lambda: self._thread_finished(thread, worker))
         self._threads.append(thread)
         self._workers.append(worker)
         thread.start()
