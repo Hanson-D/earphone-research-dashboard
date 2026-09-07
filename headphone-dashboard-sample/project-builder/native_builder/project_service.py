@@ -5,13 +5,13 @@ import json
 import os
 import shutil
 import tempfile
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from .core import (
+    FIELD_ROLE_LABELS,
     MappingConfig,
     MappingResult,
     PhotoFile,
@@ -64,6 +64,7 @@ class BuildResult:
     rows: list[dict[str, str]]
     headers: list[str]
     photos: list[PhotoFile]
+    auto_field_roles: dict[str, str]
     field_roles: dict[str, str]
     target: Path
     source_project: dict[str, Any] | None
@@ -185,10 +186,6 @@ class ProjectService:
             bare_ear_config=request.bare_ear_config or dict(existing_mapping_fields.get("bareEarConfig") or {}),
             overrides=overrides,
         )
-        key_counts = Counter(stable_row_key(row, mapping_config) for row in rows)
-        duplicates = sorted(key for key, count in key_counts.items() if key and count > 1)
-        if duplicates:
-            raise ValueError(f"稳定行键不唯一，请补充条件字段或修正重复记录：{duplicates[0]}")
         if not photos and not views:
             mapping = MappingResult([dict(row) for row in rows], [], [], [], [], [], "sequence")
         else:
@@ -208,7 +205,13 @@ class ProjectService:
         old_dashboard = dict((existing or {}).get("dashboardConfig") or {})
         dashboard_config = {**old_dashboard, **request.dashboard_config}
         old_roles = dict(old_dashboard.get("fieldRoleOverrides") or {})
-        field_roles = resolve_field_roles(headers + [field for field in mapping.photo_fields if field not in headers], mapping.rows, {**old_roles, **request.field_role_overrides})
+        all_headers = headers + [field for field in mapping.photo_fields if field not in headers]
+        auto_field_roles = resolve_field_roles(all_headers, mapping.rows)
+        field_roles = dict(auto_field_roles)
+        valid_roles = set(FIELD_ROLE_LABELS)
+        for field_name, role in {**old_roles, **request.field_role_overrides}.items():
+            if field_name in field_roles and role in valid_roles:
+                field_roles[field_name] = role
         user_id_fields = [field_name for field_name, role in field_roles.items() if role == "user_id"]
         if len(user_id_fields) > 1:
             raise ValueError(f"只能有一个“用户编号”变量类别，当前为：{', '.join(user_id_fields)}")
@@ -247,7 +250,21 @@ class ProjectService:
             setattr(error, "exit_code", 2)
             raise error
         report(f"读取完成：{len(rows)} 行、{len(photos)} 张照片", 95)
-        return BuildResult(request, project, mapping, rows, headers, photos, field_roles, target, existing, existing_dir, encoding, diff)
+        return BuildResult(
+            request=request,
+            project=project,
+            mapping=mapping,
+            rows=rows,
+            headers=headers,
+            photos=photos,
+            auto_field_roles=auto_field_roles,
+            field_roles=field_roles,
+            target=target,
+            source_project=existing,
+            source_project_dir=existing_dir,
+            csv_encoding=encoding,
+            diff=diff,
+        )
 
     def publish(self, prepared: BuildResult) -> BuildResult:
         request, target = prepared.request, prepared.target

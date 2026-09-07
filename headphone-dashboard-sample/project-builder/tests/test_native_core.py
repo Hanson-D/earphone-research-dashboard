@@ -7,6 +7,7 @@ from pathlib import Path
 from native_builder.core import (
     MappingConfig,
     PhotoFile,
+    folder_matches,
     infer_field_role,
     infer_mapping_fields,
     map_photos,
@@ -79,6 +80,33 @@ class NativeCoreTests(unittest.TestCase):
         result = map_photos(rows, photos, MappingConfig(mode="folders", user_field=user, ear_field=ear, device_field=device, views=["正面"]))
         self.assertEqual(result.rows[0]["photo_左耳_正面"], "张三/A/正面/左耳/1.jpg")
         self.assertFalse(result.audit)
+
+    def test_folder_matching_uses_delimited_tokens_without_prefix_collisions(self) -> None:
+        self.assertTrue(folder_matches("participant_U1", "U1"))
+        self.assertTrue(folder_matches("左侧", "左耳"))
+        self.assertFalse(folder_matches("U10", "U1"))
+        self.assertFalse(folder_matches("AA", "A"))
+
+    def test_folder_mapping_preserves_duplicate_analysis_rows_and_shares_photo(self) -> None:
+        rows = [
+            {"用户编号": "U1", "设备": "A", "试次": "1", "舒适度": "8"},
+            {"用户编号": "U1", "设备": "A", "试次": "2", "舒适度": "7"},
+        ]
+        photos = [PhotoFile("participant_U1/A/正面/1.jpg", "/tmp/1.jpg", "1.jpg", "participant_U1")]
+        result = map_photos(rows, photos, MappingConfig(mode="folders", user_field="用户编号", device_field="设备", views=["正面"]))
+        self.assertEqual([row["试次"] for row in result.rows], ["1", "2"])
+        self.assertEqual([row["photo_正面"] for row in result.rows], ["participant_U1/A/正面/1.jpg"] * 2)
+        self.assertFalse(result.audit)
+        set_slot(result, 0, "participant_U1/A/正面/manual.jpg")
+        self.assertEqual([row["photo_正面"] for row in result.rows], ["participant_U1/A/正面/manual.jpg"] * 2)
+
+    def test_folder_missing_slot_is_audited_once_for_duplicate_rows(self) -> None:
+        rows = [
+            {"用户编号": "U1", "设备": "A", "试次": "1"},
+            {"用户编号": "U1", "设备": "A", "试次": "2"},
+        ]
+        result = map_photos(rows, [], MappingConfig(mode="folders", user_field="用户编号", device_field="设备", views=["正面"]))
+        self.assertEqual(len([item for item in result.audit if item["status"] == "missing"]), 1)
 
 
 if __name__ == "__main__":

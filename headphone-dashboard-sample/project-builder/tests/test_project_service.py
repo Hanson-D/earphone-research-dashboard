@@ -166,13 +166,14 @@ class ProjectServiceTests(unittest.TestCase):
                 self.service.publish(prepared)
         self.assertEqual((target / "研究A.json").read_bytes(), before)
 
-    def test_duplicate_stable_keys_block_publish(self) -> None:
+    def test_duplicate_analysis_rows_are_preserved(self) -> None:
         duplicate = self.root / "duplicate.csv"
-        duplicate.write_text("用户编号,设备\nU1,A\nU1,A\n", "utf-8")
+        duplicate.write_text("用户编号,设备,试次\nU1,A,1\nU1,A,2\n", "utf-8")
         request = self._new_request()
         request.csv_path = str(duplicate)
-        with self.assertRaisesRegex(ValueError, "稳定行键不唯一"):
-            self.service.prepare(request)
+        prepared = self.service.prepare(request)
+        self.assertEqual([row["试次"] for row in prepared.rows], ["1", "2"])
+        self.assertEqual(len(prepared.mapping.rows), 2)
 
     def test_manual_variable_category_is_written_for_dashboard(self) -> None:
         request = self._new_request()

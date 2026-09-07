@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QSize, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QTabWidget,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -35,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .core import FIELD_ROLE_LABELS, infer_field_role, mapping_overrides, parts_include, path_parts, restore_slots, set_slot, swap_device_groups, swap_ear_groups, swap_slots
+from .core import FIELD_ROLE_LABELS, mapping_overrides, parts_include, path_parts, restore_slots, set_slot, swap_device_groups, swap_ear_groups, swap_slots
 from .project_service import BuildRequest, BuildResult, ProjectService
 from .runtime_log import configure_runtime_logging, get_logger
 
@@ -48,6 +49,40 @@ MODE_LABELS = {
     "mapping": "仅更新映射",
 }
 LOGGER = get_logger()
+
+
+class CsvPreviewModel(QAbstractTableModel):
+    """Read-only, lazy CSV preview that does not allocate a widget per cell."""
+
+    def __init__(self, limit: int = 200):
+        super().__init__()
+        self.limit = limit
+        self.headers: list[str] = []
+        self.rows: list[dict[str, str]] = []
+
+    def replace(self, headers: list[str], rows: list[dict[str, str]]) -> None:
+        self.beginResetModel()
+        self.headers = list(headers)
+        self.rows = rows[:self.limit]
+        self.endResetModel()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        return 0 if parent.isValid() else len(self.rows)
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        return 0 if parent.isValid() else len(self.headers)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+        if not index.isValid() or role != Qt.DisplayRole:
+            return None
+        return str(self.rows[index.row()].get(self.headers[index.column()], ""))
+
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:  # noqa: N802
+        if role != Qt.DisplayRole:
+            return None
+        if orientation == Qt.Horizontal and 0 <= section < len(self.headers):
+            return self.headers[section]
+        return section + 1
 
 
 class Worker(QObject):
@@ -247,7 +282,9 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.addWidget(QLabel("变量类别可以随时更换；发布前会把人工结果写入 dashboardConfig.fieldRoleOverrides。"))
         splitter = QSplitter(Qt.Vertical)
-        self.csv_table = QTableWidget()
+        self.csv_model = CsvPreviewModel()
+        self.csv_table = QTableView()
+        self.csv_table.setModel(self.csv_model)
         self.csv_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.roles_table = QTableWidget(0, 3)
         self.roles_table.setHorizontalHeaderLabels(["字段", "自动类别", "最终类别（可更换）"])
@@ -380,7 +417,7 @@ class MainWindow(QMainWindow):
         for edit in (self.project_name, self.project_path, self.csv_path, self.photo_root, self.output_root):
             edit.clear()
         self.update_mode.setCurrentIndex(0)
-        self.csv_table.clear()
+        self.csv_model.replace([], [])
         self.roles_table.setRowCount(0)
         self.user_list.clear()
         self.unused_list.clear()
@@ -430,19 +467,12 @@ class MainWindow(QMainWindow):
         LOGGER.info("preview rendering completed")
 
     def _fill_csv(self, prepared: BuildResult) -> None:
-        self.csv_table.setUpdatesEnabled(False)
         self.roles_table.setUpdatesEnabled(False)
-        self.csv_table.clear()
-        self.csv_table.setColumnCount(len(prepared.headers))
-        self.csv_table.setHorizontalHeaderLabels(prepared.headers)
-        shown = prepared.rows[:200]
-        self.csv_table.setRowCount(len(shown))
-        for row_index, row in enumerate(shown):
-            for column, header in enumerate(prepared.headers):
-                self.csv_table.setItem(row_index, column, QTableWidgetItem(str(row.get(header, ""))))
+        self.csv_model.replace(prepared.headers, prepared.rows)
+        LOGGER.info("preview CSV model attached rows=%s columns=%s", min(200, len(prepared.rows)), len(prepared.headers))
         self.roles_table.setRowCount(len(prepared.headers))
         self.role_combos.clear()
-        self.auto_roles = {header: infer_field_role(header, prepared.rows) for header in prepared.headers}
+        self.auto_roles = {header: prepared.auto_field_roles.get(header, "dimension") for header in prepared.headers}
         for index, header in enumerate(prepared.headers):
             auto = self.auto_roles[header]
             final = prepared.field_roles.get(header, auto)
@@ -454,8 +484,8 @@ class MainWindow(QMainWindow):
             combo.setCurrentIndex(combo.findData(final))
             self.roles_table.setCellWidget(index, 2, combo)
             self.role_combos[header] = combo
-        self.csv_table.setUpdatesEnabled(True)
         self.roles_table.setUpdatesEnabled(True)
+        LOGGER.info("preview variable role controls rendered fields=%s", len(prepared.headers))
 
     def restore_auto_roles(self) -> None:
         if not self.prepared:
@@ -481,7 +511,7 @@ class MainWindow(QMainWindow):
         self.user_list.clear()
         self.unused_list.clear()
         user_missing: dict[str, int] = {}
-        for slot in prepared.mapping.slots:
+        for _, slot in self._visible_slots(prepared):
             user = slot["user"]
             user_missing.setdefault(user, 0)
             if not slot["value"]:
@@ -498,6 +528,20 @@ class MainWindow(QMainWindow):
         text = self.user_list.currentItem().text() if self.user_list.currentItem() else ""
         return text.split("  ", 1)[0]
 
+    def _visible_slots(self, prepared: BuildResult) -> list[tuple[int, dict[str, Any]]]:
+        indexed = list(enumerate(prepared.mapping.slots))
+        if prepared.mapping.mode != "folders":
+            return indexed
+        seen: set[tuple[str, str]] = set()
+        visible: list[tuple[int, dict[str, Any]]] = []
+        for index, slot in indexed:
+            key = (str(slot["stableKey"]), str(slot["field"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            visible.append((index, slot))
+        return visible
+
     def render_user(self) -> None:
         while self.cards_layout.count():
             item = self.cards_layout.takeAt(0)
@@ -513,7 +557,7 @@ class MainWindow(QMainWindow):
             if parts_include(path_parts(photo), user)
         ]
         photo_by_value = {photo.relative_path: photo for photo in self.prepared.photos}
-        slots = [(index, slot) for index, slot in enumerate(self.prepared.mapping.slots) if slot["user"] == user]
+        slots = [(index, slot) for index, slot in self._visible_slots(self.prepared) if slot["user"] == user]
         LOGGER.info("rendering user photo cards slots=%s candidates=%s", len(slots), len(candidates))
         missing_thumbnails = []
         photo_root = self.photo_root_for_prepared() if self.prepared.photos else Path(".")

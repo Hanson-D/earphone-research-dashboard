@@ -202,8 +202,19 @@ def normalize_token(value: Any) -> str:
 
 
 def folder_matches(part: str, value: str) -> bool:
-    left, right = normalize_token(part), normalize_token(value)
-    return bool(left and right and (left == right or left in right or right in left))
+    token, folder = normalize_token(value), normalize_token(part)
+    if not token or not folder:
+        return False
+    if folder == token:
+        return True
+    if token in {"左", "左耳", "左侧", "l", "left", "leftear", "右", "右耳", "右侧", "r", "right", "rightear"}:
+        value_ear = infer_ear(value)
+        if value_ear and infer_ear(part) == value_ear:
+            return True
+    return any(
+        normalize_token(segment) == token
+        for segment in re.split(r"[_\-—–/\\()\[\]{}【】（）:：,，.。]+", str(part or ""))
+    )
 
 
 def path_parts(photo: PhotoFile) -> list[str]:
@@ -340,39 +351,32 @@ def stable_row_key(row: dict[str, str], config: MappingConfig) -> str:
     return "|||".join(str(row.get(field, "")).strip() for field in (config.user_field, config.device_field, config.ear_field) if field)
 
 
-def _expand_folder_rows(rows: list[dict[str, str]], photos: list[PhotoFile], config: MappingConfig) -> list[dict[str, str]]:
-    if config.mode != "folders" or not config.device_field:
-        return [dict(row) for row in rows]
-    users = sorted({str(row.get(config.user_field, "")) for row in rows if row.get(config.user_field)}, key=natural_key)
-    devices = sorted({str(row.get(config.device_field, "")) for row in rows if row.get(config.device_field)}, key=natural_key)
-    ears = _ear_values(rows, config.ear_field, photos, config.expected_ears)
-    combos: list[tuple[str, str]] = []
-    for photo in photos:
-        if _is_bare(photo):
-            continue
-        parts = path_parts(photo)
-        user = next((value for value in users if parts_include(parts, value)), "")
-        if not user:
-            continue
-        device = next((value for value in devices if parts_include(parts, value)), "")
-        if not device:
-            excluded = [user, *ears, *config.views]
-            residual = [_clean_view(part) for part in parts if not any(value and folder_matches(part, value) for value in excluded)]
-            device = residual[-1] if residual else ""
-        if device and (user, device) not in combos:
-            combos.append((user, device))
-    existing = {(str(row.get(config.user_field, "")), str(row.get(config.device_field, ""))) for row in rows}
-    templates = {user: next(row for row in rows if str(row.get(config.user_field, "")) == user) for user in users}
-    expanded = [dict(row) for row in rows]
-    for user, device in sorted(combos, key=lambda item: (natural_key(item[0]), natural_key(item[1]))):
-        if (user, device) in existing:
-            continue
-        row = dict(templates.get(user, {}))
-        row[config.user_field] = user
-        row[config.device_field] = device
-        expanded.append(row)
-        existing.add((user, device))
-    return expanded
+def _source_rows_for_mapping(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    # CSV rows are the source of truth. Folder contents may fill photo fields,
+    # but must never merge, delete, or synthesize analysis records.
+    return [dict(row) for row in rows]
+
+
+def _value_lookup(values: Iterable[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for value in values:
+        token = normalize_token(value)
+        if token and token not in result:
+            result[token] = value
+    return result
+
+
+def _part_tokens(part: str) -> list[str]:
+    segments = [part, *re.split(r"[_\-—–/\\()\[\]{}【】（）:：,，.。]+", str(part or ""))]
+    return list(dict.fromkeys(token for token in map(normalize_token, segments) if token))
+
+
+def _canonical_folder_value(parts: list[str], lookup: dict[str, str]) -> str:
+    return next((lookup[token] for part in parts for token in _part_tokens(part) if token in lookup), "")
+
+
+def _folder_slot_key(*values: Any) -> str:
+    return "|||".join(normalize_token(value) for value in values)
 
 
 def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: MappingConfig) -> MappingResult:
@@ -393,14 +397,16 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
         group_ears: dict[str, set[str]] = defaultdict(set)
         users = list(dict.fromkeys(str(row.get(config.user_field, "")) for row in rows))
         devices = list(dict.fromkeys(str(row.get(config.device_field, "")) for row in rows)) if config.device_field else []
+        user_lookup = _value_lookup(users)
+        device_lookup = _value_lookup(devices)
         for photo in photos:
             if _is_bare(photo):
                 continue
             parts = path_parts(photo)
-            user = next((value for value in users if parts_include(parts, value)), "")
+            user = _canonical_folder_value(parts, user_lookup)
             if not user:
                 continue
-            device = next((value for value in devices if parts_include(parts, value)), "")
+            device = _canonical_folder_value(parts, device_lookup)
             ear = next((infer_ear(part) for part in parts if infer_ear(part)), "")
             if ear:
                 group_ears[f"{user}|||{device}"].add(ear)
@@ -408,7 +414,7 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
             config.single_ear_mode = True
     if not config.views:
         raise ValueError("未配置或识别出照片视角")
-    rows = _expand_folder_rows(rows, photos, config)
+    rows = _source_rows_for_mapping(rows)
     descriptors = _bare_descriptors(config) + _descriptors(rows, photos, config)
     photo_fields = [item["field"] for item in descriptors]
     mapped = [{key: value for key, value in row.items() if not re.search(r"photo|image|picture|照片|图片", key, re.I)} for row in rows]
@@ -455,40 +461,92 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
                 if photo.relative_path not in used:
                     audit.append(_audit("extra", user, "", "", "", f"未使用照片：{photo.relative_path}"))
     else:
+        # Parse every file once, then serve row slots from indexes. This avoids
+        # the old rows x photos x views scan and mirrors dashboard-core.js.
         users = list(dict.fromkeys(str(row.get(config.user_field, "")) for row in rows))
-        candidates_by_user: dict[str, list[tuple[PhotoFile, list[str]]]] = defaultdict(list)
+        devices = list(dict.fromkeys(str(row.get(config.device_field, "")) for row in rows)) if config.device_field else []
+        ears = _ear_values(rows, config.ear_field, photos, config.expected_ears)
+        user_lookup = _value_lookup(users)
+        device_lookup = _value_lookup(devices)
+        view_lookup = _value_lookup(config.views)
+        parsed: list[dict[str, Any]] = []
         for photo in photos_sorted:
             parts = path_parts(photo)
-            for user in users:
-                if parts_include(parts, user):
-                    candidates_by_user[user].append((photo, parts))
+            user = _canonical_folder_value(parts, user_lookup)
+            ear = next((infer_ear(part) for part in parts if infer_ear(part)), "")
+            view = _canonical_folder_value(parts, view_lookup)
+            device = _canonical_folder_value(parts, device_lookup) if config.device_field else ""
+            residual = [
+                _clean_view(part) for part in parts
+                if not _is_bare_part(part) and not any(value and folder_matches(part, value) for value in (user, *ears, view))
+            ]
+            parsed.append({
+                "photo": photo, "user": user, "ear": ear, "view": view, "device": device,
+                "inferred_device": residual[0] if residual else "", "bare": _is_bare(photo),
+            })
+
+        single_devices: dict[str, str] = {}
+        if not config.device_field:
+            candidates: dict[str, dict[str, str]] = defaultdict(dict)
+            for item in parsed:
+                if item["bare"] or not item["user"] or not item["inferred_device"]:
+                    continue
+                candidates[item["user"]][normalize_token(item["inferred_device"])] = item["inferred_device"]
+            single_devices = {
+                user: sorted(values.values(), key=natural_key)[0]
+                for user, values in candidates.items() if values
+            }
+
+        bare_index: dict[str, list[PhotoFile]] = defaultdict(list)
+        device_index: dict[str, list[PhotoFile]] = defaultdict(list)
+        overridden_bare = {
+            value for key, value in config.overrides.items()
+            if "::bare_ear_photo" in key and value
+        }
+        for item in parsed:
+            if not item["user"]:
+                continue
+            photo = item["photo"]
+            if item["bare"]:
+                bare_index[_folder_slot_key(item["user"], item["ear"])].append(photo)
+                if item["ear"]:
+                    bare_index[_folder_slot_key(item["user"], "")].append(photo)
+                continue
+            if not item["view"] or (config.device_field and not item["device"]):
+                continue
+            if photo.relative_path in overridden_bare:
+                continue
+            selected_device = single_devices.get(item["user"])
+            if selected_device and item["inferred_device"] and not folder_matches(item["inferred_device"], selected_device):
+                continue
+            indexed_device = item["device"] if config.device_field else ""
+            device_index[_folder_slot_key(item["user"], indexed_device, item["ear"], item["view"])].append(photo)
+            if item["ear"]:
+                device_index[_folder_slot_key(item["user"], indexed_device, "", item["view"])].append(photo)
+
+        audited_slots: set[str] = set()
         for row_index, row in enumerate(rows):
             user = str(row.get(config.user_field, ""))
+            device = str(row.get(config.device_field, "")) if config.device_field else ""
             for descriptor in descriptors:
-                parts_match: list[PhotoFile] = []
-                for photo, parts in candidates_by_user.get(user, []):
-                    wants_bare = descriptor["field"].startswith("bare_ear_photo")
-                    if wants_bare != _is_bare(photo):
-                        continue
-                    if descriptor["ear"] and not parts_include(parts, descriptor["ear"]):
-                        continue
-                    if config.ear_field and row.get(config.ear_field) and not wants_bare and not parts_include(parts, row[config.ear_field]):
-                        continue
-                    if config.device_field and row.get(config.device_field) and not wants_bare and not parts_include(parts, row[config.device_field]):
-                        continue
-                    if not wants_bare and not parts_include(parts, descriptor["view"]):
-                        continue
-                    parts_match.append(photo)
-                photo = parts_match[0] if parts_match else None
-                _assign_slot(mapped, rows, slots, audit, used, row_index, descriptor, photo, config)
-                for extra in parts_match[1:]:
-                    audit.append(_audit("extra", row.get(config.user_field, ""), row.get(config.device_field, "") if config.device_field else "", row_index + 1, descriptor["field"], f"重复/补拍照片：{extra.relative_path}"))
+                wants_bare = descriptor["field"].startswith("bare_ear_photo")
+                requested_ear = descriptor["ear"]
+                index = bare_index if wants_bare else device_index
+                key = _folder_slot_key(user, requested_ear) if wants_bare else _folder_slot_key(user, device, requested_ear, descriptor["view"])
+                matches = index.get(key, [])
+                logical_key = _folder_slot_key("bare" if wants_bare else "device", user, device if not wants_bare else "", requested_ear or (descriptor["field"] if wants_bare else ""), descriptor["view"] if not wants_bare else "")
+                first_logical_slot = logical_key not in audited_slots
+                audited_slots.add(logical_key)
+                _assign_slot(mapped, rows, slots, audit, used, row_index, descriptor, matches[0] if matches else None, config, audit_missing=first_logical_slot)
+                if first_logical_slot:
+                    for extra in matches[1:]:
+                        audit.append(_audit("extra", user, device, row_index + 1, descriptor["field"], f"重复/补拍照片：{extra.relative_path}"))
 
     unused = [photo.relative_path for photo in photos_sorted if photo.relative_path not in used]
     return MappingResult(mapped, slots, photo_fields, [item for item in descriptors if not item["field"].startswith("bare_ear_photo")], audit, unused, mode)
 
 
-def _assign_slot(mapped: list[dict[str, str]], source_rows: list[dict[str, str]], slots: list[dict[str, Any]], audit: list[dict[str, Any]], used: set[str], row_index: int, descriptor: dict[str, str], photo: PhotoFile | None, config: MappingConfig) -> None:
+def _assign_slot(mapped: list[dict[str, str]], source_rows: list[dict[str, str]], slots: list[dict[str, Any]], audit: list[dict[str, Any]], used: set[str], row_index: int, descriptor: dict[str, str], photo: PhotoFile | None, config: MappingConfig, audit_missing: bool = True) -> None:
     row = source_rows[row_index]
     stable_key = stable_row_key(row, config)
     stable_override = f"{stable_key}::{descriptor['field']}"
@@ -497,7 +555,7 @@ def _assign_slot(mapped: list[dict[str, str]], source_rows: list[dict[str, str]]
     mapped[row_index][descriptor["field"]] = value
     if value:
         used.add(value)
-    else:
+    elif audit_missing:
         audit.append(_audit("missing", row.get(config.user_field, ""), row.get(config.device_field, "") if config.device_field else "", row_index + 1, descriptor["field"], "缺失照片"))
     slots.append({
         "rowIndex": row_index,
@@ -520,9 +578,13 @@ def _audit(status: str, user: Any, device: Any, row_index: Any, field_name: Any,
 
 def set_slot(result: MappingResult, slot_index: int, value: str) -> None:
     slot = result.slots[slot_index]
-    slot["value"] = value
-    slot["source"] = "manual"
-    result.rows[slot["rowIndex"]][slot["field"]] = value
+    targets = [slot]
+    if result.mode == "folders":
+        targets = [item for item in result.slots if item["stableKey"] == slot["stableKey"] and item["field"] == slot["field"]]
+    for target in targets:
+        target["value"] = value
+        target["source"] = "manual"
+        result.rows[target["rowIndex"]][target["field"]] = value
 
 
 def swap_slots(result: MappingResult, first: int, second: int) -> None:

@@ -78,7 +78,7 @@ class JavaScriptParityTests(unittest.TestCase):
         native = map_photos(rows, [PhotoFile(**item) for item in photos], MappingConfig(mode="sequence", user_field="user_id", device_field="device_name", views=["正面"], photo_ear_mode=True))
         self.assertEqual(native.rows, js)
 
-    def test_folder_mode_expands_missing_device_rows_like_dashboard(self) -> None:
+    def test_folder_mode_preserves_csv_rows_like_dashboard(self) -> None:
         rows = [{"姓名": "张三", "样机": "A", "舒适度": "8"}]
         photos = [
             {"relative_path": "张三/A/正面/1.jpg", "absolute_path": "/tmp/1.jpg", "name": "1.jpg", "user_folder": "张三"},
@@ -90,6 +90,24 @@ class JavaScriptParityTests(unittest.TestCase):
             {"rows": rows, "photos": photos, "options": options},
         )
         native = map_photos(rows, [PhotoFile(**item) for item in photos], MappingConfig(mode="folders", user_field="姓名", device_field="样机", views=["正面"]))
+        self.assertEqual(native.rows, js)
+
+    def test_folder_prefix_collision_and_duplicate_rows_match_dashboard(self) -> None:
+        rows = [
+            {"用户编号": "U1", "设备": "A", "试次": "1"},
+            {"用户编号": "U1", "设备": "A", "试次": "2"},
+            {"用户编号": "U10", "设备": "AA", "试次": "1"},
+        ]
+        photos = [
+            {"relative_path": "participant_U1/A/正面/1.jpg", "absolute_path": "/tmp/1.jpg", "name": "1.jpg", "user_folder": "participant_U1"},
+            {"relative_path": "participant_U10/AA/正面/2.jpg", "absolute_path": "/tmp/2.jpg", "name": "2.jpg", "user_folder": "participant_U10"},
+        ]
+        options = {"mode": "folders", "userField": "用户编号", "earField": "", "deviceField": "设备", "views": ["正面"]}
+        js = self._node(
+            "const fs=require('fs');const C=require('./dashboard-core.js');const p=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(C.mapPhotosToRows(p.rows,p.photos,p.options).mapped));",
+            {"rows": rows, "photos": photos, "options": options},
+        )
+        native = map_photos(rows, [PhotoFile(**item) for item in photos], MappingConfig(mode="folders", user_field="用户编号", device_field="设备", views=["正面"]))
         self.assertEqual(native.rows, js)
 
 
