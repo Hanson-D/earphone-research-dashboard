@@ -29,8 +29,13 @@ try {
         throw "Python Launcher (py.exe) was not found. Install Python 3.11 x64 from python.org and enable the launcher."
     }
 
-    $venv = Join-Path $PSScriptRoot ".venv-build"
+    # PySide6 contains deeply nested QML resources. Keeping the virtual
+    # environment below a long clone path can exceed legacy MAX_PATH during
+    # pip extraction and misleadingly report a missing PageIndicatorDelegate
+    # asset. Use a short, builder-specific location instead.
+    $venv = Join-Path ([System.IO.Path]::GetTempPath()) "EPB-py311-x64"
     $python = Join-Path $venv "Scripts\python.exe"
+    Write-Host "Build environment: $venv"
     if (-not (Test-Path $python)) {
         Invoke-CheckedNative -FilePath $launcher.Source -ArgumentList @("-3.11", "-m", "venv", $venv) -Step "Create Python 3.11 build environment"
     }
