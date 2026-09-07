@@ -13,6 +13,24 @@ BUILDER = Path(__file__).resolve().parents[1]
 
 
 class CliTests(unittest.TestCase):
+    def test_self_check_writes_machine_readable_result_without_opening_gui(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "path with spaces" / "self-check.json"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(BUILDER / "native_entry.py"),
+                    f"--self-check={output}",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(output.read_text("utf-8"))
+            self.assertEqual(payload["application"], "EarphoneProjectBuilder")
+            self.assertEqual(payload["status"], "ok")
+
     def test_headless_json_dry_run(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

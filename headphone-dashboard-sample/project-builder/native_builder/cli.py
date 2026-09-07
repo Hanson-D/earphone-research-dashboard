@@ -11,6 +11,11 @@ from .project_service import BuildRequest, ProjectService
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="earphone-project-builder", description="耳机研究看板独立项目制作器")
+    parser.add_argument(
+        "--self-check",
+        metavar="OUTPUT_JSON",
+        help=argparse.SUPPRESS,
+    )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("gui", help="打开原生桌面界面")
     build = sub.add_parser("build", help="无界面构建或更新项目")
@@ -35,6 +40,24 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("--dry-run", action="store_true")
     build.add_argument("--json", action="store_true", dest="json_output")
     return parser
+
+
+def run_self_check(output_path: str) -> int:
+    """Provide a console-independent smoke test for the windowed Windows build."""
+    destination = Path(output_path).expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "application": "EarphoneProjectBuilder",
+                "status": "ok",
+                "python": sys.version.split()[0],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return 0
 
 
 def _load_config(path: str | None) -> dict[str, Any]:
@@ -136,6 +159,8 @@ def run_build(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.self_check:
+        return run_self_check(args.self_check)
     if args.command in {None, "gui"}:
         try:
             from .gui import run_gui
