@@ -45,6 +45,14 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(project["dashboardConfig"]["fieldRoleOverrides"]["舒适度"], "metric")
         self.assertEqual((target / "photos" / "U1" / "1.jpg").read_bytes(), b"photo-one")
 
+    def test_prepare_reports_observable_stages_and_counts(self) -> None:
+        progress: list[tuple[str, int]] = []
+        self.service.prepare(self._new_request(), lambda message, percent: progress.append((message, percent)))
+        self.assertEqual(progress[0], ("正在检查输入…", 5))
+        self.assertTrue(any("CSV 已就绪：1 行" in message for message, _ in progress))
+        self.assertTrue(any("照片索引完成：1 张" in message for message, _ in progress))
+        self.assertEqual(progress[-1][1], 95)
+
     def test_new_csv_only_project_does_not_require_photos(self) -> None:
         request = BuildRequest(
             update_mode="new",

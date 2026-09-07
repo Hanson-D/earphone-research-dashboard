@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .core import (
     MappingConfig,
@@ -24,9 +24,12 @@ from .core import (
     stable_row_key,
 )
 from .photo_index import PhotoIndex
+from .runtime_log import get_logger
 
 
 UPDATE_MODES = {"new", "csv", "photos", "all", "mapping"}
+ProgressCallback = Callable[[str, int], None]
+LOGGER = get_logger()
 
 
 @dataclass
@@ -99,12 +102,19 @@ class ProjectService:
             raise ValueError("项目 JSON 缺少 rows")
         return project, project_dir, json_path
 
-    def prepare(self, request: BuildRequest) -> BuildResult:
+    def prepare(self, request: BuildRequest, progress: ProgressCallback | None = None) -> BuildResult:
+        def report(message: str, percent: int) -> None:
+            LOGGER.info("prepare stage=%s percent=%s mode=%s", message, percent, request.update_mode)
+            if progress:
+                progress(message, percent)
+
+        report("正在检查输入…", 5)
         if request.update_mode not in UPDATE_MODES:
             raise ValueError(f"未知更新模式：{request.update_mode}")
         existing: dict[str, Any] | None = None
         existing_dir: Path | None = None
         if request.update_mode != "new":
+            report("正在读取已有项目 JSON…", 10)
             if not request.project_path:
                 raise ValueError("更新已有项目时必须选择项目 JSON 或文件夹")
             existing, existing_dir, _ = self.load_project(request.project_path)
@@ -114,6 +124,7 @@ class ProjectService:
         if uses_new_csv:
             if not request.csv_path:
                 raise ValueError("当前更新模式需要选择 CSV")
+            report("正在读取 CSV…", 15)
             rows, headers, encoding = read_csv_file(request.csv_path)
         else:
             rows = [dict(row) for row in (existing or {}).get("mappingRows") or (existing or {}).get("rows") or []]
@@ -121,6 +132,7 @@ class ProjectService:
             encoding = "project-json"
         if not rows:
             raise ValueError("没有可用于映射的数据行")
+        report(f"CSV 已就绪：{len(rows)} 行、{len(headers)} 列", 25)
 
         if request.update_mode == "csv":
             active_photo_root = None
@@ -129,15 +141,26 @@ class ProjectService:
             if not request.photo_root and request.update_mode != "new":
                 raise ValueError("当前更新模式需要选择照片目录")
             active_photo_root = Path(request.photo_root).expanduser().resolve() if request.photo_root else None
-            photos = self.index.scan(active_photo_root) if active_photo_root else []
+            if active_photo_root:
+                report("正在扫描照片目录…", 30)
+            photos = self.index.scan(
+                active_photo_root,
+                lambda count: report(f"正在索引照片：已发现 {count} 张", 40),
+            ) if active_photo_root else []
         else:
             photo_value = str((existing or {}).get("photoRoot") or "photos")
             candidate = Path(photo_value)
             active_photo_root = candidate if candidate.is_absolute() else (existing_dir / candidate if existing_dir else candidate)
-            photos = self.index.scan(active_photo_root)
+            report("正在扫描照片目录…", 30)
+            photos = self.index.scan(
+                active_photo_root,
+                lambda count: report(f"正在索引照片：已发现 {count} 张", 40),
+            )
         if not photos and request.update_mode in {"photos", "all", "mapping"}:
             raise ValueError(f"照片目录中没有支持的图片：{active_photo_root}")
+        report(f"照片索引完成：{len(photos)} 张", 50)
 
+        report("正在识别映射字段与照片视角…", 55)
         existing_mapping_fields = dict((existing or {}).get("mappingFields") or {})
         fields_config = {**existing_mapping_fields, **request.mapping_fields}
         user_field, ear_field, device_field = infer_mapping_fields(rows, fields_config)
@@ -169,7 +192,9 @@ class ProjectService:
         if not photos and not views:
             mapping = MappingResult([dict(row) for row in rows], [], [], [], [], [], "sequence")
         else:
+            report("正在计算照片映射…", 65)
             mapping = map_photos(rows, photos, mapping_config)
+        report(f"照片映射完成：{len(mapping.slots)} 个槽位", 80)
         if request.update_mode == "csv" and existing:
             self._preserve_existing_assignments(mapping, existing, mapping_config)
             mapping.audit = [item for item in mapping.audit if not (
@@ -179,6 +204,7 @@ class ProjectService:
                 )
             )]
 
+        report("正在计算变量类别和项目差异…", 85)
         old_dashboard = dict((existing or {}).get("dashboardConfig") or {})
         dashboard_config = {**old_dashboard, **request.dashboard_config}
         old_roles = dict(old_dashboard.get("fieldRoleOverrides") or {})
@@ -220,6 +246,7 @@ class ProjectService:
             error = ValueError(f"映射检查发现 {len(mapping.audit)} 个问题，strict 模式已阻止发布")
             setattr(error, "exit_code", 2)
             raise error
+        report(f"读取完成：{len(rows)} 行、{len(photos)} 张照片", 95)
         return BuildResult(request, project, mapping, rows, headers, photos, field_roles, target, existing, existing_dir, encoding, diff)
 
     def publish(self, prepared: BuildResult) -> BuildResult:

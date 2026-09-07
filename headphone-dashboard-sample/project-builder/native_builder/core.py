@@ -268,16 +268,20 @@ def _clean_view(value: str) -> str:
 def infer_folder_views(rows: list[dict[str, str]], photos: list[PhotoFile], user_field: str, ear_field: str, device_field: str) -> list[str]:
     ears = _ear_values(rows, ear_field, photos, [])
     views: list[str] = []
+    relevant_rows = list({
+        (str(row.get(user_field, "")), str(row.get(device_field, "")) if device_field else "")
+        for row in rows
+    })
     for photo in photos:
         if _is_bare(photo) and device_field:
             continue
         parts = path_parts(photo)
-        for row in rows:
-            if not parts_include(parts, row.get(user_field, "")):
+        for user, device in relevant_rows:
+            if not parts_include(parts, user):
                 continue
-            if device_field and row.get(device_field) and not parts_include(parts, row[device_field]):
+            if device_field and device and not parts_include(parts, device):
                 continue
-            excluded = [row.get(user_field, ""), row.get(device_field, ""), *ears]
+            excluded = [user, device, *ears]
             residual = [_clean_view(part) for part in parts if not _is_bare_part(part) and not any(value and folder_matches(part, value) for value in excluded)]
             candidates = residual if device_field else residual[-1:]
             for view in candidates:
@@ -387,14 +391,16 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
         config.include_bare_ear = True
     if mode == "folders" and not config.ear_field and not config.photo_ear_mode and not config.expected_ears and not config.single_ear_mode:
         group_ears: dict[str, set[str]] = defaultdict(set)
+        users = list(dict.fromkeys(str(row.get(config.user_field, "")) for row in rows))
+        devices = list(dict.fromkeys(str(row.get(config.device_field, "")) for row in rows)) if config.device_field else []
         for photo in photos:
             if _is_bare(photo):
                 continue
             parts = path_parts(photo)
-            user = next((str(row.get(config.user_field, "")) for row in rows if parts_include(parts, row.get(config.user_field, ""))), "")
+            user = next((value for value in users if parts_include(parts, value)), "")
             if not user:
                 continue
-            device = next((str(row.get(config.device_field, "")) for row in rows if config.device_field and parts_include(parts, row.get(config.device_field, ""))), "")
+            device = next((value for value in devices if parts_include(parts, value)), "")
             ear = next((infer_ear(part) for part in parts if infer_ear(part)), "")
             if ear:
                 group_ears[f"{user}|||{device}"].add(ear)
@@ -449,15 +455,20 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
                 if photo.relative_path not in used:
                     audit.append(_audit("extra", user, "", "", "", f"未使用照片：{photo.relative_path}"))
     else:
+        users = list(dict.fromkeys(str(row.get(config.user_field, "")) for row in rows))
+        candidates_by_user: dict[str, list[tuple[PhotoFile, list[str]]]] = defaultdict(list)
+        for photo in photos_sorted:
+            parts = path_parts(photo)
+            for user in users:
+                if parts_include(parts, user):
+                    candidates_by_user[user].append((photo, parts))
         for row_index, row in enumerate(rows):
+            user = str(row.get(config.user_field, ""))
             for descriptor in descriptors:
                 parts_match: list[PhotoFile] = []
-                for photo in photos_sorted:
-                    parts = path_parts(photo)
+                for photo, parts in candidates_by_user.get(user, []):
                     wants_bare = descriptor["field"].startswith("bare_ear_photo")
                     if wants_bare != _is_bare(photo):
-                        continue
-                    if not parts_include(parts, row.get(config.user_field, "")):
                         continue
                     if descriptor["ear"] and not parts_include(parts, descriptor["ear"]):
                         continue

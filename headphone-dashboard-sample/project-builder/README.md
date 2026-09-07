@@ -14,6 +14,7 @@
 - 新建、仅更新 CSV、仅更新照片、CSV + 照片、仅更新映射五种模式。
 - MVP 照片更新采用安全合并，不自动删除已有照片。
 - 发布前差异摘要、同盘暂存、候选包校验和原子替换。
+- 读取/索引/映射分阶段进度，以及可轮转的本地运行日志。
 - Linux CLI 的 dry-run、strict 和 JSON 输出。
 
 ## 从源码运行
@@ -107,3 +108,5 @@ projects/<项目名>/
 更新项目时，程序先在目标同盘生成完整候选目录，通过 JSON、CSV 与照片引用检查后才替换正式目录。旧项目以带时间戳的 `backup-*` 目录保留，失败时自动恢复。
 
 Windows 人工验收步骤见 [`../docs/project-builder-mvp-windows-acceptance.md`](../docs/project-builder-mvp-windows-acceptance.md)。
+
+Windows 运行日志保存在 `%LOCALAPPDATA%\EarphoneProjectBuilder\logs\builder.log`，也可以点击程序顶部的“打开日志”进入目录。日志记录任务阶段、数量和异常，不记录 CSV 行内容。

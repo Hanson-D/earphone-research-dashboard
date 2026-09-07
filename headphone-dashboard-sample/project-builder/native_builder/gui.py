@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QSplitter,
     QTabWidget,
@@ -34,8 +35,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .core import FIELD_ROLE_LABELS, infer_field_role, mapping_overrides, restore_slots, set_slot, swap_device_groups, swap_ear_groups, swap_slots
+from .core import FIELD_ROLE_LABELS, infer_field_role, mapping_overrides, parts_include, path_parts, restore_slots, set_slot, swap_device_groups, swap_ear_groups, swap_slots
 from .project_service import BuildRequest, BuildResult, ProjectService
+from .runtime_log import configure_runtime_logging, get_logger
 
 
 MODE_LABELS = {
@@ -45,21 +47,24 @@ MODE_LABELS = {
     "all": "更新 CSV + 照片",
     "mapping": "仅更新映射",
 }
+LOGGER = get_logger()
 
 
 class Worker(QObject):
     completed = Signal(object)
     failed = Signal(str)
+    progress = Signal(str, int)
     finished = Signal()
 
-    def __init__(self, callback: Callable[[], Any]):
+    def __init__(self, callback: Callable[[Callable[[str, int], None]], Any]):
         super().__init__()
         self.callback = callback
 
     def run(self) -> None:
         try:
-            self.completed.emit(self.callback())
+            self.completed.emit(self.callback(self.progress.emit))
         except Exception as error:
+            LOGGER.exception("background task failed")
             self.failed.emit(str(error))
         finally:
             self.finished.emit()
@@ -111,6 +116,8 @@ class PhotoCard(QFrame):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.log_path = configure_runtime_logging()
+        LOGGER.info("application started")
         self.setWindowTitle("耳机研究项目制作器 · MVP")
         self.resize(1320, 860)
         self.service = ProjectService()
@@ -140,6 +147,13 @@ class MainWindow(QMainWindow):
         self.status = QLabel("请选择 CSV 和照片目录，或打开已有项目")
         toolbar.addSeparator()
         toolbar.addWidget(self.status)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setFixedWidth(180)
+        self.progress.hide()
+        toolbar.addWidget(self.progress)
+        log_action = toolbar.addAction("打开日志")
+        log_action.triggered.connect(self.open_log_folder)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -295,19 +309,30 @@ class MainWindow(QMainWindow):
         self._choose_project()
         if not self.project_path.text():
             return
-        try:
-            project, directory, _ = self.service.load_project(self.project_path.text())
-            self.project_name.setText(project.get("title") or directory.name)
-            self.update_mode.setCurrentIndex(self.update_mode.findData("mapping"))
-            self.mapping_mode.setCurrentIndex(max(0, self.mapping_mode.findData(project.get("mappingMode", "sequence"))))
-            self.views.setText(",".join(project.get("mappingViews") or []))
-            fields = project.get("mappingFields") or {}
-            self.photo_ear_mode.setChecked(bool(fields.get("photoEarMode")))
-            self.single_ear.setChecked(bool(fields.get("singleEarMode")))
-            self.include_bare.setChecked(bool(fields.get("includeBareEarPhotos")))
-            self.status.setText(f"已打开：{project.get('title') or directory.name}；点击“读取并预览”加载映射")
-        except Exception as error:
-            QMessageBox.critical(self, "项目打开失败", str(error))
+        selected = self.project_path.text()
+        self._run_async(
+            lambda progress: self._load_project_task(selected, progress),
+            self._project_opened,
+            "正在读取项目 JSON…",
+        )
+
+    def _load_project_task(self, selected: str, progress: Callable[[str, int], None]) -> tuple[dict[str, Any], Path, Path]:
+        progress("正在读取项目 JSON…", 20)
+        result = self.service.load_project(selected)
+        progress(f"项目 JSON 已读取：{len(result[0].get('rows') or [])} 行", 95)
+        return result
+
+    def _project_opened(self, result: tuple[dict[str, Any], Path, Path]) -> None:
+        project, directory, _ = result
+        self.project_name.setText(project.get("title") or directory.name)
+        self.update_mode.setCurrentIndex(self.update_mode.findData("mapping"))
+        self.mapping_mode.setCurrentIndex(max(0, self.mapping_mode.findData(project.get("mappingMode", "sequence"))))
+        self.views.setText(",".join(project.get("mappingViews") or []))
+        fields = project.get("mappingFields") or {}
+        self.photo_ear_mode.setChecked(bool(fields.get("photoEarMode")))
+        self.single_ear.setChecked(bool(fields.get("singleEarMode")))
+        self.include_bare.setChecked(bool(fields.get("includeBareEarPhotos")))
+        self.status.setText(f"已打开：{project.get('title') or directory.name}；点击“读取并预览”加载映射")
 
     def reset(self) -> None:
         self.prepared = None
@@ -344,7 +369,7 @@ class MainWindow(QMainWindow):
 
     def preview(self) -> None:
         request = self._request()
-        self._run_async(lambda: self.service.prepare(request), self._preview_ready, "正在读取 CSV、索引照片并生成映射…")
+        self._run_async(lambda progress: self.service.prepare(request, progress), self._preview_ready, "正在读取 CSV、索引照片并生成映射…")
 
     def _preview_ready(self, prepared: BuildResult) -> None:
         self.prepared = prepared
@@ -402,12 +427,13 @@ class MainWindow(QMainWindow):
     def _fill_users(self, prepared: BuildResult) -> None:
         self.user_list.clear()
         self.unused_list.clear()
-        users = []
+        user_missing: dict[str, int] = {}
         for slot in prepared.mapping.slots:
-            if slot["user"] not in users:
-                users.append(slot["user"])
-        for user in users:
-            missing = sum(1 for slot in prepared.mapping.slots if slot["user"] == user and not slot["value"])
+            user = slot["user"]
+            user_missing.setdefault(user, 0)
+            if not slot["value"]:
+                user_missing[user] += 1
+        for user, missing in user_missing.items():
             self.user_list.addItem(f"{user}  {'缺失 ' + str(missing) if missing else '正常'}")
         for value in prepared.mapping.unused_photos:
             self.unused_list.addItem(value)
@@ -427,7 +453,11 @@ class MainWindow(QMainWindow):
         if not self.prepared:
             return
         user = self._current_user()
-        candidates = [photo.relative_path for photo in self.prepared.photos]
+        candidates = [
+            photo.relative_path
+            for photo in self.prepared.photos
+            if parts_include(path_parts(photo), user)
+        ]
         photo_by_value = {photo.relative_path: photo for photo in self.prepared.photos}
         slots = [(index, slot) for index, slot in enumerate(self.prepared.mapping.slots) if slot["user"] == user]
         missing_thumbnails = []
@@ -446,7 +476,7 @@ class MainWindow(QMainWindow):
             self._thumbnail_jobs.add(user)
             unique = list({photo.relative_path: photo for photo in missing_thumbnails}.values())
             self._run_async(
-                lambda: [self.service.index.thumbnail(photo_root, photo) for photo in unique],
+                lambda progress: [self.service.index.thumbnail(photo_root, photo) for photo in unique],
                 lambda _result, expected=user: self._thumbnails_ready(expected),
                 f"正在为 {user} 生成 {len(unique)} 张缩略图…",
             )
@@ -527,7 +557,7 @@ class MainWindow(QMainWindow):
 
     def publish(self) -> None:
         request = self._request()
-        self._run_async(lambda: self.service.prepare(request), self._confirm_publish, "正在重新计算发布候选版本…")
+        self._run_async(lambda progress: self.service.prepare(request, progress), self._confirm_publish, "正在重新计算发布候选版本…")
 
     def _confirm_publish(self, prepared: BuildResult) -> None:
         details = json.dumps(prepared.diff, ensure_ascii=False, indent=2)
@@ -535,22 +565,49 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.Yes:
             self.status.setText("已取消发布，原项目未改变")
             return
-        self._run_async(lambda: self.service.publish(prepared), self._published, "正在原子发布项目…")
+        self._run_async(lambda progress: self.service.publish(prepared), self._published, "正在原子发布项目…")
 
     def _published(self, result: BuildResult) -> None:
         self.prepared = result
         self.status.setText(f"发布完成：{result.output_path}")
         QMessageBox.information(self, "发布完成", f"项目已写入：\n{result.output_path}")
 
-    def _run_async(self, callback: Callable[[], Any], on_success: Callable[[Any], None], status: str) -> None:
+    def open_log_folder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.log_path.parent)))
+
+    def _set_progress(self, message: str, percent: int) -> None:
+        self.status.setText(message)
+        self.progress.setValue(max(0, min(100, percent)))
+        self.progress.show()
+
+    def _task_failed(self, message: str) -> None:
+        self.progress.hide()
+        self.status.setText(f"失败：{message}")
+        QMessageBox.critical(self, "操作失败", f"{message}\n\n运行日志：\n{self.log_path}")
+
+    def _task_completed(self, result: Any, on_success: Callable[[Any], None]) -> None:
+        self._set_progress("正在构建预览界面…", 98)
+        QApplication.processEvents()
+        try:
+            on_success(result)
+        except Exception as error:
+            LOGGER.exception("result rendering failed")
+            self._task_failed(str(error))
+        else:
+            self.progress.hide()
+
+    def _run_async(self, callback: Callable[[Callable[[str, int], None]], Any], on_success: Callable[[Any], None], status: str) -> None:
         self.status.setText(status)
+        self.progress.setValue(0)
+        self.progress.show()
+        LOGGER.info("task started status=%s", status)
         thread = QThread(self)
         worker = Worker(callback)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.completed.connect(on_success)
-        worker.failed.connect(lambda message: QMessageBox.critical(self, "操作失败", message))
-        worker.failed.connect(lambda message: self.status.setText(f"失败：{message}"))
+        worker.progress.connect(self._set_progress)
+        worker.completed.connect(lambda result: self._task_completed(result, on_success))
+        worker.failed.connect(self._task_failed)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)

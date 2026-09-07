@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .project_service import BuildRequest, ProjectService
+from .runtime_log import configure_runtime_logging
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -161,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.self_check:
         return run_self_check(args.self_check)
+    configure_runtime_logging()
     if args.command in {None, "gui"}:
         try:
             from .gui import run_gui

@@ -4,6 +4,7 @@ import hashlib
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Callable
 
 from .core import IMAGE_EXTENSIONS, PhotoFile, natural_key
 
@@ -36,11 +37,11 @@ class PhotoIndex:
         with self._lock:
             self.connection.close()
 
-    def scan(self, root: str | Path) -> list[PhotoFile]:
+    def scan(self, root: str | Path, progress: Callable[[int], None] | None = None) -> list[PhotoFile]:
         with self._lock:
-            return self._scan(root)
+            return self._scan(root, progress)
 
-    def _scan(self, root: str | Path) -> list[PhotoFile]:
+    def _scan(self, root: str | Path, progress: Callable[[int], None] | None = None) -> list[PhotoFile]:
         root_path = Path(root).expanduser().resolve()
         if not root_path.is_dir():
             raise ValueError(f"照片目录不存在：{root_path}")
@@ -60,6 +61,8 @@ class PhotoIndex:
             photo = PhotoFile.from_path(root_path, path)
             found.add(photo.relative_path)
             photos.append(photo)
+            if progress and len(photos) % 100 == 0:
+                progress(len(photos))
             old = existing.get(photo.relative_path)
             if not old or old[1] != photo.size or old[2] != photo.mtime_ns:
                 self.connection.execute(
@@ -77,6 +80,8 @@ class PhotoIndex:
                 [(root_key, item) for item in stale],
             )
         self.connection.commit()
+        if progress:
+            progress(len(photos))
         return sorted(photos, key=lambda item: natural_key(item.relative_path))
 
     def thumbnail(self, root: str | Path, photo: PhotoFile, size: int = 240) -> Path | None:
