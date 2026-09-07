@@ -712,7 +712,13 @@
   function folderPartMatches(part, value) {
     const token = normalizeToken(value);
     const folder = normalizeToken(part);
-    return token && folder && (folder === token || folder.includes(token) || token.includes(folder));
+    if (!token || !folder) return false;
+    if (folder === token) return true;
+    const valueEar = ["左", "左耳", "左侧", "l", "left", "leftear", "右", "右耳", "右侧", "r", "right", "rightear"].includes(token) ? inferEarLabel(value) : "";
+    if (valueEar && inferEarLabel(part) === valueEar) return true;
+    return String(part || "")
+      .split(/[_\-—–/\\()[\]{}【】（）:：,，.。]+/g)
+      .some(segment => normalizeToken(segment) === token);
   }
 
   function partsInclude(parts, value) {
@@ -824,39 +830,54 @@
   }
 
   function expandRowsForPhotoCombos(rows = [], files = [], options = {}) {
-    const { mode = "sequence", userField, earField, deviceField, views = [] } = options;
-    if (mode !== "folders") return rows.map(row => ({ ...row }));
-    const combos = inferFolderPhotoCombos(rows, files, options);
-    if (!combos.length) return rows.map(row => ({ ...row }));
+    // CSV rows are the source of truth. Folder contents may fill photo fields,
+    // but must never merge, delete, or synthesize analysis records.
+    return rows.map(row => ({ ...row }));
+  }
 
-    const templatesByUser = new Map();
-    rows.forEach(row => {
-      const user = row[userField];
-      if (user && !templatesByUser.has(user)) templatesByUser.set(user, row);
+  function folderValueLookup(values = []) {
+    const lookup = new Map();
+    values.forEach(value => {
+      const key = normalizeToken(value);
+      if (key && !lookup.has(key)) lookup.set(key, value);
     });
+    return lookup;
+  }
 
-    const existingRowsByIdentity = new Map();
-    const existingCombos = new Set();
-    rows.forEach(row => {
-      const identity = folderRowIdentityKey(row, options);
-      if (!existingRowsByIdentity.has(identity)) existingRowsByIdentity.set(identity, row);
-      existingCombos.add(folderPhotoComboKey(row, options));
+  function folderPartTokens(part) {
+    const tokens = [normalizeToken(part)];
+    String(part || "")
+      .split(/[_\-—–/\\()[\]{}【】（）:：,，.。]+/g)
+      .forEach(segment => tokens.push(normalizeToken(segment)));
+    return [...new Set(tokens.filter(Boolean))];
+  }
+
+  function canonicalFolderValue(parts = [], lookup = new Map()) {
+    for (const part of parts) {
+      for (const token of folderPartTokens(part)) {
+        if (lookup.has(token)) return lookup.get(token);
+      }
+    }
+    return "";
+  }
+
+  function folderSlotKey(...values) {
+    return values.map(normalizeToken).join("|||");
+  }
+
+  function appendFolderIndex(index, key, file) {
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(file);
+  }
+
+  function uniquePhotoFiles(files = []) {
+    const seen = new Set();
+    return files.filter(file => {
+      const value = photoFileValue(file);
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
     });
-
-    const expanded = [...existingRowsByIdentity.values()].map(row => ({ ...row }));
-    combos.forEach(combo => {
-      const key = folderPhotoComboKey(combo, options);
-      if (existingCombos.has(key)) return;
-      const source = templatesByUser.get(combo.user) || {};
-      const row = {
-        ...source,
-        [userField]: combo.user
-      };
-      if (deviceField) row[deviceField] = combo.device;
-      expanded.push(row);
-    });
-
-    return expanded;
   }
 
   function inferSingleDeviceSelections(rows = [], files = [], options = {}) {
@@ -895,7 +916,6 @@
     const bareDescriptors = bareEarDescriptors(expandedRows, { ...effectiveOptions, mode, files });
     const bareDescriptorFields = new Set(bareDescriptors.map(item => item.field));
     const photoFields = [...bareDescriptors.map(item => item.field), ...descriptors.map(item => item.field)];
-    const singleDeviceSelections = mode === "folders" ? inferSingleDeviceSelections(expandedRows, files, { ...effectiveOptions, views }) : new Map();
     const folderEars = mode === "folders" ? combinedEarValues(expandedRows, earField, files, expectedEars) : [];
     const applicableDescriptors = row => descriptors.filter(item =>
       mode === "folders" || !item.ear || !earField || !row[earField] || folderPartMatches(row[earField], item.ear)
@@ -906,9 +926,52 @@
       const bareOverrideValues = new Set(Object.entries(overrides)
         .filter(([key, value]) => /::bare_ear_photo/.test(key) && value)
         .map(([, value]) => value));
+      const sortedFiles = files.slice().sort((a, b) => naturalCompare(
+        a.relative_path || a.name || a.absolute_path,
+        b.relative_path || b.name || b.absolute_path
+      ));
+      const userLookup = folderValueLookup(uniqueValues(expandedRows, userField));
+      const deviceLookup = folderValueLookup(uniqueValues(expandedRows, deviceField));
+      const viewLookup = folderValueLookup(views);
+      const parsedFiles = sortedFiles.map(file => {
+        const parts = pathParts(file);
+        const user = canonicalFolderValue(parts, userLookup);
+        const ear = firstEarInParts(parts);
+        const view = canonicalFolderValue(parts, viewLookup);
+        const device = deviceField ? canonicalFolderValue(parts, deviceLookup) : "";
+        const residual = residualFolderParts(parts, [user, ...folderEars, view]);
+        return { file, parts, user, ear, view, device, inferredDevice: residual[0] || "", bare: pathHasBareEar(file) };
+      });
+      const singleDeviceSelections = new Map();
+      if (!deviceField) {
+        parsedFiles.forEach(item => {
+          if (item.bare || !item.user || !item.inferredDevice) return;
+          if (!singleDeviceSelections.has(item.user)) singleDeviceSelections.set(item.user, new Map());
+          singleDeviceSelections.get(item.user).set(normalizeToken(item.inferredDevice), item.inferredDevice);
+        });
+        singleDeviceSelections.forEach((candidatesByToken, user) => {
+          const candidates = [...candidatesByToken.values()].sort(naturalCompare);
+          singleDeviceSelections.set(user, { selected: candidates[0], candidates });
+        });
+      }
+      const bareIndex = new Map();
+      const deviceIndex = new Map();
+      parsedFiles.forEach(item => {
+        if (!item.user) return;
+        if (item.bare) {
+          appendFolderIndex(bareIndex, folderSlotKey(item.user, item.ear), item.file);
+          if (item.ear) appendFolderIndex(bareIndex, folderSlotKey(item.user, ""), item.file);
+          return;
+        }
+        if (!item.view || (deviceField && !item.device)) return;
+        if (bareOverrideValues.has(photoFileValue(item.file))) return;
+        const singleDevice = singleDeviceSelections.get(item.user);
+        if (singleDevice && item.inferredDevice && !folderPartMatches(item.inferredDevice, singleDevice.selected)) return;
+        const indexedDevice = deviceField ? item.device : "";
+        appendFolderIndex(deviceIndex, folderSlotKey(item.user, indexedDevice, item.ear, item.view), item.file);
+        if (item.ear) appendFolderIndex(deviceIndex, folderSlotKey(item.user, indexedDevice, "", item.view), item.file);
+      });
       expandedRows.forEach((row, rowIndex) => {
-        const matchedFiles = [];
-        const extras = [];
         const user = row[userField] || `第 ${rowIndex + 1} 行`;
         const review = reviewMap.get(user) || {
           user,
@@ -918,55 +981,69 @@
           expected: 0,
           bareSlots: [],
           notes: [],
-          status: "ok"
+          status: "ok",
+          matchedSlots: 0,
+          missingSlots: 0,
+          _slotKeys: new Set(),
+          _fileValues: new Set()
         };
-        const existingBareKeys = new Set(review.bareSlots.map(slot => slot.field));
         const bareSlots = bareEarDescriptorsForEntries([{ row, rowIndex }], { ...effectiveOptions, mode })
           .filter(slot => bareDescriptorFields.has(slot.field));
         bareSlots.forEach(slot => {
-          if (existingBareKeys.has(slot.field)) return;
           const overrideKey = `${rowIndex}::${slot.field}`;
-          const candidates = files
-            .slice()
-            .sort((a, b) => naturalCompare(a.relative_path || a.name, b.relative_path || b.name))
-            .filter(candidate => {
-              const parts = pathParts(candidate);
-              return pathHasBareEar(candidate) &&
-                partsInclude(parts, row[userField]) &&
-                (!slot.ear || partsInclude(parts, slot.ear));
-            });
+          const candidates = bareIndex.get(folderSlotKey(row[userField], slot.ear)) || [];
           const file = candidates[0];
           const value = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(file);
           mapped[rowIndex][slot.field] = value;
-          if (value) bareOverrideValues.add(value);
-          if (file) matchedFiles.push(file);
-          review.bareSlots.push({ ...slot, rowIndex, value });
+          const logicalKey = folderSlotKey("bare", row[userField], slot.ear || slot.field);
+          if (!review._slotKeys.has(logicalKey)) {
+            review._slotKeys.add(logicalKey);
+            review.bareSlots.push({ ...slot, rowIndex, value });
+            if (value) review.matchedSlots += 1;
+            else review.missingSlots += 1;
+            candidates.forEach(candidate => {
+              const candidateValue = photoFileValue(candidate);
+              if (!review._fileValues.has(candidateValue)) {
+                review._fileValues.add(candidateValue);
+                review.files.push(candidate);
+              }
+            });
+            if (candidates.length > 1) review.extras.push({
+              row,
+              rowIndex,
+              field: slot.field,
+              view: slot.label,
+              files: candidates.slice(1)
+            });
+          }
         });
         const applicable = applicableDescriptors(row);
         applicable.forEach(item => {
           const overrideKey = `${rowIndex}::${item.field}`;
-          const candidates = files
-            .slice()
-            .sort((a, b) => naturalCompare(a.relative_path || a.name, b.relative_path || b.name))
-            .filter(candidate => {
-              const parts = pathParts(candidate);
-              const singleDevice = singleDeviceSelections.get(row[userField]);
-              const inferredDevice = singleDevice ? residualFolderParts(parts, [row[userField], ...folderEars, item.view])[0] || "" : "";
-              return !pathHasBareEar(candidate) &&
-                ![candidate.relative_path, candidate.absolute_path, candidate.path].some(value => bareOverrideValues.has(value)) &&
-                partsInclude(parts, row[userField]) &&
-                (!item.ear || partsInclude(parts, item.ear)) &&
-                (!singleEarInfo.forced || !singleEarInfo.ear || !firstEarInParts(parts) || partsInclude(parts, singleEarInfo.ear)) &&
-                (mode === "folders" || !earField || !row[earField] || partsInclude(parts, row[earField])) &&
-                (!deviceField || partsInclude(parts, row[deviceField])) &&
-                (!singleDevice || !inferredDevice || folderPartMatches(inferredDevice, singleDevice.selected)) &&
-                partsInclude(parts, item.view);
-            });
+          const requestedEar = item.ear || (singleEarInfo.forced ? singleEarInfo.ear : "");
+          const candidates = deviceIndex.get(folderSlotKey(
+            row[userField],
+            deviceField ? row[deviceField] : "",
+            requestedEar,
+            item.view
+          )) || [];
           const file = candidates[0];
-          if (file) matchedFiles.push(file);
-          if (candidates.length > 1) {
-            matchedFiles.push(...candidates.slice(1));
-            extras.push({
+          const value = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(file);
+          mapped[rowIndex][item.field] = value;
+          const logicalKey = folderSlotKey("device", row[userField], deviceField ? row[deviceField] : "", requestedEar, item.view);
+          if (!review._slotKeys.has(logicalKey)) {
+            review._slotKeys.add(logicalKey);
+            review.expected += 1;
+            if (value) review.matchedSlots += 1;
+            else review.missingSlots += 1;
+            candidates.forEach(candidate => {
+              const candidateValue = photoFileValue(candidate);
+              if (!review._fileValues.has(candidateValue)) {
+                review._fileValues.add(candidateValue);
+                review.files.push(candidate);
+              }
+            });
+            if (candidates.length > 1) review.extras.push({
               row,
               rowIndex,
               field: item.field,
@@ -974,21 +1051,19 @@
               files: candidates.slice(1)
             });
           }
-          mapped[rowIndex][item.field] = overrideKey in overrides ? overrides[overrideKey] : photoFileValue(file);
         });
-        const expected = applicable.length;
         review.entries.push({ row, rowIndex });
-        review.files.push(...matchedFiles);
-        review.extras.push(...extras);
-        review.expected += expected;
         const note = singleDeviceSelections.get(row[userField])?.candidates.length > 1 ?
           `未配置设备字段，已按自然排序使用第一套设备：${singleDeviceSelections.get(row[userField]).selected}` : "";
         if (note && !review.notes.includes(note)) review.notes.push(note);
-        const totalExpected = review.expected + review.bareSlots.length;
-        review.status = review.files.length === totalExpected ? "ok" : review.files.length < totalExpected ? "missing" : "extra";
+        review.status = review.extras.length ? "extra" : review.missingSlots ? "missing" : "ok";
         reviewMap.set(user, review);
       });
-      const reviews = [...reviewMap.values()];
+      const reviews = [...reviewMap.values()].map(review => {
+        delete review._slotKeys;
+        delete review._fileValues;
+        return review;
+      });
       return { mapped, reviews, photoFields, photoViews: descriptors };
     }
 
@@ -1059,11 +1134,15 @@
     const { deviceField = "", viewLabels = {} } = options;
     const auditRows = [];
     reviews.forEach(review => {
+      const missingKeys = new Set();
       review.entries.forEach(entry => {
         photoFields.forEach(field => {
           if (String(field).startsWith("bare_ear_photo")) return;
           const row = mappedRows[entry.rowIndex] || {};
           if (row[field]) return;
+          const key = folderSlotKey(review.user, deviceField ? entry.row[deviceField] : "", field);
+          if (missingKeys.has(key)) return;
+          missingKeys.add(key);
           auditRows.push({
             status: "missing",
             user: review.user,
@@ -1101,7 +1180,8 @@
           });
         });
       });
-      if (review.files.length > review.expected) {
+      const totalExpected = review.expected + (review.bareSlots || []).length;
+      if (review.files.length > totalExpected) {
         auditRows.push({
           status: "extra",
           user: review.user,
@@ -1109,7 +1189,7 @@
           rowIndex: "",
           field: "",
           view: "",
-          message: `照片过多：实际 ${review.files.length} 张，预期 ${review.expected} 张`
+          message: `照片过多：实际 ${review.files.length} 张，预期 ${totalExpected} 张`
         });
       }
       (review.notes || []).forEach(note => {
@@ -1460,6 +1540,7 @@
     naturalCompare,
     photoFieldNames,
     photoFilesFromBrowserSelection,
+    folderPartMatches,
     folderEarValues,
     combinedEarValues,
     resolveSingleEarMode,

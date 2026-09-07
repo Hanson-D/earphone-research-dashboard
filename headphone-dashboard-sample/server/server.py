@@ -7,6 +7,10 @@ import re
 import shutil
 import socket
 import sys
+import tempfile
+import threading
+import time
+from email.utils import formatdate, parsedate_to_datetime
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,8 +35,17 @@ PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 DEFAULT_PORT = 7362
 PORT_SEARCH_LIMIT = 100
 DEFAULT_HOST = "0.0.0.0"
-PHOTO_SCAN_CACHE_VERSION = 1
-PHOTO_THUMB_CACHE_VERSION = 1
+PHOTO_SCAN_CACHE_VERSION = 2
+PHOTO_THUMB_CACHE_VERSION = 2
+PHOTO_THUMB_CACHE_MAX_BYTES = 512 * 1024 * 1024
+PHOTO_THUMB_CACHE_MAX_FILES = 20000
+PHOTO_THUMB_CACHE_CLEANUP_INTERVAL_SECONDS = 300
+PHOTO_THUMB_CACHE_TARGET_RATIO = 0.9
+PHOTO_THUMB_LOCKS = tuple(threading.Lock() for _ in range(64))
+PHOTO_THUMB_CLEANUP_LOCK = threading.Lock()
+PHOTO_THUMB_NEXT_CLEANUP = 0.0
+PHOTO_ASSET_MANIFEST_VERSION = 1
+PHOTO_ASSET_MANIFEST_LOCK = threading.Lock()
 CSRF_COOKIE = "dashboard_csrf"
 CLIENT_TOKEN_COOKIE_PREFIX = "dashboard_client_token_"
 
@@ -111,6 +124,12 @@ def server_project_photo_root(project_id):
     if not is_valid_project_id(project_id):
         raise ValueError("项目 ID 只能包含字母、数字、下划线和连字符，长度 1-64。")
     return project_root() / f"{project_id}_assets" / "photos"
+
+
+def server_project_photo_manifest_path(project_id):
+    if not is_valid_project_id(project_id):
+        raise ValueError("项目 ID 只能包含字母、数字、下划线和连字符，长度 1-64。")
+    return project_root() / f"{project_id}_assets" / ".photo-assets.json"
 
 
 def bare_ear_library_root():
@@ -229,10 +248,95 @@ def local_project_path_from_payload(value):
     return project_path
 
 
-def save_project_asset_file(project_path_value, kind, relative_value, data):
+def photo_asset_manifest_path(project_path_value):
+    project_path = local_project_path_from_payload(project_path_value)
+    return project_path.parent / "data" / ".photo-assets.json"
+
+
+def read_photo_asset_manifest(path):
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {"version": PHOTO_ASSET_MANIFEST_VERSION, "assets": {}}
+    assets = payload.get("assets") if isinstance(payload, dict) else None
+    return {"version": PHOTO_ASSET_MANIFEST_VERSION, "assets": assets if isinstance(assets, dict) else {}}
+
+
+def write_photo_asset_manifest(path, manifest):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.stem}-", suffix=".tmp", dir=str(path.parent)
+    )
+    os.close(file_descriptor)
+    temporary_path = Path(temporary_name)
+    try:
+        temporary_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary_path, path)
+    finally:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def normalized_asset_source_metadata(size_value=None, last_modified_value=None):
+    try:
+        size = int(size_value) if size_value not in (None, "") else None
+    except (TypeError, ValueError):
+        size = None
+    try:
+        last_modified = int(last_modified_value) if last_modified_value not in (None, "") else None
+    except (TypeError, ValueError):
+        last_modified = None
+    return size, last_modified
+
+
+def photo_asset_status_for_target(target, project_relative, manifest_path, manifest_key,
+                                  size_value=None, last_modified_value=None):
+    exists = target.is_file()
+    actual_size = target.stat().st_size if exists else None
+    expected_size, expected_last_modified = normalized_asset_source_metadata(size_value, last_modified_value)
+    record = read_photo_asset_manifest(manifest_path)["assets"].get(manifest_key, {})
+    source_matches = (
+        exists and expected_size is not None and expected_last_modified is not None and
+        actual_size == expected_size and record.get("relativePath") == manifest_key and
+        record.get("size") == expected_size and
+        record.get("sourceLastModified") == expected_last_modified
+    )
+    return {
+        "path": project_relative,
+        "exists": exists,
+        "size": actual_size,
+        "sizeMatches": exists and expected_size is not None and actual_size == expected_size,
+        "sourceMatches": source_matches,
+        "unchanged": source_matches,
+    }
+
+
+def record_photo_asset(manifest_path, manifest_key, size_value, last_modified_value):
+    size, last_modified = normalized_asset_source_metadata(size_value, last_modified_value)
+    if size is None or last_modified is None:
+        return
+    with PHOTO_ASSET_MANIFEST_LOCK:
+        manifest = read_photo_asset_manifest(manifest_path)
+        manifest["assets"][manifest_key] = {
+            "relativePath": manifest_key,
+            "size": size,
+            "sourceLastModified": last_modified,
+        }
+        write_photo_asset_manifest(manifest_path, manifest)
+
+
+def save_project_asset_file(project_path_value, kind, relative_value, data, source_last_modified=None):
     target, project_relative = project_asset_target(project_path_value, kind, relative_value)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
+    if kind == "photo":
+        record_photo_asset(
+            photo_asset_manifest_path(project_path_value),
+            safe_relative_photo_path(relative_value).as_posix(),
+            len(data), source_last_modified,
+        )
     return {"path": project_relative.as_posix(), "bytes": len(data)}
 
 
@@ -254,8 +358,13 @@ def project_asset_target(project_path_value, kind, relative_value):
     return target, project_relative
 
 
-def project_asset_status(project_path_value, kind, relative_value, size_value=None):
+def project_asset_status(project_path_value, kind, relative_value, size_value=None, last_modified_value=None):
     target, project_relative = project_asset_target(project_path_value, kind, relative_value)
+    if kind == "photo":
+        return photo_asset_status_for_target(
+            target, project_relative.as_posix(), photo_asset_manifest_path(project_path_value),
+            safe_relative_photo_path(relative_value).as_posix(), size_value, last_modified_value,
+        )
     exists = target.is_file()
     actual_size = target.stat().st_size if exists else None
     try:
@@ -348,7 +457,7 @@ def list_local_project_files():
     roots = project_scan_roots()
     roots[0].mkdir(parents=True, exist_ok=True)
     projects = []
-    ignored_parts = {"exports", "photos", "bare_ears"}
+    ignored_parts = {".cache", "data", "exports", "photos", "bare_ears"}
     seen = set()
     for root in roots:
         if not root.is_dir():
@@ -473,11 +582,85 @@ def photo_thumbnail_cache_path(path, max_size=360):
         "version": PHOTO_THUMB_CACHE_VERSION,
         "path": str(path.resolve()),
         "mtimeNs": stat.st_mtime_ns,
+        "ctimeNs": stat.st_ctime_ns,
         "size": stat.st_size,
         "maxSize": int(max_size),
     }
     key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
     return photo_thumbnail_cache_dir() / f"{key}.jpg"
+
+
+def cleanup_photo_thumbnail_cache(max_bytes=None, max_files=None, protected_paths=()):
+    directory = photo_thumbnail_cache_dir()
+    byte_limit = PHOTO_THUMB_CACHE_MAX_BYTES if max_bytes is None else max(0, int(max_bytes))
+    file_limit = PHOTO_THUMB_CACHE_MAX_FILES if max_files is None else max(0, int(max_files))
+    protected = {Path(path).resolve() for path in protected_paths}
+    entries = []
+    total_bytes = 0
+    for path in directory.glob("*.jpg"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        total_bytes += stat.st_size
+        entries.append((stat.st_mtime_ns, path, stat.st_size))
+    if len(entries) <= file_limit and total_bytes <= byte_limit:
+        return {"removed": 0, "bytes": 0}
+
+    target_files = int(file_limit * PHOTO_THUMB_CACHE_TARGET_RATIO)
+    target_bytes = int(byte_limit * PHOTO_THUMB_CACHE_TARGET_RATIO)
+    removed = 0
+    removed_bytes = 0
+    entries.sort(key=lambda item: item[0])
+    for _, path, size in entries:
+        if len(entries) - removed <= target_files and total_bytes - removed_bytes <= target_bytes:
+            break
+        if path.resolve() in protected:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        removed += 1
+        removed_bytes += size
+    return {"removed": removed, "bytes": removed_bytes}
+
+
+def maybe_cleanup_photo_thumbnail_cache(protected_path=None, force=False):
+    global PHOTO_THUMB_NEXT_CLEANUP
+    now = time.monotonic()
+    if not force and now < PHOTO_THUMB_NEXT_CLEANUP:
+        return
+    if not PHOTO_THUMB_CLEANUP_LOCK.acquire(blocking=False):
+        return
+    try:
+        now = time.monotonic()
+        if not force and now < PHOTO_THUMB_NEXT_CLEANUP:
+            return
+        protected = [protected_path] if protected_path else []
+        cleanup_photo_thumbnail_cache(protected_paths=protected)
+        PHOTO_THUMB_NEXT_CLEANUP = now + PHOTO_THUMB_CACHE_CLEANUP_INTERVAL_SECONDS
+    finally:
+        PHOTO_THUMB_CLEANUP_LOCK.release()
+
+
+def save_photo_thumbnail_atomic(image, cache_path):
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{cache_path.stem}-",
+        suffix=".tmp",
+        dir=str(cache_path.parent),
+    )
+    os.close(file_descriptor)
+    temporary_path = Path(temporary_name)
+    try:
+        image.save(temporary_path, "JPEG", quality=82, optimize=True)
+        os.replace(temporary_path, cache_path)
+    finally:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def generate_photo_thumbnail(path, max_size=360):
@@ -487,27 +670,68 @@ def generate_photo_thumbnail(path, max_size=360):
         return cache_path
     if Image is None:
         return None
-    try:
-        with Image.open(path) as image:
-            image = ImageOps.exif_transpose(image)
-            image.thumbnail((max_size, max_size))
-            if image.mode not in ("RGB", "L"):
-                image = image.convert("RGB")
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            image.save(cache_path, "JPEG", quality=82, optimize=True)
-    except (OSError, UnidentifiedImageError):
-        return None
+    lock_key = int(cache_path.stem[:8], 16) % len(PHOTO_THUMB_LOCKS)
+    with PHOTO_THUMB_LOCKS[lock_key]:
+        if cache_path.is_file():
+            return cache_path
+        try:
+            with Image.open(path) as image:
+                image = ImageOps.exif_transpose(image)
+                image.thumbnail((max_size, max_size))
+                if image.mode not in ("RGB", "L"):
+                    image = image.convert("RGB")
+                save_photo_thumbnail_atomic(image, cache_path)
+        except (OSError, UnidentifiedImageError):
+            return None
+    maybe_cleanup_photo_thumbnail_cache(cache_path)
     return cache_path
+
+
+def photo_scan_directory_digest(root):
+    digest = hashlib.sha256()
+    directory_count = 0
+    image_file_count = 0
+    for current, directories, filenames in os.walk(root, followlinks=False):
+        directories.sort(key=str.casefold)
+        filenames.sort(key=str.casefold)
+        current_path = Path(current)
+        try:
+            stat = current_path.stat()
+            relative = current_path.relative_to(root).as_posix()
+        except (OSError, ValueError):
+            continue
+        digest.update(relative.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(stat.st_ctime_ns).encode("ascii"))
+        digest.update(b"\n")
+        directory_count += 1
+        for filename in filenames:
+            if Path(filename).suffix.lower() not in IMAGE_EXTENSIONS:
+                continue
+            relative_file = (Path(relative) / filename).as_posix()
+            digest.update(b"f\0")
+            digest.update(relative_file.encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\n")
+            image_file_count += 1
+    return {
+        "directoryCount": directory_count,
+        "imageFileCount": image_file_count,
+        "directoryDigest": digest.hexdigest(),
+    }
 
 
 def photo_scan_signature(root):
     stat = root.stat()
-    return {
+    signature = {
         "version": PHOTO_SCAN_CACHE_VERSION,
-        "root": str(root),
+        "root": str(root.resolve()),
         "mtimeNs": stat.st_mtime_ns,
         "ctimeNs": stat.st_ctime_ns,
     }
+    signature.update(photo_scan_directory_digest(root))
+    return signature
 
 
 def read_photo_scan_cache(root):
@@ -529,7 +753,22 @@ def write_photo_scan_cache(root, photos):
         "signature": photo_scan_signature(root),
         "photos": photos,
     }
-    photo_scan_cache_path(root).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    cache_path = photo_scan_cache_path(root)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{cache_path.stem}-",
+        suffix=".tmp",
+        dir=str(cache_path.parent),
+    )
+    os.close(file_descriptor)
+    temporary_path = Path(temporary_name)
+    try:
+        temporary_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        os.replace(temporary_path, cache_path)
+    finally:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def scan_photo_root(root, force=False):
@@ -870,7 +1109,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             path = query.get("path", [""])[0]
             length = int(self.headers.get("Content-Length", "0"))
             data = self.rfile.read(length)
-            result = save_project_asset_file(project_path, kind, path, data)
+            source_last_modified = query.get("lastModified", [""])[0]
+            result = save_project_asset_file(project_path, kind, path, data, source_last_modified)
         except ValueError as error:
             self.send_json({"error": str(error)}, 400)
             return
@@ -926,7 +1166,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         try:
             parts = parsed.path.strip("/").split("/")
             project_id = parts[3]
-            relative_path = safe_relative_photo_path(parse_qs(parsed.query).get("path", [""])[0])
+            query = parse_qs(parsed.query)
+            relative_path = safe_relative_photo_path(query.get("path", [""])[0])
             root = server_project_photo_root(project_id)
             target = (root / relative_path).resolve()
             if root.resolve() not in target.parents:
@@ -935,6 +1176,10 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             data = self.rfile.read(length)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
+            record_photo_asset(
+                server_project_photo_manifest_path(project_id), relative_path.as_posix(),
+                len(data), query.get("lastModified", [""])[0],
+            )
         except (ValueError, IndexError) as error:
             self.send_json({"error": str(error)}, 400)
             return
@@ -1037,8 +1282,31 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     query.get("kind", [""])[0],
                     query.get("path", [""])[0],
                     query.get("size", [""])[0],
+                    query.get("lastModified", [""])[0],
                 )
             except ValueError as error:
+                self.send_json({"error": str(error)}, 400)
+                return
+            self.send_json(result)
+            return
+        if parsed.path.startswith("/api/server/projects/") and parsed.path.endswith("/photo-status"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) < 4 or not self.require_project(parts[3]):
+                return
+            query = parse_qs(parsed.query)
+            try:
+                project_id = parts[3]
+                relative_path = safe_relative_photo_path(query.get("path", [""])[0])
+                root = server_project_photo_root(project_id).resolve()
+                target = (root / relative_path).resolve()
+                if root not in target.parents:
+                    raise ValueError("照片路径无效。")
+                result = photo_asset_status_for_target(
+                    target, relative_path.as_posix(), server_project_photo_manifest_path(project_id),
+                    relative_path.as_posix(), query.get("size", [""])[0],
+                    query.get("lastModified", [""])[0],
+                )
+            except (ValueError, IndexError) as error:
                 self.send_json({"error": str(error)}, 400)
                 return
             self.send_json(result)
@@ -1117,13 +1385,48 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         self.serve_file(path)
 
     def serve_file(self, path, content_type=None):
+        try:
+            stat = path.stat()
+        except OSError:
+            self.send_error(404, "File not found")
+            return
         content_type = content_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        data = path.read_bytes()
+        etag_payload = ":".join(str(value) for value in (
+            getattr(stat, "st_dev", 0),
+            getattr(stat, "st_ino", 0),
+            stat.st_size,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+        ))
+        etag = '"' + hashlib.sha256(etag_payload.encode("ascii")).hexdigest() + '"'
+        last_modified = formatdate(stat.st_mtime, usegmt=True)
+        not_modified = False
+        if_none_match = self.headers.get("If-None-Match", "")
+        if if_none_match:
+            tags = [item.strip() for item in if_none_match.split(",")]
+            not_modified = "*" in tags or etag in tags or f"W/{etag}" in tags
+        elif self.headers.get("If-Modified-Since"):
+            try:
+                since = parsedate_to_datetime(self.headers["If-Modified-Since"])
+                not_modified = int(stat.st_mtime) <= int(since.timestamp())
+            except (TypeError, ValueError, OverflowError):
+                pass
+        if not_modified:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Last-Modified", last_modified)
+            self.send_header("Cache-Control", "private, max-age=0, must-revalidate")
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(stat.st_size))
+        self.send_header("ETag", etag)
+        self.send_header("Last-Modified", last_modified)
+        self.send_header("Cache-Control", "private, max-age=0, must-revalidate")
         self.end_headers()
-        self.wfile.write(data)
+        with path.open("rb") as source:
+            shutil.copyfileobj(source, self.wfile, length=1024 * 1024)
 
     def serve_project_photo(self, parsed):
         try:

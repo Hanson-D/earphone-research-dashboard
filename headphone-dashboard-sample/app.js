@@ -108,6 +108,10 @@ const state = {
   mappingObjectUrls: [],
   thumbnailUrls: {},
   thumbnailPromises: {},
+  mappingThumbnailQueue: [],
+  mappingThumbnailActive: 0,
+  mappingThumbnailGeneration: 0,
+  mappingReviewCandidateCache: new Map(),
   photoUrlByPath: {},
   photoRelativeByUrl: {},
   detailPreviewUrls: {},
@@ -1335,6 +1339,10 @@ function relativePathForSelectedFile(file) {
 
 async function uploadProjectAsset(projectPath, kind, path, file, contentType = "application/octet-stream") {
   const query = new URLSearchParams({ projectPath, kind, path });
+  if (kind === "photo") {
+    query.set("size", String(file?.size ?? ""));
+    query.set("lastModified", String(file?.lastModified ?? ""));
+  }
   const response = await fetch(`/api/project-assets?${query.toString()}`, {
     method: "POST",
     headers: { "Content-Type": contentType },
@@ -1346,11 +1354,15 @@ async function uploadProjectAsset(projectPath, kind, path, file, contentType = "
 }
 
 async function projectAssetExists(projectPath, kind, path, file) {
-  const query = new URLSearchParams({ projectPath, kind, path, size: String(file?.size ?? "") });
+  const query = new URLSearchParams({
+    projectPath, kind, path,
+    size: String(file?.size ?? ""),
+    lastModified: String(file?.lastModified ?? "")
+  });
   const response = await fetch(`/api/project-asset-status?${query.toString()}`);
   if (!response.ok) return false;
   const result = await response.json();
-  return Boolean(result.exists && result.sizeMatches);
+  return Boolean(result.unchanged);
 }
 
 async function copyProjectPhotosFromServerRoot(projectPath, root) {
@@ -1371,7 +1383,10 @@ async function writeFileToDirectory(directoryHandle, fileName, file) {
   await writable.close();
 }
 
-async function fileExistsInDirectory(directoryHandle, fileName, file) {
+async function fileExistsInDirectory(directoryHandle, fileName, file, manifestEntry, relativePath) {
+  if (!manifestEntry || Number(manifestEntry.size) !== file.size ||
+      Number(manifestEntry.sourceLastModified) !== file.lastModified ||
+      manifestEntry.relativePath !== relativePath) return false;
   try {
     const handle = await directoryHandle.getFileHandle(fileName);
     const existing = await handle.getFile();
@@ -1379,6 +1394,33 @@ async function fileExistsInDirectory(directoryHandle, fileName, file) {
   } catch {
     return false;
   }
+}
+
+const PHOTO_ASSET_MANIFEST_NAME = ".photo-assets.json";
+
+async function readDirectoryPhotoAssetManifest(projectDirHandle) {
+  try {
+    const dataDir = await projectDirHandle.getDirectoryHandle("data");
+    const handle = await dataDir.getFileHandle(PHOTO_ASSET_MANIFEST_NAME);
+    const payload = JSON.parse(await (await handle.getFile()).text());
+    return {
+      version: 1,
+      assets: payload && typeof payload.assets === "object" && payload.assets ? payload.assets : {}
+    };
+  } catch {
+    return { version: 1, assets: {} };
+  }
+}
+
+async function writeDirectoryPhotoAssetManifest(projectDirHandle, manifest) {
+  const dataDir = await projectDirHandle.getDirectoryHandle("data", { create: true });
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+  // createWritable commits its temporary backing file when close succeeds.
+  await writeFileToDirectory(dataDir, PHOTO_ASSET_MANIFEST_NAME, blob);
+}
+
+function photoAssetManifestRecord(relativePath, file) {
+  return { relativePath, size: file.size, sourceLastModified: file.lastModified };
 }
 
 async function ensureNestedDirectory(rootHandle, parts = []) {
@@ -1397,6 +1439,7 @@ async function persistProjectAssetsToSelectedFolder(projectDirHandle, project) {
   }
   const files = selectedBrowserPhotoFiles();
   if (state.pendingPhotoAssetSave && files.length) {
+    const manifest = await readDirectoryPhotoAssetManifest(projectDirHandle);
     let written = 0;
     let skipped = 0;
     for (const [index, file] of files.entries()) {
@@ -1405,16 +1448,18 @@ async function persistProjectAssetsToSelectedFolder(projectDirHandle, project) {
       const parts = relative.split("/").filter(Boolean);
       const fileName = parts.pop();
       const dir = await ensureNestedDirectory(projectDirHandle, ["photos", ...parts]);
-      if (await fileExistsInDirectory(dir, fileName, file)) {
+      if (await fileExistsInDirectory(dir, fileName, file, manifest.assets[relative], relative)) {
         skipped += 1;
       } else {
         await writeFileToDirectory(dir, fileName, file);
         written += 1;
       }
+      manifest.assets[relative] = photoAssetManifestRecord(relative, file);
       if ((index + 1) % 10 === 0 || index === files.length - 1) {
         setProjectStatus(`正在整理照片 ${index + 1} / ${files.length}，新增 ${written}，跳过 ${skipped}`, true);
       }
     }
+    await writeDirectoryPhotoAssetManifest(projectDirHandle, manifest);
     project.photoRoot = "photos";
     els.photoRootInput.value = "photos";
     state.pendingPhotoAssetSave = false;
@@ -2231,6 +2276,7 @@ function photoFileRuntimeUrl(file = {}) {
 function rebuildPhotoPathIndex(files = state.mappingFiles) {
   state.photoUrlByPath = {};
   state.photoRelativeByUrl = {};
+  state.mappingReviewCandidateCache = new Map();
   (files || []).forEach(file => {
     const stored = photoFileStoredPath(file);
     const runtimeUrl = photoFileRuntimeUrl(file);
@@ -4623,6 +4669,8 @@ function clearMappingObjectUrls() {
   });
   state.thumbnailUrls = {};
   state.thumbnailPromises = {};
+  state.mappingThumbnailGeneration += 1;
+  state.mappingThumbnailQueue.splice(0).forEach(task => task.resolve(task.fallback));
   state.pendingPhotoAssetSave = false;
   state.photoUrlByPath = {};
   state.photoRelativeByUrl = {};
@@ -4673,17 +4721,46 @@ async function buildMappingThumbnails(photos = []) {
   }));
 }
 
+const MAPPING_THUMBNAIL_CONCURRENCY = 4;
+
+function pumpMappingThumbnailQueue() {
+  while (state.mappingThumbnailActive < MAPPING_THUMBNAIL_CONCURRENCY && state.mappingThumbnailQueue.length) {
+    const task = state.mappingThumbnailQueue.shift();
+    state.mappingThumbnailActive += 1;
+    Promise.resolve()
+      .then(task.run)
+      .then(task.resolve, task.reject)
+      .finally(() => {
+        state.mappingThumbnailActive -= 1;
+        pumpMappingThumbnailQueue();
+      });
+  }
+}
+
+function enqueueMappingThumbnail(run, fallback = "") {
+  return new Promise((resolve, reject) => {
+    state.mappingThumbnailQueue.push({ run, resolve, reject, fallback });
+    pumpMappingThumbnailQueue();
+  });
+}
+
 async function mappingThumbnailUrl(key, source) {
   if (!key || !source) return source || "";
   if (state.thumbnailUrls[key]) return state.thumbnailUrls[key];
   if (!state.thumbnailPromises[key]) {
-    state.thumbnailPromises[key] = createThumbnailUrl(source)
+    const generation = state.mappingThumbnailGeneration;
+    state.thumbnailPromises[key] = enqueueMappingThumbnail(() => createThumbnailUrl(source), source)
       .then(url => {
+        if (generation !== state.mappingThumbnailGeneration) {
+          if (String(url).startsWith("blob:") && url !== source) URL.revokeObjectURL(url);
+          return source;
+        }
         state.thumbnailUrls[key] = url;
         delete state.thumbnailPromises[key];
         return url;
       })
       .catch(() => {
+        if (generation !== state.mappingThumbnailGeneration) return source;
         state.thumbnailUrls[key] = source;
         delete state.thumbnailPromises[key];
         return source;
@@ -4790,21 +4867,45 @@ async function uploadServerPhotoFiles() {
   const stripSelectedRoot = firstParts.length > 0 && firstParts.every(part => part === firstParts[0]) &&
     rawPaths.some(path => path.split(/[\\/]/).filter(Boolean).length > 1);
   const photos = [];
+  let uploaded = 0;
+  let skipped = 0;
   for (const [index, file] of files.entries()) {
     const rawPath = file.webkitRelativePath || file.name;
     const parts = rawPath.split(/[\\/]/).filter(Boolean);
     const relativePath = stripSelectedRoot ? parts.slice(1).join("/") : parts.join("/");
-    const url = `/api/server/projects/${encodeURIComponent(state.serverProjectId)}/photos?path=${encodeURIComponent(relativePath)}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file
+    const query = new URLSearchParams({
+      path: relativePath,
+      size: String(file.size),
+      lastModified: String(file.lastModified)
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `照片上传失败：${relativePath}`);
-    photos.push(result.photo);
+    const projectEndpoint = `/api/server/projects/${encodeURIComponent(state.serverProjectId)}`;
+    const endpoint = `${projectEndpoint}/photos?${query.toString()}`;
+    const statusResponse = await fetch(`${projectEndpoint}/photo-status?${query.toString()}`);
+    let status = null;
+    if (statusResponse.ok) {
+      try { status = await statusResponse.json(); } catch { status = null; }
+    }
+    if (status?.unchanged) {
+      skipped += 1;
+    } else {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `照片上传失败：${relativePath}`);
+      uploaded += 1;
+    }
+    photos.push({
+      name: parts[parts.length - 1],
+      relative_path: relativePath,
+      absolute_path: `/api/server/projects/${state.serverProjectId}/photos?path=${encodeURIComponent(relativePath)}`,
+      url: `/api/server/projects/${state.serverProjectId}/photos?path=${encodeURIComponent(relativePath)}`,
+      user_folder: relativePath.split("/")[0] || ""
+    });
     if ((index + 1) % 10 === 0 || index === files.length - 1) {
-      els.mappingSummary.textContent = `正在上传照片 ${index + 1} / ${files.length}`;
+      els.mappingSummary.textContent = `正在整理照片 ${index + 1} / ${files.length}，新增 ${uploaded}，跳过 ${skipped}`;
     }
   }
   photos.sort((a, b) => (a.user_folder || "").localeCompare(b.user_folder || "", "zh-CN") ||
@@ -4961,6 +5062,76 @@ function photoSelectOptions(files, selectedPath) {
     }).join("");
 }
 
+function mappingFolderToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_\-—–/\\()[\]{}【】（）:：,，.。]+/g, "");
+}
+
+function mappingFolderPartMatches(part, value, kind = "") {
+  return Core.folderPartMatches(part, value);
+}
+
+function mappingFileFolderParts(file) {
+  return normalizePathSlashes(file?.relative_path || file?.path || file?.absolute_path || "")
+    .split("/")
+    .filter(Boolean)
+    .slice(0, -1);
+}
+
+function mappingFilesForReviewSlot(review, entry, deviceField) {
+  if (els.mappingMode.value !== "folders") return review.files || [];
+  const user = review.user;
+  const device = deviceField ? entry.row?.[deviceField] : "";
+  const userCacheKey = `user::${mappingFolderToken(user)}`;
+  let userFiles = state.mappingReviewCandidateCache.get(userCacheKey);
+  if (!userFiles) {
+    userFiles = state.mappingFiles.filter(file =>
+      mappingFileFolderParts(file).some(part => mappingFolderPartMatches(part, user, "user"))
+    );
+    state.mappingReviewCandidateCache.set(userCacheKey, userFiles);
+  }
+  if (!device) return userFiles;
+  const deviceCacheKey = `${userCacheKey}::device::${mappingFolderToken(device)}`;
+  let deviceFiles = state.mappingReviewCandidateCache.get(deviceCacheKey);
+  if (!deviceFiles) {
+    deviceFiles = userFiles.filter(file =>
+      mappingFileFolderParts(file).some(part => mappingFolderPartMatches(part, device, "device"))
+    );
+    state.mappingReviewCandidateCache.set(deviceCacheKey, deviceFiles);
+  }
+  return deviceFiles.length ? deviceFiles : userFiles;
+}
+
+function mappingReviewEntry(rowIndex) {
+  for (const review of state.mappingReviews) {
+    const entry = review.entries?.find(item => item.rowIndex === rowIndex);
+    if (entry) return { review, entry };
+  }
+  return null;
+}
+
+function setMappingSelectOptions(select, files) {
+  const selected = select.value || state.mappedRows[Number(select.dataset.rowIndex)]?.[select.dataset.field] || "";
+  select.innerHTML = photoSelectOptions(files, selected);
+  select.value = photoValueForDisplay(selected);
+}
+
+function expandMappingPhotoSelect(select) {
+  if (!select?.matches?.(".mapping-photo-select[data-on-demand-all='true']") || select.dataset.allPhotosLoaded === "true") return;
+  setMappingSelectOptions(select, state.mappingFiles);
+  select.dataset.allPhotosLoaded = "true";
+}
+
+function collapseMappingPhotoSelect(select) {
+  if (!select?.matches?.(".mapping-photo-select[data-on-demand-all='true']") || select.dataset.allPhotosLoaded !== "true") return;
+  const context = mappingReviewEntry(Number(select.dataset.rowIndex));
+  if (!context) return;
+  setMappingSelectOptions(select, mappingFilesForReviewSlot(context.review, context.entry, els.mappingDeviceField.value));
+  delete select.dataset.allPhotosLoaded;
+}
+
 function detailPhotoPlaceholder() {
   return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23f2eeee'/%3E%3C/svg%3E";
 }
@@ -5101,11 +5272,13 @@ function photoFieldViewName(field) {
 function renderMappingPhotoSlot(review, entry, field, deviceField) {
   const path = state.mappedRows[entry.rowIndex][field];
   const caption = `${review.user} · ${deviceField ? entry.row[deviceField] || "未命名设备" : "单设备"} · ${state.viewLabels[field]}`;
+  const onDemandAll = els.mappingMode.value === "folders";
+  const candidateFiles = mappingFilesForReviewSlot(review, entry, deviceField);
   return `<figure class="mapping-photo-slot ${path ? "has-photo" : "missing"}" draggable="${path ? "true" : "false"}" data-slot-kind="device" data-user="${attrEscape(review.user)}" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" title="拖动同一用户内的照片可交换映射">
     ${path ? mappingPhotoImage(path, state.viewLabels[field], caption) : `<div class="missing-photo">缺失</div>`}
     <figcaption>${escapeHtml(photoFieldViewName(field))}</figcaption>
-    <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}">
-      ${photoSelectOptions(els.mappingMode.value === "folders" ? state.mappingFiles : review.files, path)}
+    <select class="mapping-photo-select" data-row-index="${entry.rowIndex}" data-field="${attrEscape(field)}" ${onDemandAll ? `data-on-demand-all="true" title="当前仅显示该用户/设备照片；点开时按需载入全部照片"` : ""}>
+      ${photoSelectOptions(candidateFiles, path)}
     </select>
   </figure>`;
 }
@@ -6117,6 +6290,15 @@ function bindEvents() {
     else state.photoMappingOverrides[key] = "";
     await buildPhotoMapping();
     markProjectDirty();
+  });
+  els.mappingPreview.addEventListener("pointerdown", event => {
+    expandMappingPhotoSelect(event.target.closest?.(".mapping-photo-select"));
+  });
+  els.mappingPreview.addEventListener("focusin", event => {
+    expandMappingPhotoSelect(event.target.closest?.(".mapping-photo-select"));
+  });
+  els.mappingPreview.addEventListener("focusout", event => {
+    collapseMappingPhotoSelect(event.target.closest?.(".mapping-photo-select"));
   });
   els.mappingPreview.addEventListener("click", event => {
     const moveButton = event.target.closest(".mapping-device-move");

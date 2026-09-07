@@ -1,8 +1,10 @@
 import importlib.util
+import io
 import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.parse
@@ -136,6 +138,22 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(projects[0]["title"], "项目A")
         self.assertTrue(projects[0]["path"].endswith("项目A/项目A.json"))
 
+    def test_list_local_project_files_ignores_cache_and_asset_manifests(self):
+        root = Path(self.tmp.name)
+        project_dir = root / "项目A"
+        project_dir.mkdir()
+        (project_dir / "项目A.json").write_text(json.dumps({"title": "项目A", "rows": []}), encoding="utf-8")
+        cache_dir = root / ".cache" / "photo-indexes"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "scan.json").write_text(json.dumps({"photos": []}), encoding="utf-8")
+        data_dir = project_dir / "data"
+        data_dir.mkdir()
+        (data_dir / ".photo-assets.json").write_text(json.dumps({"assets": {}}), encoding="utf-8")
+
+        projects = server.list_local_project_files()
+
+        self.assertEqual([project["title"] for project in projects], ["项目A"])
+
     def test_list_local_project_files_creates_missing_projects_root(self):
         root = Path(self.tmp.name) / "missing-projects"
         os.environ["DASHBOARD_PROJECTS_ROOT"] = str(root)
@@ -182,6 +200,23 @@ class ServerProjectTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertTrue(server.photo_scan_cache_path(root).is_file())
 
+    def test_photo_scan_cache_detects_deep_directory_changes(self):
+        root = Path(self.tmp.name) / "photos"
+        nested = root / "U001" / "device-a" / "left"
+        nested.mkdir(parents=True)
+        (nested / "front.jpg").write_bytes(b"front")
+
+        first, first_cached = server.scan_photo_root(root)
+        second, second_cached = server.scan_photo_root(root)
+        (nested / "side.jpg").write_bytes(b"side")
+        third, third_cached = server.scan_photo_root(root)
+
+        self.assertFalse(first_cached)
+        self.assertTrue(second_cached)
+        self.assertFalse(third_cached)
+        self.assertEqual(len(first), 1)
+        self.assertEqual({item["name"] for item in third}, {"front.jpg", "side.jpg"})
+
     def test_photo_thumbnail_cache_is_under_projects_cache(self):
         root = Path(self.tmp.name) / "photos"
         root.mkdir()
@@ -206,6 +241,141 @@ class ServerProjectTests(unittest.TestCase):
             server.Image = original_image
 
         self.assertIsNone(thumbnail)
+
+    def test_photo_thumbnail_cache_key_changes_when_source_changes(self):
+        root = Path(self.tmp.name) / "photos"
+        root.mkdir()
+        photo = root / "front.jpg"
+        photo.write_bytes(b"first")
+        first = server.photo_thumbnail_cache_path(photo, 360)
+        original = photo.stat()
+        photo.write_bytes(b"second")
+        os.utime(photo, ns=(original.st_atime_ns, original.st_mtime_ns + 1_000_000))
+
+        second = server.photo_thumbnail_cache_path(photo, 360)
+
+        self.assertNotEqual(first, second)
+
+    def test_photo_thumbnail_generation_is_atomic_under_concurrency(self):
+        root = Path(self.tmp.name) / "photos"
+        root.mkdir()
+        photo = root / "front.png"
+        photo.write_bytes(b"source")
+        results = []
+
+        class FakeImage:
+            mode = "RGB"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def thumbnail(self, _):
+                pass
+
+            def save(self, path, *_args, **_kwargs):
+                time.sleep(0.01)
+                Path(path).write_bytes(b"complete-thumbnail")
+
+        class FakeImageModule:
+            open_count = 0
+            count_lock = threading.Lock()
+
+            @classmethod
+            def open(cls, _):
+                with cls.count_lock:
+                    cls.open_count += 1
+                return FakeImage()
+
+        class FakeImageOps:
+            @staticmethod
+            def exif_transpose(image):
+                return image
+
+        with mock.patch.object(server, "Image", FakeImageModule), mock.patch.object(server, "ImageOps", FakeImageOps):
+            threads = [
+                threading.Thread(target=lambda: results.append(server.generate_photo_thumbnail(photo, 64)))
+                for _ in range(8)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=5)
+
+        self.assertEqual(len(results), 8)
+        self.assertEqual(len(set(results)), 1)
+        self.assertEqual(results[0].read_bytes(), b"complete-thumbnail")
+        self.assertEqual(FakeImageModule.open_count, 1)
+        self.assertEqual(list(results[0].parent.glob("*.tmp")), [])
+
+    def test_photo_thumbnail_cleanup_enforces_file_and_byte_limits(self):
+        cache = server.photo_thumbnail_cache_dir()
+        files = []
+        for index in range(5):
+            path = cache / f"{index}.jpg"
+            path.write_bytes(b"x" * 10)
+            os.utime(path, (index + 1, index + 1))
+            files.append(path)
+
+        result = server.cleanup_photo_thumbnail_cache(
+            max_bytes=30,
+            max_files=3,
+            protected_paths=[files[-1]],
+        )
+
+        remaining = list(cache.glob("*.jpg"))
+        self.assertGreaterEqual(result["removed"], 3)
+        self.assertLessEqual(len(remaining), 2)
+        self.assertLessEqual(sum(path.stat().st_size for path in remaining), 20)
+        self.assertTrue(files[-1].is_file())
+
+    def test_serve_file_streams_and_supports_conditional_etag(self):
+        path = Path(self.tmp.name) / "photo.jpg"
+        path.write_bytes(b"photo-bytes")
+
+        class RecordingHandler:
+            serve_file = server.DashboardHandler.serve_file
+
+            def __init__(self, headers=None):
+                self.headers = headers or {}
+                self.status = None
+                self.response_headers = {}
+                self.wfile = io.BytesIO()
+
+            def send_response(self, status):
+                self.status = status
+
+            def send_header(self, name, value):
+                self.response_headers[name] = value
+
+            def end_headers(self):
+                pass
+
+            def send_error(self, status, message):
+                self.status = status
+
+        first = RecordingHandler()
+        first.serve_file(path)
+        second = RecordingHandler({"If-None-Match": first.response_headers["ETag"]})
+        second.serve_file(path)
+
+        self.assertEqual(first.status, 200)
+        self.assertEqual(first.wfile.getvalue(), b"photo-bytes")
+        self.assertEqual(first.response_headers["Content-Length"], "11")
+        self.assertEqual(first.response_headers["Cache-Control"], "private, max-age=0, must-revalidate")
+        self.assertEqual(second.status, 304)
+        self.assertEqual(second.wfile.getvalue(), b"")
+
+        original = path.stat()
+        path.write_bytes(b"updated-photo")
+        os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns + 1_000_000))
+        updated = RecordingHandler({"If-None-Match": first.response_headers["ETag"]})
+        updated.serve_file(path)
+        self.assertEqual(updated.status, 200)
+        self.assertEqual(updated.wfile.getvalue(), b"updated-photo")
+        self.assertNotEqual(updated.response_headers["ETag"], first.response_headers["ETag"])
 
     def test_local_project_files_use_relative_paths_inside_app_root(self):
         with tempfile.TemporaryDirectory(dir=server.app_root()) as local_root:
@@ -273,6 +443,51 @@ class ServerProjectTests(unittest.TestCase):
         self.assertTrue(result["exists"])
         self.assertTrue(result["sizeMatches"])
         self.assertEqual(result["path"], "photos/U001/front.jpg")
+
+    def test_photo_asset_manifest_requires_size_and_source_timestamp(self):
+        project_dir = Path(self.tmp.name) / "项目A"
+        project_path = project_dir / "项目A.json"
+        server.save_project_asset_file(
+            str(project_path), "photo", "U001/front.jpg", b"image", source_last_modified="1700000000000"
+        )
+
+        unchanged = server.project_asset_status(
+            str(project_path), "photo", "U001/front.jpg", "5", "1700000000000"
+        )
+        same_size_new_timestamp = server.project_asset_status(
+            str(project_path), "photo", "U001/front.jpg", "5", "1700000000001"
+        )
+
+        self.assertTrue(unchanged["unchanged"])
+        self.assertFalse(same_size_new_timestamp["unchanged"])
+        manifest_path = project_dir / "data" / ".photo-assets.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["assets"]["U001/front.jpg"]["relativePath"], "U001/front.jpg")
+        self.assertFalse(list(manifest_path.parent.glob("*.tmp")))
+        self.assertFalse((project_dir / "photos" / ".photo-assets.json").exists())
+
+    def test_server_project_photo_manifest_supports_unchanged_status(self):
+        project_id = "study-01"
+        relative = "U001/front.jpg"
+        target = server.server_project_photo_root(project_id) / relative
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"image")
+        manifest_path = server.server_project_photo_manifest_path(project_id)
+        server.record_photo_asset(manifest_path, relative, 5, 1700000000000)
+
+        unchanged = server.photo_asset_status_for_target(
+            target, relative, manifest_path, relative, 5, 1700000000000
+        )
+        changed = server.photo_asset_status_for_target(
+            target, relative, manifest_path, relative, 5, 1700000000001
+        )
+
+        self.assertTrue(unchanged["unchanged"])
+        self.assertFalse(changed["unchanged"])
+        self.assertTrue(manifest_path.is_file())
+        self.assertEqual(manifest_path.parent, server.server_project_photo_root(project_id).parent)
+        scanned, _ = server.scan_photo_root(server.server_project_photo_root(project_id), force=True)
+        self.assertEqual([item["relative_path"] for item in scanned], [relative])
 
     def test_copy_project_photos_from_scanned_root(self):
         source_root = Path(self.tmp.name) / "source"
@@ -552,6 +767,30 @@ class DashboardAuthHttpTests(unittest.TestCase):
         with opener.open(self.base_url + "/api/list-projects") as response:
             local_payload = json.load(response)
         self.assertEqual([item["id"] for item in local_payload["projects"]], ["P0001"])
+
+    def test_server_photo_status_uses_manifest_without_serving_original(self):
+        relative = "U001/front.jpg"
+        target = server.server_project_photo_root("study-a") / relative
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"image")
+        server.record_photo_asset(
+            server.server_project_photo_manifest_path("study-a"), relative, 5, 1700000000000
+        )
+        cookies = CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
+        opener.open(self.client_url).close()
+        query = urllib.parse.urlencode({
+            "path": relative,
+            "size": 5,
+            "lastModified": 1700000000000,
+        })
+
+        with opener.open(self.base_url + "/api/server/projects/study-a/photo-status?" + query) as response:
+            self.assertEqual(response.headers.get_content_type(), "application/json")
+            payload = json.load(response)
+
+        self.assertTrue(payload["unchanged"])
+        self.assertNotIn("image", payload)
 
     def test_client_listener_requires_its_paired_token(self):
         with self.assertRaises(urllib.error.HTTPError) as missing:

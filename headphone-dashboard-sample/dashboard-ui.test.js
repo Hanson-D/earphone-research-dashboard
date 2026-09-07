@@ -319,6 +319,29 @@ test("mapping thumbnails are generated lazily instead of all at folder load", ()
   assert.match(js, /scanPhotoRoot\(\{ force: true \}\)/);
   assert.doesNotMatch(loadBody, /buildMappingThumbnails/);
   assert.match(js, /photos\.slice\(0,\s*24\)/);
+  assert.match(js, /MAPPING_THUMBNAIL_CONCURRENCY\s*=\s*4/);
+  assert.match(js, /function enqueueMappingThumbnail/);
+  assert.match(js, /mappingThumbnailActive\s*<\s*MAPPING_THUMBNAIL_CONCURRENCY/);
+  assert.match(js, /enqueueMappingThumbnail\(\(\) => createThumbnailUrl\(source\), source\)/);
+});
+
+test("folder mapping review scopes photo options and only expands one select on demand", () => {
+  const js = read("app.js");
+  const slotBody = js.match(/function renderMappingPhotoSlot\([\s\S]*?\n\}/)?.[0] || "";
+
+  assert.match(js, /function mappingFilesForReviewSlot/);
+  assert.match(js, /mappingReviewCandidateCache/);
+  assert.match(js, /return Core\.folderPartMatches\(part, value\)/);
+  assert.match(js, /mappingFolderPartMatches\(part, user, "user"\)/);
+  assert.match(js, /mappingFolderPartMatches\(part, device, "device"\)/);
+  assert.match(slotBody, /photoSelectOptions\(candidateFiles, path\)/);
+  assert.doesNotMatch(slotBody, /photoSelectOptions\([^\n]*state\.mappingFiles/);
+  assert.match(js, /data-on-demand-all="true"/);
+  assert.match(js, /function expandMappingPhotoSelect/);
+  assert.match(js, /setMappingSelectOptions\(select, state\.mappingFiles\)/);
+  assert.match(js, /function collapseMappingPhotoSelect/);
+  assert.match(js, /addEventListener\("pointerdown"/);
+  assert.match(js, /addEventListener\("focusout"/);
 });
 
 test("csv rows can be applied to the dashboard without photo mapping", () => {
@@ -354,6 +377,23 @@ test("project save skips photo assets that already exist", () => {
   assert.match(selectedFolderBody, /fileExistsInDirectory/);
   assert.match(serverProjectBody, /projectAssetExists/);
   assert.match(js, /photoFolderChooser\) els\.photoFolderChooser\.value = ""/);
+});
+
+test("photo asset dedup uses a persistent path size and source timestamp manifest", () => {
+  const js = read("app.js");
+  const localBody = js.match(/async function persistProjectAssetsToSelectedFolder\(projectDirHandle, project\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  const serverUploadBody = js.match(/async function uploadServerPhotoFiles\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+
+  assert.match(js, /PHOTO_ASSET_MANIFEST_NAME = "\.photo-assets\.json"/);
+  assert.match(js, /sourceLastModified/);
+  assert.match(js, /Number\(manifestEntry\.sourceLastModified\) !== file\.lastModified/);
+  assert.match(localBody, /readDirectoryPhotoAssetManifest/);
+  assert.match(localBody, /writeDirectoryPhotoAssetManifest/);
+  assert.match(js, /query\.set\("lastModified", String\(file\?\.lastModified/);
+  assert.match(js, /return Boolean\(result\.unchanged\)/);
+  assert.match(serverUploadBody, /\/photo-status\?/);
+  assert.match(serverUploadBody, /status\?\.unchanged/);
+  assert.match(serverUploadBody, /lastModified: String\(file\.lastModified\)/);
 });
 
 test("saved project json keeps photo root relative", () => {

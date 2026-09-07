@@ -987,6 +987,112 @@ test("folder matching adapts to decorated folder names instead of requiring exac
   assert.equal(result.reviews[0].status, "ok");
 });
 
+test("folder matcher is shared with the review UI and keeps decorated labels safe", () => {
+  assert.equal(core.folderPartMatches("样机A_试产", "样机A"), true);
+  assert.equal(core.folderPartMatches("姓名-张三", "张三"), true);
+  assert.equal(core.folderPartMatches("U10", "U1"), false);
+});
+
+test("folder mode keeps every csv condition row in its original order and shares logical photos", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A", condition: "first", score: "7" },
+    { user_id: "U001", device_name: "A", condition: "second", score: "9" }
+  ];
+  const files = [
+    { relative_path: "U001/A/左耳/正面/001.jpg", absolute_path: "/photos/001.jpg", name: "001.jpg" },
+    { relative_path: "U001/A/右耳/正面/002.jpg", absolute_path: "/photos/002.jpg", name: "002.jpg" },
+    { relative_path: "U001/unlisted-device/左耳/正面/003.jpg", absolute_path: "/photos/003.jpg", name: "003.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面"],
+    expectedEars: ["左耳", "右耳"]
+  });
+
+  assert.equal(result.mapped.length, rows.length);
+  assert.deepEqual(result.mapped.map(row => row.condition), ["first", "second"]);
+  assert.deepEqual(result.mapped.map(row => row.score), ["7", "9"]);
+  assert.equal(result.mapped[0].photo_左耳_正面, "U001/A/左耳/正面/001.jpg");
+  assert.equal(result.mapped[1].photo_左耳_正面, "U001/A/左耳/正面/001.jpg");
+  assert.equal(result.reviews[0].expected, 2);
+  assert.equal(result.reviews[0].files.length, 2);
+  assert.equal(result.reviews[0].status, "ok");
+});
+
+test("folder mode does not confuse identifier or device prefix collisions", () => {
+  const rows = [
+    { user_id: "U1", device_name: "A" },
+    { user_id: "U10", device_name: "AA" }
+  ];
+  const files = [
+    { relative_path: "U10/AA/左耳/正面/010.jpg", absolute_path: "/photos/010.jpg", name: "010.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面"],
+    expectedEars: ["左耳"]
+  });
+
+  assert.equal(result.mapped[0].photo_左耳_正面, "");
+  assert.equal(result.mapped[1].photo_左耳_正面, "U10/AA/左耳/正面/010.jpg");
+});
+
+test("folder mode audits repeated analysis rows by unique logical photo slots", () => {
+  const rows = [
+    { user_id: "U001", device_name: "A", trial: "1" },
+    { user_id: "U001", device_name: "A", trial: "2" }
+  ];
+  const files = [
+    { relative_path: "U001/A/左耳/正面/001.jpg", absolute_path: "/photos/001.jpg", name: "001.jpg" },
+    { relative_path: "U001/A/左耳/正面/002-reshoot.jpg", absolute_path: "/photos/002.jpg", name: "002-reshoot.jpg" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面"],
+    expectedEars: ["左耳"]
+  });
+  const audit = core.buildPhotoAuditRows(result.reviews, result.photoFields, result.mapped, {
+    deviceField: "device_name"
+  });
+
+  assert.equal(result.reviews[0].expected, 1);
+  assert.equal(result.reviews[0].files.length, 2);
+  assert.equal(result.reviews[0].extras.length, 1);
+  assert.equal(audit.filter(row => row.status === "extra" && row.field === "photo_左耳_正面").length, 1);
+});
+
+test("folder mode indexes large photo sets without rescanning all files per slot", () => {
+  const userCount = 300;
+  const rows = Array.from({ length: userCount }, (_, index) => ({
+    user_id: `U${String(index + 1).padStart(4, "0")}`,
+    device_name: "A"
+  }));
+  const files = rows.flatMap(row => ["左耳", "右耳"].flatMap(ear => ["正面", "侧面"].map((view, index) => ({
+    relative_path: `${row.user_id}/A/${ear}/${view}/${index}.jpg`,
+    absolute_path: `/photos/${row.user_id}/${ear}/${view}/${index}.jpg`,
+    name: `${index}.jpg`
+  }))));
+  const started = Date.now();
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "folders",
+    userField: "user_id",
+    deviceField: "device_name",
+    views: ["正面", "侧面"],
+    expectedEars: ["左耳", "右耳"]
+  });
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.mapped.length, userCount);
+  assert.equal(result.mapped[299].photo_右耳_侧面, "U0300/A/右耳/侧面/1.jpg");
+  assert.ok(elapsed < 1000, `folder mapping took ${elapsed}ms`);
+});
+
 test("numeric summaries include n, mean, and sample standard deviation", () => {
   const summary = core.numericSummary([{ score: "2" }, { score: "4" }, { score: "" }, { score: "6" }], "score");
   assert.equal(summary.n, 3);
