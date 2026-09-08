@@ -19,6 +19,7 @@ function Invoke-CheckedNative {
 $log = Join-Path $PSScriptRoot "build-windows-exe.log"
 $transcriptStarted = $false
 $failure = $null
+$venv = Join-Path ([System.IO.Path]::GetTempPath()) ("EPB-py311-x64-{0}" -f $PID)
 
 try {
     Start-Transcript -Path $log -Force | Out-Null
@@ -29,16 +30,13 @@ try {
         throw "Python Launcher (py.exe) was not found. Install Python 3.11 x64 from python.org and enable the launcher."
     }
 
-    # PySide6 contains deeply nested QML resources. Keeping the virtual
-    # environment below a long clone path can exceed legacy MAX_PATH during
-    # pip extraction and misleadingly report a missing PageIndicatorDelegate
-    # asset. Use a short, builder-specific location instead.
-    $venv = Join-Path ([System.IO.Path]::GetTempPath()) "EPB-py311-x64"
+    # PySide6 contains deeply nested QML resources. Use a fresh, short build
+    # environment every time: a previously interrupted pip install can leave
+    # package metadata behind while QML assets are still missing, which only
+    # becomes visible later when PyInstaller scans the package.
     $python = Join-Path $venv "Scripts\python.exe"
     Write-Host "Build environment: $venv"
-    if (-not (Test-Path $python)) {
-        Invoke-CheckedNative -FilePath $launcher.Source -ArgumentList @("-3.11", "-m", "venv", $venv) -Step "Create Python 3.11 build environment"
-    }
+    Invoke-CheckedNative -FilePath $launcher.Source -ArgumentList @("-3.11", "-m", "venv", $venv) -Step "Create clean Python 3.11 build environment"
 
     Invoke-CheckedNative -FilePath $python -ArgumentList @(
         "-c",
@@ -47,11 +45,23 @@ try {
     Invoke-CheckedNative -FilePath $python -ArgumentList @(
         "-m", "pip", "install", "--disable-pip-version-check", "--requirement", "requirements-build.txt"
     ) -Step "Install pinned build dependencies"
+    Invoke-CheckedNative -FilePath $python -ArgumentList @(
+        "-m", "pip", "check"
+    ) -Step "Validate installed dependencies"
+    Invoke-CheckedNative -FilePath $python -ArgumentList @(
+        "-c", "from PySide6 import QtCore, QtGui, QtWidgets; import PIL, PyInstaller; print('PySide6 and PyInstaller imports verified')"
+    ) -Step "Validate packaging imports"
 
     $env:PYTHONPATH = $PSScriptRoot
     Invoke-CheckedNative -FilePath $python -ArgumentList @(
         "-m", "unittest", "discover", "-s", "tests", "-v"
     ) -Step "Run Python tests"
+
+    $runningBuilder = Get-Process -Name "EarphoneProjectBuilder" -ErrorAction SilentlyContinue
+    if ($runningBuilder) {
+        $processIds = ($runningBuilder | ForEach-Object { $_.Id }) -join ", "
+        throw "EarphoneProjectBuilder is still running (PID: $processIds). Close it in Task Manager, then run the build again."
+    }
     Invoke-CheckedNative -FilePath $python -ArgumentList @(
         "-m", "PyInstaller", "--noconfirm", "--clean", "native-builder.spec"
     ) -Step "Package EarphoneProjectBuilder"
@@ -91,18 +101,32 @@ try {
 }
 catch {
     $failure = $_
+    Write-Host ""
+    Write-Host "Windows EXE build failed: $($_.Exception.Message)" -ForegroundColor Red
+    if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+        Write-Host $_.InvocationInfo.PositionMessage -ForegroundColor DarkYellow
+    }
+    Write-Host "Full log: $log" -ForegroundColor Yellow
 }
 finally {
+    if (Test-Path $venv) {
+        try {
+            Remove-Item -LiteralPath $venv -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Could not remove temporary build environment $venv : $($_.Exception.Message)"
+        }
+    }
     if ($transcriptStarted) {
         Stop-Transcript | Out-Null
     }
 }
 
 if ($null -ne $failure) {
-    Write-Host ""
-    Write-Host "Windows EXE build failed: $($failure.Exception.Message)" -ForegroundColor Red
-    Write-Host "Full log: $log" -ForegroundColor Yellow
-    throw $failure
+    # The actionable error has already been printed and captured in the
+    # transcript. Return a plain non-zero status instead of wrapping it in a
+    # second, generic PowerShell terminating error.
+    exit 1
 }
 
 Write-Host "Build log: $log"

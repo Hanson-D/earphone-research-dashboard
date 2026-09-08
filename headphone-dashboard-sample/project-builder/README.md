@@ -83,7 +83,7 @@ Windows EXE 必须在本地 Windows 10/11 x64 机器构建，不使用 GitHub Ac
 project-builder\build-windows-exe.bat
 ```
 
-脚本会在 Windows 临时目录的短路径中创建 `EPB-py311-x64` 构建环境（避免 PySide6 的深层 QML 文件触发路径长度错误）、安装固定版本依赖、运行 Python 测试、执行 PyInstaller、运行不依赖控制台的 EXE 自检，并输出文件大小与 SHA-256。任一步骤失败都会立即停止，完整记录保存在 `project-builder\build-windows-exe.log`；排查时请提供日志中第一个 `failed with exit code` 及其上方输出。
+脚本会在 Windows 临时目录的短路径中为每次构建创建全新的 `EPB-py311-x64-<PID>` 环境（避免 PySide6 的深层 QML 文件触发路径长度错误，也不会复用曾中断安装的残缺环境）、校验固定版本依赖、运行 Python 测试、检查旧版程序是否仍在运行、执行 PyInstaller、运行不依赖控制台的 EXE 自检，并输出文件大小与 SHA-256。任一步骤失败都会立即停止，完整记录保存在 `project-builder\build-windows-exe.log`；排查时请提供日志中第一个 `failed with exit code` 及其上方输出。
 
 产物：
 
