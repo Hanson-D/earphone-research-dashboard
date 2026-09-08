@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtCore import QAbstractListModel, QAbstractTableModel, QModelIndex, QObject, QSize, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
+    QListView,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 
 from .core import FIELD_ROLE_LABELS, mapping_overrides, parts_include, path_parts, restore_slots, set_slot, swap_device_groups, swap_ear_groups, swap_slots
 from .project_service import BuildRequest, BuildResult, ProjectService
-from .runtime_log import configure_runtime_logging, get_logger
+from .runtime_log import arm_hang_trace, cancel_hang_trace, configure_runtime_logging, get_logger
 
 
 MODE_LABELS = {
@@ -85,19 +85,41 @@ class CsvPreviewModel(QAbstractTableModel):
         return section + 1
 
 
+class StringListModel(QAbstractListModel):
+    """Lazy text list used for users and potentially large unused-photo sets."""
+
+    def __init__(self):
+        super().__init__()
+        self.values: list[str] = []
+
+    def replace(self, values: list[str]) -> None:
+        self.beginResetModel()
+        self.values = list(values)
+        self.endResetModel()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        return 0 if parent.isValid() else len(self.values)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+        if not index.isValid() or role != Qt.DisplayRole:
+            return None
+        return self.values[index.row()]
+
+
 class Worker(QObject):
-    completed = Signal(object)
+    completed = Signal(object, object)
     failed = Signal(str)
     progress = Signal(str, int)
     finished = Signal()
 
-    def __init__(self, callback: Callable[[Callable[[str, int], None]], Any]):
+    def __init__(self, callback: Callable[[Callable[[str, int], None]], Any], on_success: Callable[[Any], None]):
         super().__init__()
         self.callback = callback
+        self.on_success = on_success
 
     def run(self) -> None:
         try:
-            self.completed.emit(self.callback(self.progress.emit))
+            self.completed.emit(self.callback(self.progress.emit), self.on_success)
         except Exception as error:
             LOGGER.exception("background task failed")
             self.failed.emit(str(error))
@@ -184,6 +206,7 @@ class MainWindow(QMainWindow):
         self.selected_slots: set[int] = set()
         self._threads: list[QThread] = []
         self._workers: list[Worker] = []
+        self._worker_by_thread: dict[QThread, Worker] = {}
         self._thumbnail_jobs: set[str] = set()
         self._close_pending = False
         self._service_closed = False
@@ -204,10 +227,14 @@ class MainWindow(QMainWindow):
             self.service.close()
             self._service_closed = True
 
-    def _thread_finished(self, thread: QThread, worker: Worker) -> None:
+    def _thread_finished(self) -> None:
+        thread = self.sender()
+        if not isinstance(thread, QThread):
+            return
+        worker = self._worker_by_thread.pop(thread, None)
         if thread in self._threads:
             self._threads.remove(thread)
-        if worker in self._workers:
+        if worker and worker in self._workers:
             self._workers.remove(worker)
         if self._close_pending and not any(item.isRunning() for item in self._threads):
             LOGGER.info("background tasks finished after close request")
@@ -221,6 +248,7 @@ class MainWindow(QMainWindow):
             action = toolbar.addAction(label)
             action.triggered.connect(callback)
         self.status = QLabel("请选择 CSV 和照片目录，或打开已有项目")
+        self.status.setToolTip(f"运行日志：{self.log_path}")
         toolbar.addSeparator()
         toolbar.addWidget(self.status)
         self.progress = QProgressBar()
@@ -338,11 +366,15 @@ class MainWindow(QMainWindow):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.addWidget(QLabel("用户 / 状态"))
-        self.user_list = QListWidget()
-        self.user_list.currentTextChanged.connect(self.render_user)
+        self.user_model = StringListModel()
+        self.user_list = QListView()
+        self.user_list.setModel(self.user_model)
+        self.user_list.selectionModel().currentChanged.connect(self._user_selection_changed)
         left_layout.addWidget(self.user_list, 1)
         left_layout.addWidget(QLabel("未使用 / 补拍照片"))
-        self.unused_list = QListWidget()
+        self.unused_model = StringListModel()
+        self.unused_list = QListView()
+        self.unused_list.setModel(self.unused_model)
         left_layout.addWidget(self.unused_list, 1)
         splitter.addWidget(left)
         self.cards = QWidget()
@@ -369,19 +401,35 @@ class MainWindow(QMainWindow):
         return page
 
     def _choose_file(self, edit: QLineEdit, file_filter: str) -> None:
-        value, _ = QFileDialog.getOpenFileName(self, "选择文件", edit.text(), file_filter)
-        if value:
-            edit.setText(value)
+        LOGGER.info("opening Qt file chooser filter=%s", file_filter)
+        arm_hang_trace()
+        try:
+            value, _ = QFileDialog.getOpenFileName(
+                self, "选择文件", edit.text(), file_filter,
+                options=QFileDialog.Option.DontUseNativeDialog,
+            )
+            if value:
+                edit.setText(value)
+        finally:
+            cancel_hang_trace()
+            LOGGER.info("Qt file chooser closed")
 
     def _choose_dir(self, edit: QLineEdit) -> None:
-        value = QFileDialog.getExistingDirectory(self, "选择目录", edit.text())
-        if value:
-            edit.setText(value)
+        LOGGER.info("opening Qt directory chooser")
+        arm_hang_trace()
+        try:
+            value = QFileDialog.getExistingDirectory(
+                self, "选择目录", edit.text(),
+                options=QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontUseNativeDialog,
+            )
+            if value:
+                edit.setText(value)
+        finally:
+            cancel_hang_trace()
+            LOGGER.info("Qt directory chooser closed")
 
     def _choose_project(self) -> None:
-        value, _ = QFileDialog.getOpenFileName(self, "选择项目 JSON", self.project_path.text(), "Project JSON (*.json)")
-        if value:
-            self.project_path.setText(value)
+        self._choose_file(self.project_path, "Project JSON (*.json)")
 
     def open_project(self) -> None:
         self._choose_project()
@@ -419,8 +467,8 @@ class MainWindow(QMainWindow):
         self.update_mode.setCurrentIndex(0)
         self.csv_model.replace([], [])
         self.roles_table.setRowCount(0)
-        self.user_list.clear()
-        self.unused_list.clear()
+        self.user_model.replace([])
+        self.unused_model.replace([])
         self.publish_summary.clear()
         self.status.setText("新项目")
 
@@ -508,25 +556,29 @@ class MainWindow(QMainWindow):
             combo.blockSignals(False)
 
     def _fill_users(self, prepared: BuildResult) -> None:
-        self.user_list.clear()
-        self.unused_list.clear()
+        LOGGER.info("rendering mapping lists slots=%s unused=%s", len(prepared.mapping.slots), len(prepared.mapping.unused_photos))
         user_missing: dict[str, int] = {}
         for _, slot in self._visible_slots(prepared):
             user = slot["user"]
             user_missing.setdefault(user, 0)
             if not slot["value"]:
                 user_missing[user] += 1
-        self.user_list.addItems([
+        self.user_model.replace([
             f"{user}  {'缺失 ' + str(missing) if missing else '正常'}"
             for user, missing in user_missing.items()
         ])
-        self.unused_list.addItems(prepared.mapping.unused_photos)
-        if self.user_list.count():
-            self.user_list.setCurrentRow(0)
+        self.unused_model.replace(prepared.mapping.unused_photos)
+        LOGGER.info("mapping list models attached users=%s unused=%s", self.user_model.rowCount(), self.unused_model.rowCount())
+        if self.user_model.rowCount():
+            self.user_list.setCurrentIndex(self.user_model.index(0, 0))
 
     def _current_user(self) -> str:
-        text = self.user_list.currentItem().text() if self.user_list.currentItem() else ""
+        current = self.user_list.currentIndex()
+        text = str(self.user_model.data(current) or "") if current.isValid() else ""
         return text.split("  ", 1)[0]
+
+    def _user_selection_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
+        self.render_user()
 
     def _visible_slots(self, prepared: BuildResult) -> list[tuple[int, dict[str, Any]]]:
         indexed = list(enumerate(prepared.mapping.slots))
@@ -551,6 +603,7 @@ class MainWindow(QMainWindow):
         if not self.prepared:
             return
         user = self._current_user()
+        LOGGER.info("indexing photo card candidates user=%s photos=%s", user, len(self.prepared.photos))
         candidates = [
             photo.relative_path
             for photo in self.prepared.photos
@@ -686,7 +739,10 @@ class MainWindow(QMainWindow):
 
     def _task_completed(self, result: Any, on_success: Callable[[Any], None]) -> None:
         self._set_progress("正在构建预览界面…", 98)
-        QApplication.processEvents()
+        LOGGER.info("dispatching completed task on_main_thread=%s", QThread.currentThread() == self.thread())
+        hang_path = arm_hang_trace()
+        if hang_path:
+            LOGGER.info("UI hang watchdog armed path=%s", hang_path)
         try:
             on_success(result)
         except Exception as error:
@@ -694,6 +750,8 @@ class MainWindow(QMainWindow):
             self._task_failed(str(error))
         else:
             self.progress.hide()
+        finally:
+            cancel_hang_trace()
 
     def _run_async(self, callback: Callable[[Callable[[str, int], None]], Any], on_success: Callable[[Any], None], status: str) -> None:
         self.status.setText(status)
@@ -701,18 +759,19 @@ class MainWindow(QMainWindow):
         self.progress.show()
         LOGGER.info("task started status=%s", status)
         thread = QThread(self)
-        worker = Worker(callback)
+        worker = Worker(callback, on_success)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.progress.connect(self._set_progress)
-        worker.completed.connect(lambda result: self._task_completed(result, on_success))
-        worker.failed.connect(self._task_failed)
+        worker.progress.connect(self._set_progress, Qt.ConnectionType.QueuedConnection)
+        worker.completed.connect(self._task_completed, Qt.ConnectionType.QueuedConnection)
+        worker.failed.connect(self._task_failed, Qt.ConnectionType.QueuedConnection)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._thread_finished, Qt.ConnectionType.QueuedConnection)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda: self._thread_finished(thread, worker))
         self._threads.append(thread)
         self._workers.append(worker)
+        self._worker_by_thread[thread] = worker
         thread.start()
 
 

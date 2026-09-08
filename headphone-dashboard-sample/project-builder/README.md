@@ -109,4 +109,4 @@ projects/<项目名>/
 
 Windows 人工验收步骤见 [`../docs/project-builder-mvp-windows-acceptance.md`](../docs/project-builder-mvp-windows-acceptance.md)。
 
-Windows 运行日志保存在 `%LOCALAPPDATA%\EarphoneProjectBuilder\logs\builder.log`，也可以点击程序顶部的“打开日志”进入目录。日志记录任务阶段、数量和异常，不记录 CSV 行内容。
+Windows 运行日志保存在 `%LOCALAPPDATA%\EarphoneProjectBuilder\logs\builder.log`，也可以点击程序顶部的“打开日志”进入目录；若该目录不可写，会自动改用 `%TEMP%\EarphoneProjectBuilder\logs\builder.log`。日志记录任务阶段、数量和异常，不记录 CSV 行内容。预览界面或文件选择器连续 45 秒未返回时，同一目录还会生成 `builder-hang.log`，包含当时各 Python 线程的调用位置，用于定位无异常信息的界面卡死。

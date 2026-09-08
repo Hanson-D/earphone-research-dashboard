@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .project_service import BuildRequest, ProjectService
-from .runtime_log import configure_runtime_logging
+from .runtime_log import configure_runtime_logging, get_logger, install_exception_logging
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -162,13 +162,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.self_check:
         return run_self_check(args.self_check)
-    configure_runtime_logging()
+    log_path = configure_runtime_logging()
+    install_exception_logging()
+    get_logger().info("process started argv=%r log=%s", sys.argv, log_path)
     if args.command in {None, "gui"}:
         try:
             from .gui import run_gui
         except ImportError as error:
             parser.error(f"无法加载 PySide6 图形界面：{error}")
-        return run_gui()
+        try:
+            return run_gui()
+        except BaseException:
+            get_logger().exception("GUI process terminated unexpectedly")
+            raise
     return run_build(args)
 
 
