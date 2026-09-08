@@ -62,6 +62,8 @@ class MappingConfig:
     include_bare_ear: bool = False
     bare_ear_config: dict[str, Any] = field(default_factory=dict)
     overrides: dict[str, str] = field(default_factory=dict)
+    device_order: list[str] = field(default_factory=list)
+    extra_assignments: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -435,6 +437,9 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
         for index, row in enumerate(rows):
             row_groups[str(row.get(config.user_field, ""))].append(index)
         for user, indices in row_groups.items():
+            if config.device_field and config.device_order:
+                rank = {str(device): position for position, device in enumerate(config.device_order)}
+                indices = sorted(indices, key=lambda index: (rank.get(str(rows[index].get(config.device_field, "")), len(rank)), index))
             user_photos = by_user.get(user, [])
             labeled_bare = [item for item in user_photos if _is_bare(item)]
             bare = labeled_bare if labeled_bare else user_photos[:len(bare_descriptors)]
@@ -542,8 +547,113 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
                     for extra in matches[1:]:
                         audit.append(_audit("extra", user, device, row_index + 1, descriptor["field"], f"重复/补拍照片：{extra.relative_path}"))
 
+    extra_descriptors = _apply_extra_assignments(mapped, rows, slots, used, photo_fields, photos_sorted, config)
     unused = [photo.relative_path for photo in photos_sorted if photo.relative_path not in used]
-    return MappingResult(mapped, slots, photo_fields, [item for item in descriptors if not item["field"].startswith("bare_ear_photo")], audit, unused, mode)
+    return MappingResult(mapped, slots, photo_fields, [item for item in descriptors if not item["field"].startswith("bare_ear_photo")] + extra_descriptors, audit, unused, mode)
+
+
+def _apply_extra_assignments(mapped: list[dict[str, str]], source_rows: list[dict[str, str]], slots: list[dict[str, Any]], used: set[str], photo_fields: list[str], photos: list[PhotoFile], config: MappingConfig) -> list[dict[str, str]]:
+    available = {photo.relative_path for photo in photos}
+    descriptors: list[dict[str, str]] = []
+    seen_descriptors: set[str] = set()
+    for assignment in config.extra_assignments:
+        path = str(assignment.get("path") or "")
+        field_name = str(assignment.get("field") or "")
+        view = str(assignment.get("view") or "").strip()
+        user = str(assignment.get("user") or "")
+        device = str(assignment.get("device") or "")
+        ear = str(assignment.get("ear") or "")
+        if not path or path not in available or not field_name or not view or not user:
+            continue
+        if field_name not in photo_fields:
+            photo_fields.append(field_name)
+            for row in mapped:
+                row[field_name] = ""
+        if field_name not in seen_descriptors:
+            descriptors.append({"field": field_name, "view": view, "ear": ear, "label": assignment.get("label") or view, "display": assignment.get("label") or view})
+            seen_descriptors.add(field_name)
+        matched = False
+        for row_index, row in enumerate(source_rows):
+            if str(row.get(config.user_field, "")) != user:
+                continue
+            if device and config.device_field and str(row.get(config.device_field, "")) != device:
+                continue
+            if ear and config.ear_field and infer_ear(str(row.get(config.ear_field, ""))) != infer_ear(ear):
+                continue
+            mapped[row_index][field_name] = path
+            stable_key = stable_row_key(row, config)
+            existing_slot = next((slot for slot in slots if slot["rowIndex"] == row_index and slot["field"] == field_name), None)
+            slot_value = {
+                "rowIndex": row_index,
+                "stableKey": stable_key,
+                "field": field_name,
+                "label": assignment.get("label") or view,
+                "user": user,
+                "device": str(row.get(config.device_field, "")) if config.device_field else "",
+                "ear": ear or (str(row.get(config.ear_field, "")) if config.ear_field else ""),
+                "view": view,
+                "value": path,
+                "automatic": path,
+                "source": "automatic",
+            }
+            if existing_slot:
+                existing_slot.update({"value": path, "source": "manual"})
+            else:
+                slots.append(slot_value)
+            matched = True
+        if matched:
+            used.add(path)
+    return descriptors
+
+
+def make_extra_photo_assignment(result: MappingResult, photos: list[PhotoFile], config: MappingConfig, photo_path: str, user: str, view: str, selected_device: str = "") -> dict[str, str]:
+    view = str(view or "").strip()
+    if not view:
+        raise ValueError("请填写新视角名称")
+    photo = next((item for item in photos if item.relative_path == photo_path), None)
+    if not photo:
+        raise ValueError("未找到所选照片")
+    parts = path_parts(photo)
+    user_rows = [row for row in result.rows if str(row.get(config.user_field, "")) == str(user)]
+    if not user_rows:
+        raise ValueError(f"照片对应用户不存在：{user}")
+    device = ""
+    if config.device_field:
+        devices = list(dict.fromkeys(str(row.get(config.device_field, "")) for row in user_rows if row.get(config.device_field)))
+        if selected_device:
+            if selected_device not in devices:
+                raise ValueError(f"目标设备不存在：{selected_device}")
+            device = selected_device
+        else:
+            matches = [value for value in devices if parts_include(parts, value)]
+            if len(matches) == 1:
+                device = matches[0]
+            elif len(devices) == 1:
+                device = devices[0]
+            else:
+                raise ValueError("照片目录无法唯一识别设备，请选择目标设备")
+    ear = next((infer_ear(part) for part in parts if infer_ear(part)), "")
+    label = f"{ear}_{view}" if ear else view
+    matching_assignment = next((
+        item for item in config.extra_assignments
+        if normalize_token(item.get("view")) == normalize_token(view) and infer_ear(item.get("ear", "")) == infer_ear(ear)
+    ), None)
+    if matching_assignment and matching_assignment.get("field"):
+        field_name = str(matching_assignment["field"])
+        return {"path": photo.relative_path, "user": str(user), "device": device, "ear": ear, "view": view, "label": label, "field": field_name}
+    matching_view = next((
+        item for item in result.photo_views
+        if normalize_token(item.get("view")) == normalize_token(view) and infer_ear(item.get("ear", "")) == infer_ear(ear)
+    ), None)
+    if matching_view and matching_view.get("field"):
+        field_name = str(matching_view["field"])
+        return {"path": photo.relative_path, "user": str(user), "device": device, "ear": ear, "view": view, "label": label, "field": field_name}
+    base = photo_field_names([label])[0]
+    used_fields = set(result.photo_fields) | {str(item.get("field") or "") for item in config.extra_assignments}
+    field_name, suffix = base, 2
+    while field_name in used_fields:
+        field_name, suffix = f"{base}_{suffix}", suffix + 1
+    return {"path": photo.relative_path, "user": str(user), "device": device, "ear": ear, "view": view, "label": label, "field": field_name}
 
 
 def _assign_slot(mapped: list[dict[str, str]], source_rows: list[dict[str, str]], slots: list[dict[str, Any]], audit: list[dict[str, Any]], used: set[str], row_index: int, descriptor: dict[str, str], photo: PhotoFile | None, config: MappingConfig, audit_missing: bool = True) -> None:
@@ -587,24 +697,106 @@ def set_slot(result: MappingResult, slot_index: int, value: str) -> None:
         result.rows[target["rowIndex"]][target["field"]] = value
 
 
+def _apply_slot_updates(result: MappingResult, updates: dict[int, str]) -> None:
+    """Apply a set of changes from one snapshot so swaps never overwrite inputs."""
+    expanded: dict[int, str] = {}
+    for slot_index, value in updates.items():
+        slot = result.slots[slot_index]
+        targets = [(slot_index, slot)]
+        if result.mode == "folders":
+            targets = [
+                (index, item) for index, item in enumerate(result.slots)
+                if item["stableKey"] == slot["stableKey"] and item["field"] == slot["field"]
+            ]
+        for index, _ in targets:
+            expanded[index] = value
+    for index, value in expanded.items():
+        slot = result.slots[index]
+        slot["value"] = value
+        slot["source"] = "manual"
+        result.rows[slot["rowIndex"]][slot["field"]] = value
+
+
 def swap_slots(result: MappingResult, first: int, second: int) -> None:
     left, right = result.slots[first]["value"], result.slots[second]["value"]
-    set_slot(result, first, right)
-    set_slot(result, second, left)
+    _apply_slot_updates(result, {first: right, second: left})
 
 
 def swap_device_groups(result: MappingResult, user: str, first_device: str, second_device: str) -> None:
-    first = {(slot["ear"], slot["view"]): index for index, slot in enumerate(result.slots) if slot["user"] == user and slot["device"] == first_device}
-    second = {(slot["ear"], slot["view"]): index for index, slot in enumerate(result.slots) if slot["user"] == user and slot["device"] == second_device}
+    def grouped(device: str) -> dict[tuple[str, str], list[int]]:
+        values: dict[tuple[str, str], list[int]] = defaultdict(list)
+        seen: set[tuple[str, str]] = set()
+        for index, slot in enumerate(result.slots):
+            if slot["user"] != user or slot["device"] != device:
+                continue
+            logical = (str(slot["stableKey"]), str(slot["field"]))
+            if result.mode == "folders" and logical in seen:
+                continue
+            seen.add(logical)
+            values[(str(slot["ear"]), str(slot["field"]))].append(index)
+        return values
+
+    first, second = grouped(first_device), grouped(second_device)
+    snapshot = [slot["value"] for slot in result.slots]
+    updates: dict[int, str] = {}
     for key in set(first) & set(second):
-        swap_slots(result, first[key], second[key])
+        for first_index, second_index in zip(first[key], second[key]):
+            updates[first_index] = snapshot[second_index]
+            updates[second_index] = snapshot[first_index]
+    _apply_slot_updates(result, updates)
 
 
-def swap_ear_groups(result: MappingResult, user: str) -> None:
-    left = {(slot["device"], slot["view"]): index for index, slot in enumerate(result.slots) if slot["user"] == user and "左" in slot["ear"]}
-    right = {(slot["device"], slot["view"]): index for index, slot in enumerate(result.slots) if slot["user"] == user and "右" in slot["ear"]}
+def swap_ear_groups(result: MappingResult, user: str | None = None) -> None:
+    relevant = [(index, slot) for index, slot in enumerate(result.slots) if user is None or slot["user"] == user]
+    left: dict[tuple[str, str, str], list[int]] = defaultdict(list)
+    right: dict[tuple[str, str, str], list[int]] = defaultdict(list)
+    seen: set[tuple[str, str]] = set()
+    for index, slot in relevant:
+        logical = (str(slot["stableKey"]), str(slot["field"]))
+        if result.mode == "folders" and logical in seen:
+            continue
+        seen.add(logical)
+        key = (str(slot["user"]), str(slot["device"]), str(slot["view"]))
+        if "左" in slot["ear"]:
+            left[key].append(index)
+        elif "右" in slot["ear"]:
+            right[key].append(index)
+    snapshot = [slot["value"] for slot in result.slots]
+    updates: dict[int, str] = {}
     for key in set(left) & set(right):
-        swap_slots(result, left[key], right[key])
+        for left_index, right_index in zip(left[key], right[key]):
+            updates[left_index] = snapshot[right_index]
+            updates[right_index] = snapshot[left_index]
+    _apply_slot_updates(result, updates)
+
+
+def reorder_device_groups(result: MappingResult, old_order: list[str], new_order: list[str], user: str | None = None) -> None:
+    if len(old_order) != len(new_order) or set(old_order) != set(new_order):
+        raise ValueError("设备排序必须包含相同的设备")
+    users = list(dict.fromkeys(str(slot["user"]) for slot in result.slots if user is None or str(slot["user"]) == str(user)))
+    snapshot = [slot["value"] for slot in result.slots]
+    updates: dict[int, str] = {}
+    for current_user in users:
+        by_device: dict[str, dict[tuple[str, str], list[int]]] = {}
+        for device in old_order:
+            groups: dict[tuple[str, str], list[int]] = defaultdict(list)
+            seen: set[tuple[str, str]] = set()
+            for index, slot in enumerate(result.slots):
+                if str(slot["user"]) != current_user or str(slot["device"]) != device:
+                    continue
+                logical = (str(slot["stableKey"]), str(slot["field"]))
+                if result.mode == "folders" and logical in seen:
+                    continue
+                seen.add(logical)
+                groups[(str(slot["ear"]), str(slot["field"]))].append(index)
+            by_device[device] = groups
+        for source_device, target_device in zip(old_order, new_order):
+            source_slots = by_device.get(source_device, {})
+            target_slots = by_device.get(target_device, {})
+            for key in set(source_slots) & set(target_slots):
+                for source_index, target_index in zip(source_slots[key], target_slots[key]):
+                    updates[target_index] = snapshot[source_index]
+    _apply_slot_updates(result, updates)
 
 
 def restore_slots(result: MappingResult, user: str | None = None) -> None:

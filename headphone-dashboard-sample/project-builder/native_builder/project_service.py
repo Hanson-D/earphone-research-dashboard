@@ -185,6 +185,8 @@ class ProjectService:
             include_bare_ear=bool(existing_mapping_fields.get("includeBareEarPhotos")) if request.include_bare_ear_photos is None else request.include_bare_ear_photos,
             bare_ear_config=request.bare_ear_config or dict(existing_mapping_fields.get("bareEarConfig") or {}),
             overrides=overrides,
+            device_order=[str(value) for value in fields_config.get("deviceOrder") or []],
+            extra_assignments=[dict(value) for value in fields_config.get("extraPhotoAssignments") or [] if isinstance(value, dict)],
         )
         if not photos and not views:
             mapping = MappingResult([dict(row) for row in rows], [], [], [], [], [], "sequence")
@@ -235,6 +237,8 @@ class ProjectService:
                 "includeBareEarPhotos": mapping_config.include_bare_ear,
                 "bareEarConfig": mapping_config.bare_ear_config,
                 "singleEarMode": mapping_config.single_ear_mode,
+                "deviceOrder": mapping_config.device_order,
+                "extraPhotoAssignments": mapping_config.extra_assignments,
             },
             "mappingViews": mapping_config.views,
             "photoMappingOverrides": mapping_overrides(mapping, stable=False),

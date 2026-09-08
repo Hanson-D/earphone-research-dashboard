@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .core import FIELD_ROLE_LABELS, mapping_overrides, parts_include, path_parts, restore_slots, set_slot, swap_device_groups, swap_ear_groups, swap_slots
+from .core import FIELD_ROLE_LABELS, MappingConfig, make_extra_photo_assignment, mapping_overrides, parts_include, path_parts, reorder_device_groups, restore_slots, set_slot, swap_ear_groups, swap_slots
 from .project_service import BuildRequest, BuildResult, ProjectService
 from .runtime_log import arm_hang_trace, cancel_hang_trace, configure_runtime_logging, get_logger
 
@@ -203,6 +203,9 @@ class MainWindow(QMainWindow):
         self.prepared: BuildResult | None = None
         self.role_combos: dict[str, QComboBox] = {}
         self.auto_roles: dict[str, str] = {}
+        self.device_order: list[str] = []
+        self.extra_photo_assignments: list[dict[str, str]] = []
+        self.unused_entries: list[tuple[str, str]] = []
         self.selected_slots: set[int] = set()
         self._threads: list[QThread] = []
         self._workers: list[Worker] = []
@@ -356,7 +359,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         outer = QVBoxLayout(page)
         actions = QHBoxLayout()
-        for label, callback in (("交换所选两张", self.swap_selected), ("设备组上移", lambda: self.move_device(-1)), ("设备组下移", lambda: self.move_device(1)), ("左右耳互换", self.swap_ears), ("恢复当前用户自动映射", self.restore_user), ("恢复全部", self.restore_all)):
+        for label, callback in (("交换所选两张", self.swap_selected), ("当前用户左右耳互换", self.swap_ears), ("全部用户左右耳互换", self.swap_all_ears), ("恢复当前用户自动映射", self.restore_user), ("恢复全部", self.restore_all)):
             button = QPushButton(label)
             button.clicked.connect(callback)
             actions.addWidget(button)
@@ -371,11 +374,35 @@ class MainWindow(QMainWindow):
         self.user_list.setModel(self.user_model)
         self.user_list.selectionModel().currentChanged.connect(self._user_selection_changed)
         left_layout.addWidget(self.user_list, 1)
-        left_layout.addWidget(QLabel("未使用 / 补拍照片"))
+        left_layout.addWidget(QLabel("未使用 / 补拍照片（按用户分组）"))
         self.unused_model = StringListModel()
         self.unused_list = QListView()
         self.unused_list.setModel(self.unused_model)
+        self.unused_list.selectionModel().currentChanged.connect(self._unused_selection_changed)
         left_layout.addWidget(self.unused_list, 1)
+        self.extra_device = QComboBox()
+        self.extra_device.addItem("自动识别设备", "")
+        left_layout.addWidget(self.extra_device)
+        self.extra_view_name = QLineEdit()
+        self.extra_view_name.setPlaceholderText("新视角名称，例如：佩戴后侧补拍")
+        left_layout.addWidget(self.extra_view_name)
+        promote = QPushButton("将所选照片归入对应用户/设备并命名视角")
+        promote.clicked.connect(self.promote_unused_photo)
+        left_layout.addWidget(promote)
+        left_layout.addWidget(QLabel("设备照片顺序（顺序模式，全用户统一）"))
+        self.device_order_model = StringListModel()
+        self.device_order_list = QListView()
+        self.device_order_list.setModel(self.device_order_model)
+        self.device_order_list.setMaximumHeight(140)
+        left_layout.addWidget(self.device_order_list)
+        device_actions = QHBoxLayout()
+        self.device_up = QPushButton("上移")
+        self.device_down = QPushButton("下移")
+        self.device_up.clicked.connect(lambda: self.move_device_order(-1))
+        self.device_down.clicked.connect(lambda: self.move_device_order(1))
+        device_actions.addWidget(self.device_up)
+        device_actions.addWidget(self.device_down)
+        left_layout.addLayout(device_actions)
         splitter.addWidget(left)
         self.cards = QWidget()
         self.cards_layout = QGridLayout(self.cards)
@@ -458,6 +485,8 @@ class MainWindow(QMainWindow):
         self.photo_ear_mode.setChecked(bool(fields.get("photoEarMode")))
         self.single_ear.setChecked(bool(fields.get("singleEarMode")))
         self.include_bare.setChecked(bool(fields.get("includeBareEarPhotos")))
+        self.device_order = [str(value) for value in fields.get("deviceOrder") or []]
+        self.extra_photo_assignments = [dict(value) for value in fields.get("extraPhotoAssignments") or [] if isinstance(value, dict)]
         self.status.setText(f"已打开：{project.get('title') or directory.name}；点击“读取并预览”加载映射")
 
     def reset(self) -> None:
@@ -469,6 +498,10 @@ class MainWindow(QMainWindow):
         self.roles_table.setRowCount(0)
         self.user_model.replace([])
         self.unused_model.replace([])
+        self.device_order_model.replace([])
+        self.device_order = []
+        self.extra_photo_assignments = []
+        self.unused_entries = []
         self.publish_summary.clear()
         self.status.setText("新项目")
 
@@ -479,6 +512,8 @@ class MainWindow(QMainWindow):
             fields["userField"] = self.user_field.currentData()
             fields["earField"] = self.ear_field.currentData()
             fields["deviceField"] = self.device_field.currentData()
+        fields["deviceOrder"] = list(self.device_order)
+        fields["extraPhotoAssignments"] = [dict(value) for value in self.extra_photo_assignments]
         roles = {field: combo.currentData() for field, combo in self.role_combos.items()}
         current_mapping_overrides = mapping_overrides(self.prepared.mapping, stable=True) if self.prepared else {}
         return BuildRequest(
@@ -504,6 +539,15 @@ class MainWindow(QMainWindow):
         )
         self.prepared = prepared
         self.project_name.setText(prepared.project["title"])
+        mapping_fields = prepared.project.get("mappingFields") or {}
+        devices = list(dict.fromkeys(
+            str(row.get(mapping_fields.get("deviceField"), ""))
+            for row in prepared.rows
+            if mapping_fields.get("deviceField") and row.get(mapping_fields.get("deviceField"))
+        ))
+        stored_order = [str(value) for value in mapping_fields.get("deviceOrder") or [] if str(value) in devices]
+        self.device_order = stored_order + [value for value in devices if value not in stored_order]
+        self.extra_photo_assignments = [dict(value) for value in mapping_fields.get("extraPhotoAssignments") or [] if isinstance(value, dict)]
         self._fill_csv(prepared)
         LOGGER.info("preview CSV and role tables rendered")
         self._fill_fields(prepared)
@@ -530,6 +574,7 @@ class MainWindow(QMainWindow):
             for value, label in FIELD_ROLE_LABELS.items():
                 combo.addItem(label, value)
             combo.setCurrentIndex(combo.findData(final))
+            combo.currentIndexChanged.connect(lambda _index, field=header, selector=combo: self._role_changed(field, selector))
             self.roles_table.setCellWidget(index, 2, combo)
             self.role_combos[header] = combo
         self.roles_table.setUpdatesEnabled(True)
@@ -540,6 +585,14 @@ class MainWindow(QMainWindow):
             return
         for field, combo in self.role_combos.items():
             combo.setCurrentIndex(combo.findData(self.auto_roles.get(field, "dimension")))
+
+    def _role_changed(self, field: str, combo: QComboBox) -> None:
+        if not self.prepared:
+            return
+        role = str(combo.currentData() or "dimension")
+        self.prepared.field_roles[field] = role
+        self.prepared.project.setdefault("dashboardConfig", {}).setdefault("fieldRoleOverrides", {})[field] = role
+        self.status.setText(f"变量类别已暂存：{field} → {FIELD_ROLE_LABELS.get(role, role)}；点击“发布项目”后写入 JSON")
 
     def _fill_fields(self, prepared: BuildResult) -> None:
         values = prepared.headers
@@ -567,8 +620,22 @@ class MainWindow(QMainWindow):
             f"{user}  {'缺失 ' + str(missing) if missing else '正常'}"
             for user, missing in user_missing.items()
         ])
-        self.unused_model.replace(prepared.mapping.unused_photos)
-        LOGGER.info("mapping list models attached users=%s unused=%s", self.user_model.rowCount(), self.unused_model.rowCount())
+        known_users = list(user_missing)
+        self.unused_entries = []
+        photo_by_path = {photo.relative_path: photo for photo in prepared.photos}
+        for path in prepared.mapping.unused_photos:
+            photo = photo_by_path.get(path)
+            parts = path_parts(photo) if photo else []
+            user = next((value for value in known_users if parts_include(parts, value)), "未识别用户")
+            self.unused_entries.append((user, path))
+        self.unused_entries.sort(key=lambda item: (item[0], item[1]))
+        self.unused_model.replace([f"[{user}] {path}" for user, path in self.unused_entries])
+        self.device_order_model.replace(self.device_order)
+        sequence_enabled = prepared.mapping.mode == "sequence" and len(self.device_order) > 1
+        self.device_order_list.setEnabled(sequence_enabled)
+        self.device_up.setEnabled(sequence_enabled)
+        self.device_down.setEnabled(sequence_enabled)
+        LOGGER.info("mapping list models attached users=%s unused=%s devices=%s", self.user_model.rowCount(), self.unused_model.rowCount(), len(self.device_order))
         if self.user_model.rowCount():
             self.user_list.setCurrentIndex(self.user_model.index(0, 0))
 
@@ -579,6 +646,28 @@ class MainWindow(QMainWindow):
 
     def _user_selection_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
         self.render_user()
+
+    def _unused_selection_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
+        self.extra_device.clear()
+        self.extra_device.addItem("自动识别设备", "")
+        if not self.prepared or not current.isValid() or current.row() >= len(self.unused_entries):
+            return
+        user, path = self.unused_entries[current.row()]
+        fields = self.prepared.project.get("mappingFields") or {}
+        device_field = str(fields.get("deviceField") or "")
+        if not device_field or user == "未识别用户":
+            return
+        devices = list(dict.fromkeys(
+            str(row.get(device_field, "")) for row in self.prepared.rows
+            if str(row.get(fields.get("userField"), "")) == user and row.get(device_field)
+        ))
+        photo = next((item for item in self.prepared.photos if item.relative_path == path), None)
+        parts = path_parts(photo) if photo else []
+        inferred = next((device for device in devices if parts_include(parts, device)), "")
+        for device in devices:
+            self.extra_device.addItem(device, device)
+        if inferred:
+            self.extra_device.setCurrentIndex(self.extra_device.findData(inferred))
 
     def _visible_slots(self, prepared: BuildResult) -> list[tuple[int, dict[str, Any]]]:
         indexed = list(enumerate(prepared.mapping.slots))
@@ -666,22 +755,21 @@ class MainWindow(QMainWindow):
         swap_slots(self.prepared.mapping, *sorted(self.selected_slots))
         self._mapping_changed()
 
-    def move_device(self, direction: int) -> None:
-        if not self.prepared:
+    def move_device_order(self, direction: int) -> None:
+        if not self.prepared or self.prepared.mapping.mode != "sequence":
             return
-        user = self._current_user()
-        slots = [(index, slot) for index, slot in enumerate(self.prepared.mapping.slots) if slot["user"] == user]
-        devices = []
-        for _, slot in slots:
-            if slot["device"] not in devices:
-                devices.append(slot["device"])
-        selected_device = next((slot["device"] for index, slot in slots if index in self.selected_slots), devices[0] if devices else "")
-        position = devices.index(selected_device) if selected_device in devices else 0
-        target_position = position + direction
-        if target_position < 0 or target_position >= len(devices):
+        current = self.device_order_list.currentIndex().row()
+        target = current + direction
+        if current < 0 or target < 0 or target >= len(self.device_order):
             return
-        target_device = devices[target_position]
-        swap_device_groups(self.prepared.mapping, user, selected_device, target_device)
+        old_order = list(self.device_order)
+        new_order = list(old_order)
+        new_order[current], new_order[target] = new_order[target], new_order[current]
+        reorder_device_groups(self.prepared.mapping, old_order, new_order)
+        self.device_order = new_order
+        self.prepared.project["mappingFields"]["deviceOrder"] = list(new_order)
+        self.device_order_model.replace(new_order)
+        self.device_order_list.setCurrentIndex(self.device_order_model.index(target, 0))
         self._mapping_changed()
 
     def swap_ears(self) -> None:
@@ -690,6 +778,44 @@ class MainWindow(QMainWindow):
         user = self._current_user()
         swap_ear_groups(self.prepared.mapping, user)
         self._mapping_changed()
+
+    def swap_all_ears(self) -> None:
+        if not self.prepared:
+            return
+        swap_ear_groups(self.prepared.mapping, None)
+        self._mapping_changed()
+
+    def promote_unused_photo(self) -> None:
+        if not self.prepared:
+            return
+        index = self.unused_list.currentIndex().row()
+        if index < 0 or index >= len(self.unused_entries):
+            QMessageBox.information(self, "处理未使用照片", "请先选择一张未使用或补拍照片。")
+            return
+        user, path = self.unused_entries[index]
+        if user == "未识别用户":
+            QMessageBox.information(self, "处理未使用照片", "无法从目录识别用户，请先把照片放入对应用户目录。")
+            return
+        fields = self.prepared.project.get("mappingFields") or {}
+        config = MappingConfig(
+            mode=self.prepared.mapping.mode,
+            user_field=str(fields.get("userField") or ""),
+            ear_field=str(fields.get("earField") or ""),
+            device_field=str(fields.get("deviceField") or ""),
+            views=list(self.prepared.project.get("mappingViews") or []),
+            extra_assignments=[dict(value) for value in self.extra_photo_assignments],
+        )
+        try:
+            assignment = make_extra_photo_assignment(
+                self.prepared.mapping, self.prepared.photos, config, path, user, self.extra_view_name.text(), str(self.extra_device.currentData() or "")
+            )
+        except ValueError as error:
+            QMessageBox.information(self, "处理未使用照片", str(error))
+            return
+        self.extra_photo_assignments.append(assignment)
+        self.extra_view_name.clear()
+        LOGGER.info("promoting unused photo user=%s device=%s view=%s path=%s", assignment["user"], assignment["device"], assignment["view"], assignment["path"])
+        self.preview()
 
     def restore_user(self) -> None:
         if self.prepared:

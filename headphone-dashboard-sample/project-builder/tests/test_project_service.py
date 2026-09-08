@@ -181,6 +181,26 @@ class ProjectServiceTests(unittest.TestCase):
         prepared = self.service.prepare(request)
         self.assertEqual(prepared.project["dashboardConfig"]["fieldRoleOverrides"]["舒适度"], "pressure")
 
+    def test_device_order_and_named_extra_photo_survive_project_generation(self) -> None:
+        photos = self.root / "ordered-photos"
+        (photos / "U1").mkdir(parents=True)
+        (photos / "U1" / "1.jpg").write_bytes(b"primary")
+        (photos / "U1" / "extra.jpg").write_bytes(b"extra")
+        request = self._new_request()
+        request.photo_root = str(photos)
+        request.mapping_fields = {
+            "deviceOrder": ["A"],
+            "extraPhotoAssignments": [{
+                "path": "U1/extra.jpg", "user": "U1", "device": "A", "ear": "",
+                "view": "补拍", "label": "补拍", "field": "photo_补拍",
+            }],
+        }
+        prepared = self.service.prepare(request)
+        self.assertEqual(prepared.project["mappingFields"]["deviceOrder"], ["A"])
+        self.assertEqual(prepared.project["mappingFields"]["extraPhotoAssignments"][0]["view"], "补拍")
+        self.assertEqual(prepared.project["rows"][0]["photo_补拍"], "U1/extra.jpg")
+        self.assertNotIn("U1/extra.jpg", prepared.mapping.unused_photos)
+
     def test_multiple_user_id_categories_are_rejected(self) -> None:
         request = self._new_request()
         request.field_role_overrides = {"设备": "user_id"}

@@ -285,27 +285,74 @@
   }
 
   function swapMappedPhotoAssignments(rows = [], source = {}, target = {}) {
-    const nextRows = rows.map(row => ({ ...row }));
-    const sourceRow = nextRows[source.rowIndex];
-    const targetRow = nextRows[target.rowIndex];
-    if (!sourceRow || !targetRow || !source.field || !target.field) return nextRows;
-    const sourceValue = sourceRow[source.field] || "";
-    sourceRow[source.field] = targetRow[target.field] || "";
-    targetRow[target.field] = sourceValue;
-    return nextRows;
+    return applyMappedPhotoPermutation(rows, [
+      { sourceRowIndex: target.rowIndex, sourceField: target.field, targetRowIndex: source.rowIndex, targetField: source.field },
+      { sourceRowIndex: source.rowIndex, sourceField: source.field, targetRowIndex: target.rowIndex, targetField: target.field }
+    ]);
   }
 
   function swapMappedPhotoDeviceGroups(rows = [], sourceRowIndex, targetRowIndex, fields = []) {
+    return applyMappedPhotoPermutation(rows, fields.flatMap(field => [
+      { sourceRowIndex: targetRowIndex, sourceField: field, targetRowIndex: sourceRowIndex, targetField: field },
+      { sourceRowIndex, sourceField: field, targetRowIndex, targetField: field }
+    ]));
+  }
+
+  function applyMappedPhotoPermutation(rows = [], assignments = []) {
+    const snapshot = rows.map(row => ({ ...row }));
     const nextRows = rows.map(row => ({ ...row }));
-    const sourceRow = nextRows[sourceRowIndex];
-    const targetRow = nextRows[targetRowIndex];
-    if (!sourceRow || !targetRow) return nextRows;
-    fields.forEach(field => {
-      const sourceValue = sourceRow[field] || "";
-      sourceRow[field] = targetRow[field] || "";
-      targetRow[field] = sourceValue;
+    assignments.forEach(item => {
+      const sourceRow = snapshot[item.sourceRowIndex];
+      const targetRow = nextRows[item.targetRowIndex];
+      if (!sourceRow || !targetRow || !item.sourceField || !item.targetField) return;
+      targetRow[item.targetField] = sourceRow[item.sourceField] || "";
     });
     return nextRows;
+  }
+
+  function reorderMappedPhotoDeviceGroups(rows = [], options = {}) {
+    const { userField = "", deviceField = "", fields = [], oldOrder = [], newOrder = [] } = options;
+    if (!userField || !deviceField || oldOrder.length !== newOrder.length || new Set(oldOrder).size !== new Set(newOrder).size || oldOrder.some(value => !newOrder.includes(value))) {
+      return rows.map(row => ({ ...row }));
+    }
+    const users = [...new Set(rows.map(row => row[userField]).filter(value => value !== undefined && value !== null))];
+    const assignments = [];
+    users.forEach(user => {
+      const byDevice = new Map(oldOrder.map(device => [device, rows.map((row, rowIndex) => ({ row, rowIndex }))
+        .filter(entry => entry.row[userField] === user && entry.row[deviceField] === device)]));
+      oldOrder.forEach((sourceDevice, position) => {
+        const targetDevice = newOrder[position];
+        const sourceEntries = byDevice.get(sourceDevice) || [];
+        const targetEntries = byDevice.get(targetDevice) || [];
+        sourceEntries.forEach((sourceEntry, index) => {
+          const targetEntry = targetEntries[index];
+          if (!targetEntry) return;
+          fields.forEach(field => assignments.push({
+            sourceRowIndex: sourceEntry.rowIndex, sourceField: field,
+            targetRowIndex: targetEntry.rowIndex, targetField: field
+          }));
+        });
+      });
+    });
+    return applyMappedPhotoPermutation(rows, assignments);
+  }
+
+  function swapMappedPhotoEarGroups(rows = [], fieldPairs = [], options = {}) {
+    const { userField = "", user = null, rowIndexes = null } = options;
+    const allowedRows = Array.isArray(rowIndexes) ? new Set(rowIndexes.map(Number)) : null;
+    const assignments = [];
+    rows.forEach((row, rowIndex) => {
+      if (allowedRows && !allowedRows.has(rowIndex)) return;
+      if (userField && user !== null && String(row[userField]) !== String(user)) return;
+      fieldPairs.forEach(pair => {
+        if (!pair.left || !pair.right) return;
+        assignments.push(
+          { sourceRowIndex: rowIndex, sourceField: pair.right, targetRowIndex: rowIndex, targetField: pair.left },
+          { sourceRowIndex: rowIndex, sourceField: pair.left, targetRowIndex: rowIndex, targetField: pair.right }
+        );
+      });
+    });
+    return applyMappedPhotoPermutation(rows, assignments);
   }
 
   function stableWithinGroup(rows = [], groupField = "", valueField = "") {
@@ -880,6 +927,37 @@
     });
   }
 
+  function applyExtraPhotoAssignments(mapped = [], files = [], photoFields = [], options = {}) {
+    const assignments = Array.isArray(options.extraPhotoAssignments) ? options.extraPhotoAssignments : [];
+    const available = new Set(files.map(photoFileValue));
+    const descriptors = [];
+    const applied = [];
+    const seen = new Set();
+    assignments.forEach(item => {
+      const path = String(item?.path || "");
+      const field = String(item?.field || "");
+      const view = String(item?.view || "").trim();
+      const user = String(item?.user || "");
+      if (!path || !available.has(path) || !field || !view || !user) return;
+      if (!photoFields.includes(field)) {
+        photoFields.push(field);
+        mapped.forEach(row => { row[field] = ""; });
+      }
+      if (!seen.has(field)) {
+        descriptors.push({ field, view, ear: String(item.ear || ""), label: String(item.label || view) });
+        seen.add(field);
+      }
+      mapped.forEach(row => {
+        if (String(row[options.userField] || "") !== user) return;
+        if (item.device && options.deviceField && String(row[options.deviceField] || "") !== String(item.device)) return;
+        if (item.ear && options.earField && inferEarLabel(row[options.earField]) !== inferEarLabel(item.ear)) return;
+        row[field] = path;
+      });
+      applied.push({ ...item, path, field, view, user });
+    });
+    return { descriptors, applied };
+  }
+
   function inferSingleDeviceSelections(rows = [], files = [], options = {}) {
     const { userField, earField, deviceField, views = [] } = options;
     if (deviceField) return new Map();
@@ -1059,12 +1137,24 @@
         review.status = review.extras.length ? "extra" : review.missingSlots ? "missing" : "ok";
         reviewMap.set(user, review);
       });
+      const extraResult = applyExtraPhotoAssignments(mapped, files, photoFields, options);
+      extraResult.applied.forEach(item => {
+        const review = reviewMap.get(item.user);
+        const file = files.find(candidate => photoFileValue(candidate) === item.path);
+        if (!review || !file) return;
+        review.expected += 1;
+        if (!review._fileValues.has(item.path)) {
+          review._fileValues.add(item.path);
+          review.files.push(file);
+        }
+        review.status = review.extras.length ? "extra" : review.missingSlots ? "missing" : "ok";
+      });
       const reviews = [...reviewMap.values()].map(review => {
         delete review._slotKeys;
         delete review._fileValues;
         return review;
       });
-      return { mapped, reviews, photoFields, photoViews: descriptors };
+      return { mapped, reviews, photoFields, photoViews: [...descriptors, ...extraResult.descriptors] };
     }
 
     const filesByUser = new Map();
@@ -1086,6 +1176,13 @@
 
     rowsByUser.forEach((entries, user) => {
       const userFiles = filesByUser.get(user) || [];
+      const deviceOrder = Array.isArray(options.deviceOrder) ? options.deviceOrder.map(String) : [];
+      const deviceRank = new Map(deviceOrder.map((device, index) => [device, index]));
+      const orderedEntries = deviceField && deviceOrder.length ? entries.slice().sort((a, b) =>
+        (deviceRank.get(String(a.row[deviceField] || "")) ?? deviceRank.size) -
+        (deviceRank.get(String(b.row[deviceField] || "")) ?? deviceRank.size) ||
+        a.rowIndex - b.rowIndex
+      ) : entries;
       const bareConfig = normalizeBareEarConfig(options);
       const bareSlots = bareConfig.enabled ? bareEarDescriptorsForEntries(entries, { ...effectiveOptions, mode }) : [];
       const bareValues = new Set();
@@ -1107,7 +1204,7 @@
         userFiles.filter(file => ![file.relative_path, file.absolute_path, file.path].some(value => bareValues.has(value))) :
         userFiles;
       let cursor = 0;
-      entries.forEach(entry => {
+      orderedEntries.forEach(entry => {
         applicableDescriptors(entry.row).forEach(item => {
           const overrideKey = `${entry.rowIndex}::${item.field}`;
           const file = deviceFiles[cursor];
@@ -1127,7 +1224,14 @@
       });
     });
 
-    return { mapped, reviews, photoFields, photoViews: descriptors };
+    const extraResult = applyExtraPhotoAssignments(mapped, files, photoFields, options);
+    reviews.forEach(review => {
+      const count = new Set(extraResult.applied.filter(item => item.user === String(review.user)).map(item => item.path)).size;
+      if (!count) return;
+      review.expected += count;
+      review.status = review.deviceFiles.length === review.expected ? "ok" : review.deviceFiles.length < review.expected ? "missing" : "extra";
+    });
+    return { mapped, reviews, photoFields, photoViews: [...descriptors, ...extraResult.descriptors] };
   }
 
   function buildPhotoAuditRows(reviews = [], photoFields = [], mappedRows = [], options = {}) {
@@ -1533,6 +1637,10 @@
     pressureRadarByDevice,
     swapMappedPhotoAssignments,
     swapMappedPhotoDeviceGroups,
+    applyMappedPhotoPermutation,
+    reorderMappedPhotoDeviceGroups,
+    swapMappedPhotoEarGroups,
+    applyExtraPhotoAssignments,
     inferFieldRole,
     isEarSizeField,
     isInterferenceField,

@@ -10,8 +10,10 @@ from native_builder.core import (
     folder_matches,
     infer_field_role,
     infer_mapping_fields,
+    make_extra_photo_assignment,
     map_photos,
     read_csv_file,
+    reorder_device_groups,
     set_slot,
     swap_device_groups,
     swap_ear_groups,
@@ -72,6 +74,64 @@ class NativeCoreTests(unittest.TestCase):
         swap_ear_groups(result, "U1")
         self.assertNotEqual([slot["value"] for slot in result.slots if slot["ear"] == "左耳"], left_before)
         self.assertEqual(len(result.slots), 4)
+
+    def test_global_ear_swap_is_atomic_and_preserves_every_photo(self) -> None:
+        rows = [{"用户编号": user, "设备": "A"} for user in ("U1", "U2")]
+        photos = [
+            PhotoFile(f"{user}/{index}.jpg", f"/tmp/{user}-{index}.jpg", f"{index}.jpg", user)
+            for user in ("U1", "U2") for index in (1, 2)
+        ]
+        result = map_photos(rows, photos, MappingConfig(
+            mode="sequence", user_field="用户编号", device_field="设备", views=["正面"], photo_ear_mode=True,
+        ))
+        before = [slot["value"] for slot in result.slots]
+        swap_ear_groups(result, None)
+        after = [slot["value"] for slot in result.slots]
+        self.assertCountEqual(after, before)
+        self.assertEqual(after, [before[1], before[0], before[3], before[2]])
+
+    def test_device_order_reassigns_all_users_atomically_without_loss(self) -> None:
+        rows = [{"用户编号": user, "设备": device} for user in ("U1", "U2") for device in ("A", "B", "C")]
+        photos = [
+            PhotoFile(f"{user}/{index}.jpg", f"/tmp/{user}-{index}.jpg", f"{index}.jpg", user)
+            for user in ("U1", "U2") for index in (1, 2, 3)
+        ]
+        result = map_photos(rows, photos, MappingConfig(mode="sequence", user_field="用户编号", device_field="设备", views=["正面"]))
+        before = [slot["value"] for slot in result.slots]
+        reorder_device_groups(result, ["A", "B", "C"], ["B", "C", "A"])
+        after = [slot["value"] for slot in result.slots]
+        self.assertCountEqual(after, before)
+        by_user_device = {(slot["user"], slot["device"]): slot["value"] for slot in result.slots}
+        self.assertEqual(by_user_device[("U1", "B")], "U1/1.jpg")
+        self.assertEqual(by_user_device[("U1", "C")], "U1/2.jpg")
+        self.assertEqual(by_user_device[("U1", "A")], "U1/3.jpg")
+
+    def test_unused_photo_can_be_promoted_to_named_view_for_matching_user(self) -> None:
+        rows = [{"用户编号": "U1", "设备": "A"}, {"用户编号": "U2", "设备": "A"}]
+        photos = [
+            PhotoFile("U1/A/正面/1.jpg", "/tmp/1.jpg", "1.jpg", "U1"),
+            PhotoFile("U1/A/补拍/x.jpg", "/tmp/x.jpg", "x.jpg", "U1"),
+            PhotoFile("U2/A/正面/2.jpg", "/tmp/2.jpg", "2.jpg", "U2"),
+        ]
+        config = MappingConfig(mode="folders", user_field="用户编号", device_field="设备", views=["正面"])
+        initial = map_photos(rows, photos, config)
+        self.assertIn("U1/A/补拍/x.jpg", initial.unused_photos)
+        assignment = make_extra_photo_assignment(initial, photos, config, "U1/A/补拍/x.jpg", "U1", "补拍")
+        config.extra_assignments.append(assignment)
+        updated = map_photos(rows, photos, config)
+        self.assertEqual(updated.rows[0][assignment["field"]], "U1/A/补拍/x.jpg")
+        self.assertEqual(updated.rows[1][assignment["field"]], "")
+        self.assertNotIn("U1/A/补拍/x.jpg", updated.unused_photos)
+
+    def test_unused_photo_requires_device_choice_when_multi_device_path_is_ambiguous(self) -> None:
+        rows = [{"用户编号": "U1", "设备": device} for device in ("A", "B")]
+        photos = [PhotoFile("U1/补拍/x.jpg", "/tmp/x.jpg", "x.jpg", "U1")]
+        config = MappingConfig(mode="folders", user_field="用户编号", device_field="设备", views=["正面"])
+        initial = map_photos(rows, photos, config)
+        with self.assertRaisesRegex(ValueError, "请选择目标设备"):
+            make_extra_photo_assignment(initial, photos, config, "U1/补拍/x.jpg", "U1", "补拍")
+        assignment = make_extra_photo_assignment(initial, photos, config, "U1/补拍/x.jpg", "U1", "补拍", "B")
+        self.assertEqual(assignment["device"], "B")
 
     def test_folder_mapping_understands_arbitrary_level_order(self) -> None:
         rows = [{"姓名": "张三", "耳侧": "左耳", "样机": "A"}]

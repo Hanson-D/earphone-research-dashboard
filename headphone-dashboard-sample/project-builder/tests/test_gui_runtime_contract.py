@@ -22,6 +22,14 @@ class GuiRuntimeContractTests(unittest.TestCase):
         self.assertIn("hang_path = arm_hang_trace()", gui)
         self.assertIn('with_name("builder-hang.log")', runtime_log)
 
+    def test_mapping_editor_exposes_global_and_recovery_controls(self) -> None:
+        source = (ROOT / "native_builder" / "gui.py").read_text("utf-8")
+        self.assertIn("全部用户左右耳互换", source)
+        self.assertIn("设备照片顺序（顺序模式，全用户统一）", source)
+        self.assertIn("未使用 / 补拍照片（按用户分组）", source)
+        self.assertIn("self.extra_device.currentData()", source)
+        self.assertIn("make_extra_photo_assignment", source)
+
 
 if __name__ == "__main__":
     unittest.main()

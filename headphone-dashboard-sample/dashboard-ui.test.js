@@ -520,3 +520,11 @@ test("windows admin gui reuses ssh and keeps secrets out of settings", () => {
   assert.match(localBuild, /--onefile --windowed/);
   assert.equal([...build].every((character) => character.codePointAt(0) < 128), true);
 });
+
+test("saved project field roles override protocol defaults when loading", () => {
+  const js = read("app.js");
+  const sequence = "buildSchema();\n  applyProtocolFieldRoles();\n  // Protocol roles are defaults. Explicit roles saved in the project editor\n  // must win when a project is loaded back into the dashboard.\n  applyDashboardConfig(project.dashboardConfig);";
+  assert.equal(js.includes(sequence), true);
+  const serverSequence = "buildSchema();\n  applyProtocolFieldRoles();\n  applyDashboardConfig(project.dashboardConfig);";
+  assert.equal(js.includes(serverSequence), true);
+});

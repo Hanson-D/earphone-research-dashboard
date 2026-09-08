@@ -123,6 +123,8 @@ const state = {
   mappingReviews: [],
   mappingPhotoFields: [],
   photoMappingOverrides: {},
+  mappingDeviceOrder: [],
+  extraPhotoAssignments: [],
   viewLabels: {},
   globalView: "",
   userViews: {},
@@ -524,7 +526,9 @@ function projectDocumentSnapshot() {
       deviceField: els.mappingDeviceField.value,
       includeBareEarPhotos: state.includeBareEarPhotos,
       bareEarConfig: state.bareEarConfig,
-      singleEarMode: state.singleEarMode
+      singleEarMode: state.singleEarMode,
+      deviceOrder: state.mappingDeviceOrder,
+      extraPhotoAssignments: state.extraPhotoAssignments
     },
     mappingViews: mappingViews(),
     photoMappingOverrides: normalizeOverridesForSave(state.photoMappingOverrides),
@@ -543,7 +547,9 @@ function mappingConfigSnapshot() {
       deviceField: els.mappingDeviceField.value,
       includeBareEarPhotos: state.includeBareEarPhotos,
       bareEarConfig: state.bareEarConfig,
-      singleEarMode: state.singleEarMode
+      singleEarMode: state.singleEarMode,
+      deviceOrder: state.mappingDeviceOrder,
+      extraPhotoAssignments: state.extraPhotoAssignments
     },
     mappingViews: mappingViews()
   };
@@ -1661,6 +1667,8 @@ async function applyLoadedProject(path, rawProject, options = {}) {
   state.pendingPhotoAssetSave = false;
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
+  state.mappingDeviceOrder = Array.isArray(project.mappingFields.deviceOrder) ? project.mappingFields.deviceOrder.map(String) : [];
+  state.extraPhotoAssignments = Array.isArray(project.mappingFields.extraPhotoAssignments) ? project.mappingFields.extraPhotoAssignments : [];
   state.protocolTemplate = project.protocolTemplate;
   state.sourceCsvFile = null;
   state.sourceCsvName = project.sourceCsv ? project.sourceCsv.split(/[\\/]/).pop() : "";
@@ -1681,8 +1689,10 @@ async function applyLoadedProject(path, rawProject, options = {}) {
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
-  applyDashboardConfig(project.dashboardConfig);
   applyProtocolFieldRoles();
+  // Protocol roles are defaults. Explicit roles saved in the project editor
+  // must win when a project is loaded back into the dashboard.
+  applyDashboardConfig(project.dashboardConfig);
   buildSchema();
   state.fieldRoleDraftOverrides = { ...state.fieldRoleOverrides };
   state.fieldRolesConfirmed = true;
@@ -1763,6 +1773,8 @@ async function loadServerProject() {
   state.pendingPhotoAssetSave = false;
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
+  state.mappingDeviceOrder = Array.isArray(project.mappingFields.deviceOrder) ? project.mappingFields.deviceOrder.map(String) : [];
+  state.extraPhotoAssignments = Array.isArray(project.mappingFields.extraPhotoAssignments) ? project.mappingFields.extraPhotoAssignments : [];
   state.protocolTemplate = project.protocolTemplate;
   state.sourceCsvFile = null;
   state.sourceCsvName = project.sourceCsv ? project.sourceCsv.split(/[\\/]/).pop() : "";
@@ -1783,8 +1795,8 @@ async function loadServerProject() {
   renderMappingMode();
   if (project.mappingViews.length) els.viewNamesInput.value = project.mappingViews.join(",");
   buildSchema();
-  applyDashboardConfig(project.dashboardConfig);
   applyProtocolFieldRoles();
+  applyDashboardConfig(project.dashboardConfig);
   buildSchema();
   initializeControls();
   renderFieldRoleConfig();
@@ -5007,7 +5019,7 @@ async function buildPhotoMapping() {
   if (!userField) throw new Error("请选择用户字段。");
   if (mode === "folders") els.viewNamesInput.value = views.join(",");
 
-  const { mapped, reviews, photoFields } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
+  const { mapped, reviews, photoFields, photoViews } = Core.mapPhotosToRows(state.mappingRows, state.mappingFiles, {
     mode,
     userField,
     earField,
@@ -5018,21 +5030,14 @@ async function buildPhotoMapping() {
     includeBareEar,
     bareEarConfig,
     singleEarMode,
+    deviceOrder: state.mappingDeviceOrder,
+    extraPhotoAssignments: state.extraPhotoAssignments,
     overrides: state.photoMappingOverrides
   });
   state.mappedRows = applyUserNotesToRows(mapped);
   state.mappingReviews = reviews;
   state.mappingPhotoFields = photoFields;
   state.mappingViews = views;
-  const photoViews = Core.viewDescriptors(state.mappingRows, {
-    mode,
-    earField,
-    views,
-    expectedEars,
-    photoEarMode,
-    singleEarMode,
-    files: state.mappingFiles
-  });
   const bareFieldCount = photoFields.filter(field => field.startsWith("bare_ear_photo")).length;
   photoFields.forEach((field, index) => {
     const bareMatch = field.match(/^bare_ear_photo(?:_(.+))?$/);
@@ -5420,13 +5425,14 @@ function swapMappingEarGroups(user, rowIndex) {
   const rightFields = fields.filter(field => photoFieldEar(field) === "右耳");
   if (!leftFields.length || !rightFields.length) return false;
   const rightByView = new Map(rightFields.map(field => [photoFieldViewName(field), field]));
-  leftFields.forEach(leftField => {
+  const pairs = leftFields.map(leftField => {
     const rightField = rightByView.get(photoFieldViewName(leftField));
-    if (!rightField) return;
-    const row = state.mappedRows[rowIndex];
-    const leftValue = row[leftField] || "";
-    row[leftField] = row[rightField] || "";
-    row[rightField] = leftValue;
+    return rightField ? { left: leftField, right: rightField } : null;
+  }).filter(Boolean);
+  state.mappedRows = Core.swapMappedPhotoEarGroups(state.mappedRows, pairs, { rowIndexes: [rowIndex] });
+  pairs.forEach(({ left, right }) => {
+    const leftField = left;
+    const rightField = right;
     applyPhotoSlotOverrides([{ rowIndex, field: leftField }, { rowIndex, field: rightField }]);
   });
   renderMappingReviewUser(user);

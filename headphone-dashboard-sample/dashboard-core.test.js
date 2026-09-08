@@ -179,6 +179,31 @@ test("swapMappedPhotoDeviceGroups swaps all photo fields between two device rows
   assert.equal(rows[0].photo_front, "/a-front.jpg");
 });
 
+test("global ear swap and device ordering use one immutable photo snapshot", () => {
+  const rows = [
+    { user: "U1", device: "A", photo_left: "u1-a-l", photo_right: "u1-a-r" },
+    { user: "U1", device: "B", photo_left: "u1-b-l", photo_right: "u1-b-r" },
+    { user: "U1", device: "C", photo_left: "u1-c-l", photo_right: "u1-c-r" },
+    { user: "U2", device: "A", photo_left: "u2-a-l", photo_right: "u2-a-r" },
+    { user: "U2", device: "B", photo_left: "u2-b-l", photo_right: "u2-b-r" },
+    { user: "U2", device: "C", photo_left: "u2-c-l", photo_right: "u2-c-r" }
+  ];
+  const ears = core.swapMappedPhotoEarGroups(rows, [{ left: "photo_left", right: "photo_right" }]);
+  assert.equal(ears[0].photo_left, "u1-a-r");
+  assert.equal(ears[5].photo_right, "u2-c-l");
+  const ordered = core.reorderMappedPhotoDeviceGroups(ears, {
+    userField: "user", deviceField: "device", fields: ["photo_left", "photo_right"],
+    oldOrder: ["A", "B", "C"], newOrder: ["B", "C", "A"]
+  });
+  assert.equal(ordered[1].photo_left, "u1-a-r");
+  assert.equal(ordered[2].photo_left, "u1-b-r");
+  assert.equal(ordered[0].photo_left, "u1-c-r");
+  assert.deepEqual(
+    ordered.flatMap(row => [row.photo_left, row.photo_right]).sort(),
+    rows.flatMap(row => [row.photo_left, row.photo_right]).sort()
+  );
+});
+
 test("photoFilesFromBrowserSelection builds relative photo records from folder input", () => {
   const files = [
     { name: "001.jpg", webkitRelativePath: "photos/U001/左耳/正面/001.jpg" },
@@ -313,6 +338,39 @@ test("photo mapping follows user folders and supports per-cell overrides", () =>
   assert.equal(result.mapped[1].photo_正面, "/photos/U001/3.jpg");
   assert.equal(result.mapped[1].photo_侧面, "/manual/B-side.jpg");
   assert.equal(result.reviews[0].status, "missing");
+});
+
+test("sequence photo mapping honors a shared device capture order", () => {
+  const rows = [
+    { user_id: "U1", device_name: "A" },
+    { user_id: "U1", device_name: "B" },
+    { user_id: "U1", device_name: "C" }
+  ];
+  const files = [1, 2, 3].map(index => ({ name: `${index}.jpg`, relative_path: `U1/${index}.jpg`, user_folder: "U1" }));
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "sequence", userField: "user_id", deviceField: "device_name", earField: "",
+    views: ["正面"], deviceOrder: ["B", "C", "A"]
+  });
+  assert.equal(result.mapped[1].photo_正面, "U1/1.jpg");
+  assert.equal(result.mapped[2].photo_正面, "U1/2.jpg");
+  assert.equal(result.mapped[0].photo_正面, "U1/3.jpg");
+});
+
+test("unused sequence photo can become a persisted user named view", () => {
+  const rows = [{ user_id: "U1", device_name: "A" }, { user_id: "U2", device_name: "A" }];
+  const files = [
+    { name: "1.jpg", relative_path: "U1/1.jpg", user_folder: "U1" },
+    { name: "extra.jpg", relative_path: "U1/extra.jpg", user_folder: "U1" },
+    { name: "2.jpg", relative_path: "U2/2.jpg", user_folder: "U2" }
+  ];
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "sequence", userField: "user_id", deviceField: "device_name", earField: "", views: ["正面"],
+    extraPhotoAssignments: [{ path: "U1/extra.jpg", user: "U1", device: "A", view: "补拍", label: "补拍", field: "photo_补拍" }]
+  });
+  assert.equal(result.mapped[0].photo_补拍, "U1/extra.jpg");
+  assert.equal(result.mapped[1].photo_补拍, "");
+  assert.equal(result.photoFields.includes("photo_补拍"), true);
+  assert.equal(result.reviews[0].status, "ok");
 });
 
 test("sequence photo mapping can use ear side in the capture order", () => {
