@@ -204,6 +204,7 @@ class MainWindow(QMainWindow):
         self.role_combos: dict[str, QComboBox] = {}
         self.auto_roles: dict[str, str] = {}
         self.device_order: list[str] = []
+        self.device_order_by_user: dict[str, list[str]] = {}
         self.extra_photo_assignments: list[dict[str, str]] = []
         self.unused_entries: list[tuple[str, str]] = []
         self.selected_slots: set[int] = set()
@@ -389,7 +390,12 @@ class MainWindow(QMainWindow):
         promote = QPushButton("将所选照片归入对应用户/设备并命名视角")
         promote.clicked.connect(self.promote_unused_photo)
         left_layout.addWidget(promote)
-        left_layout.addWidget(QLabel("设备照片顺序（顺序模式，全用户统一）"))
+        left_layout.addWidget(QLabel("设备照片顺序（顺序模式）"))
+        self.device_order_scope = QComboBox()
+        self.device_order_scope.addItem("只应用到当前用户", "user")
+        self.device_order_scope.addItem("应用到全部用户", "all")
+        self.device_order_scope.currentIndexChanged.connect(self._device_scope_changed)
+        left_layout.addWidget(self.device_order_scope)
         self.device_order_model = StringListModel()
         self.device_order_list = QListView()
         self.device_order_list.setModel(self.device_order_model)
@@ -486,6 +492,11 @@ class MainWindow(QMainWindow):
         self.single_ear.setChecked(bool(fields.get("singleEarMode")))
         self.include_bare.setChecked(bool(fields.get("includeBareEarPhotos")))
         self.device_order = [str(value) for value in fields.get("deviceOrder") or []]
+        self.device_order_by_user = {
+            str(user): [str(value) for value in order]
+            for user, order in (fields.get("deviceOrderByUser") or {}).items()
+            if isinstance(order, list)
+        }
         self.extra_photo_assignments = [dict(value) for value in fields.get("extraPhotoAssignments") or [] if isinstance(value, dict)]
         self.status.setText(f"已打开：{project.get('title') or directory.name}；点击“读取并预览”加载映射")
 
@@ -500,6 +511,7 @@ class MainWindow(QMainWindow):
         self.unused_model.replace([])
         self.device_order_model.replace([])
         self.device_order = []
+        self.device_order_by_user = {}
         self.extra_photo_assignments = []
         self.unused_entries = []
         self.publish_summary.clear()
@@ -513,6 +525,7 @@ class MainWindow(QMainWindow):
             fields["earField"] = self.ear_field.currentData()
             fields["deviceField"] = self.device_field.currentData()
         fields["deviceOrder"] = list(self.device_order)
+        fields["deviceOrderByUser"] = {user: list(order) for user, order in self.device_order_by_user.items()}
         fields["extraPhotoAssignments"] = [dict(value) for value in self.extra_photo_assignments]
         roles = {field: combo.currentData() for field, combo in self.role_combos.items()}
         current_mapping_overrides = mapping_overrides(self.prepared.mapping, stable=True) if self.prepared else {}
@@ -547,6 +560,11 @@ class MainWindow(QMainWindow):
         ))
         stored_order = [str(value) for value in mapping_fields.get("deviceOrder") or [] if str(value) in devices]
         self.device_order = stored_order + [value for value in devices if value not in stored_order]
+        self.device_order_by_user = {
+            str(user): [str(value) for value in order]
+            for user, order in (mapping_fields.get("deviceOrderByUser") or {}).items()
+            if isinstance(order, list)
+        }
         self.extra_photo_assignments = [dict(value) for value in mapping_fields.get("extraPhotoAssignments") or [] if isinstance(value, dict)]
         self._fill_csv(prepared)
         LOGGER.info("preview CSV and role tables rendered")
@@ -630,7 +648,7 @@ class MainWindow(QMainWindow):
             self.unused_entries.append((user, path))
         self.unused_entries.sort(key=lambda item: (item[0], item[1]))
         self.unused_model.replace([f"[{user}] {path}" for user, path in self.unused_entries])
-        self.device_order_model.replace(self.device_order)
+        self._refresh_device_order_model()
         sequence_enabled = prepared.mapping.mode == "sequence" and len(self.device_order) > 1
         self.device_order_list.setEnabled(sequence_enabled)
         self.device_up.setEnabled(sequence_enabled)
@@ -646,6 +664,35 @@ class MainWindow(QMainWindow):
 
     def _user_selection_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
         self.render_user()
+        if self.device_order_scope.currentData() == "user":
+            self._refresh_device_order_model()
+
+    def _device_scope_changed(self, _index: int) -> None:
+        self._refresh_device_order_model()
+
+    def _devices_for_user(self, user: str) -> list[str]:
+        if not self.prepared or not user:
+            return []
+        fields = self.prepared.project.get("mappingFields") or {}
+        user_field = str(fields.get("userField") or "")
+        device_field = str(fields.get("deviceField") or "")
+        if not user_field or not device_field:
+            return []
+        return list(dict.fromkeys(
+            str(row.get(device_field, "")) for row in self.prepared.rows
+            if str(row.get(user_field, "")) == user and row.get(device_field)
+        ))
+
+    def _effective_device_order(self, user: str) -> list[str]:
+        devices = self._devices_for_user(user)
+        configured = self.device_order_by_user.get(user, self.device_order)
+        return [value for value in configured if value in devices] + [value for value in devices if value not in configured]
+
+    def _refresh_device_order_model(self) -> None:
+        if not hasattr(self, "device_order_model"):
+            return
+        order = self.device_order if self.device_order_scope.currentData() == "all" else self._effective_device_order(self._current_user())
+        self.device_order_model.replace(order)
 
     def _unused_selection_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
         self.extra_device.clear()
@@ -760,14 +807,28 @@ class MainWindow(QMainWindow):
             return
         current = self.device_order_list.currentIndex().row()
         target = current + direction
-        if current < 0 or target < 0 or target >= len(self.device_order):
+        if current < 0 or target < 0 or target >= self.device_order_model.rowCount():
             return
-        old_order = list(self.device_order)
+        old_order = list(self.device_order_model.values)
         new_order = list(old_order)
         new_order[current], new_order[target] = new_order[target], new_order[current]
-        reorder_device_groups(self.prepared.mapping, old_order, new_order)
-        self.device_order = new_order
-        self.prepared.project["mappingFields"]["deviceOrder"] = list(new_order)
+        if self.device_order_scope.currentData() == "all":
+            users = list(dict.fromkeys(str(slot["user"]) for slot in self.prepared.mapping.slots))
+            for user in users:
+                user_old = self._effective_device_order(user)
+                user_new = [device for device in new_order if device in user_old]
+                if len(user_old) == len(user_new) and user_old != user_new:
+                    reorder_device_groups(self.prepared.mapping, user_old, user_new, user)
+            self.device_order = new_order
+            self.device_order_by_user = {}
+        else:
+            user = self._current_user()
+            reorder_device_groups(self.prepared.mapping, old_order, new_order, user)
+            self.device_order_by_user[user] = new_order
+        self.prepared.project["mappingFields"]["deviceOrder"] = list(self.device_order)
+        self.prepared.project["mappingFields"]["deviceOrderByUser"] = {
+            user: list(order) for user, order in self.device_order_by_user.items()
+        }
         self.device_order_model.replace(new_order)
         self.device_order_list.setCurrentIndex(self.device_order_model.index(target, 0))
         self._mapping_changed()

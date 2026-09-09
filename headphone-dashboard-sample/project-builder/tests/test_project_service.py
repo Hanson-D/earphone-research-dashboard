@@ -190,6 +190,7 @@ class ProjectServiceTests(unittest.TestCase):
         request.photo_root = str(photos)
         request.mapping_fields = {
             "deviceOrder": ["A"],
+            "deviceOrderByUser": {"U1": ["A"]},
             "extraPhotoAssignments": [{
                 "path": "U1/extra.jpg", "user": "U1", "device": "A", "ear": "",
                 "view": "补拍", "label": "补拍", "field": "photo_补拍",
@@ -197,6 +198,7 @@ class ProjectServiceTests(unittest.TestCase):
         }
         prepared = self.service.prepare(request)
         self.assertEqual(prepared.project["mappingFields"]["deviceOrder"], ["A"])
+        self.assertEqual(prepared.project["mappingFields"]["deviceOrderByUser"], {"U1": ["A"]})
         self.assertEqual(prepared.project["mappingFields"]["extraPhotoAssignments"][0]["view"], "补拍")
         self.assertEqual(prepared.project["rows"][0]["photo_补拍"], "U1/extra.jpg")
         self.assertNotIn("U1/extra.jpg", prepared.mapping.unused_photos)

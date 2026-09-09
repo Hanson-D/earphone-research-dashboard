@@ -63,6 +63,7 @@ class MappingConfig:
     bare_ear_config: dict[str, Any] = field(default_factory=dict)
     overrides: dict[str, str] = field(default_factory=dict)
     device_order: list[str] = field(default_factory=list)
+    device_order_by_user: dict[str, list[str]] = field(default_factory=dict)
     extra_assignments: list[dict[str, str]] = field(default_factory=list)
 
 
@@ -437,8 +438,9 @@ def map_photos(rows: list[dict[str, str]], photos: list[PhotoFile], config: Mapp
         for index, row in enumerate(rows):
             row_groups[str(row.get(config.user_field, ""))].append(index)
         for user, indices in row_groups.items():
-            if config.device_field and config.device_order:
-                rank = {str(device): position for position, device in enumerate(config.device_order)}
+            user_device_order = config.device_order_by_user.get(str(user), config.device_order)
+            if config.device_field and user_device_order:
+                rank = {str(device): position for position, device in enumerate(user_device_order)}
                 indices = sorted(indices, key=lambda index: (rank.get(str(rows[index].get(config.device_field, "")), len(rank)), index))
             user_photos = by_user.get(user, [])
             labeled_bare = [item for item in user_photos if _is_bare(item)]

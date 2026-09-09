@@ -65,6 +65,23 @@ class JavaScriptParityTests(unittest.TestCase):
         ))
         self.assertEqual(native.rows, js)
 
+    def test_user_device_order_contract_matches_dashboard(self) -> None:
+        rows = [{"user_id": user, "device_name": device} for user in ("U1", "U2") for device in ("A", "B")]
+        photos = [
+            {"relative_path": f"{user}/{index}.jpg", "absolute_path": f"/tmp/{user}-{index}.jpg", "name": f"{index}.jpg", "user_folder": user}
+            for user in ("U1", "U2") for index in (1, 2)
+        ]
+        by_user = {"U1": ["B", "A"]}
+        js = self._node(
+            "const fs=require('fs');const C=require('./dashboard-core.js');const p=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(C.mapPhotosToRows(p.rows,p.photos,p.options).mapped));",
+            {"rows": rows, "photos": photos, "options": {"mode": "sequence", "userField": "user_id", "earField": "", "deviceField": "device_name", "views": ["正面"], "deviceOrder": ["A", "B"], "deviceOrderByUser": by_user}},
+        )
+        native = map_photos(rows, [PhotoFile(**item) for item in photos], MappingConfig(
+            mode="sequence", user_field="user_id", device_field="device_name", views=["正面"],
+            device_order=["A", "B"], device_order_by_user=by_user,
+        ))
+        self.assertEqual(native.rows, js)
+
     def test_sequence_bare_ear_contract_matches_dashboard(self) -> None:
         rows = [{"user_id": "U1", "device_name": "A"}, {"user_id": "U1", "device_name": "B"}]
         photos = [

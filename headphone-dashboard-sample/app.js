@@ -124,6 +124,7 @@ const state = {
   mappingPhotoFields: [],
   photoMappingOverrides: {},
   mappingDeviceOrder: [],
+  mappingDeviceOrderByUser: {},
   extraPhotoAssignments: [],
   viewLabels: {},
   globalView: "",
@@ -528,6 +529,7 @@ function projectDocumentSnapshot() {
       bareEarConfig: state.bareEarConfig,
       singleEarMode: state.singleEarMode,
       deviceOrder: state.mappingDeviceOrder,
+      deviceOrderByUser: state.mappingDeviceOrderByUser,
       extraPhotoAssignments: state.extraPhotoAssignments
     },
     mappingViews: mappingViews(),
@@ -549,6 +551,7 @@ function mappingConfigSnapshot() {
       bareEarConfig: state.bareEarConfig,
       singleEarMode: state.singleEarMode,
       deviceOrder: state.mappingDeviceOrder,
+      deviceOrderByUser: state.mappingDeviceOrderByUser,
       extraPhotoAssignments: state.extraPhotoAssignments
     },
     mappingViews: mappingViews()
@@ -1668,6 +1671,7 @@ async function applyLoadedProject(path, rawProject, options = {}) {
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.mappingDeviceOrder = Array.isArray(project.mappingFields.deviceOrder) ? project.mappingFields.deviceOrder.map(String) : [];
+  state.mappingDeviceOrderByUser = project.mappingFields.deviceOrderByUser && typeof project.mappingFields.deviceOrderByUser === "object" ? project.mappingFields.deviceOrderByUser : {};
   state.extraPhotoAssignments = Array.isArray(project.mappingFields.extraPhotoAssignments) ? project.mappingFields.extraPhotoAssignments : [];
   state.protocolTemplate = project.protocolTemplate;
   state.sourceCsvFile = null;
@@ -1774,6 +1778,7 @@ async function loadServerProject() {
   state.mappingViews = project.mappingViews;
   state.photoMappingOverrides = project.photoMappingOverrides;
   state.mappingDeviceOrder = Array.isArray(project.mappingFields.deviceOrder) ? project.mappingFields.deviceOrder.map(String) : [];
+  state.mappingDeviceOrderByUser = project.mappingFields.deviceOrderByUser && typeof project.mappingFields.deviceOrderByUser === "object" ? project.mappingFields.deviceOrderByUser : {};
   state.extraPhotoAssignments = Array.isArray(project.mappingFields.extraPhotoAssignments) ? project.mappingFields.extraPhotoAssignments : [];
   state.protocolTemplate = project.protocolTemplate;
   state.sourceCsvFile = null;
@@ -5031,6 +5036,7 @@ async function buildPhotoMapping() {
     bareEarConfig,
     singleEarMode,
     deviceOrder: state.mappingDeviceOrder,
+    deviceOrderByUser: state.mappingDeviceOrderByUser,
     extraPhotoAssignments: state.extraPhotoAssignments,
     overrides: state.photoMappingOverrides
   });

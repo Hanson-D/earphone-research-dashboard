@@ -186,6 +186,11 @@ class ProjectService:
             bare_ear_config=request.bare_ear_config or dict(existing_mapping_fields.get("bareEarConfig") or {}),
             overrides=overrides,
             device_order=[str(value) for value in fields_config.get("deviceOrder") or []],
+            device_order_by_user={
+                str(user): [str(value) for value in order]
+                for user, order in (fields_config.get("deviceOrderByUser") or {}).items()
+                if isinstance(order, list)
+            },
             extra_assignments=[dict(value) for value in fields_config.get("extraPhotoAssignments") or [] if isinstance(value, dict)],
         )
         if not photos and not views:
@@ -238,6 +243,7 @@ class ProjectService:
                 "bareEarConfig": mapping_config.bare_ear_config,
                 "singleEarMode": mapping_config.single_ear_mode,
                 "deviceOrder": mapping_config.device_order,
+                "deviceOrderByUser": mapping_config.device_order_by_user,
                 "extraPhotoAssignments": mapping_config.extra_assignments,
             },
             "mappingViews": mapping_config.views,

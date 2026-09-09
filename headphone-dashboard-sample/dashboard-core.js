@@ -1176,7 +1176,11 @@
 
     rowsByUser.forEach((entries, user) => {
       const userFiles = filesByUser.get(user) || [];
-      const deviceOrder = Array.isArray(options.deviceOrder) ? options.deviceOrder.map(String) : [];
+      const perUserOrder = options.deviceOrderByUser && typeof options.deviceOrderByUser === "object"
+        ? options.deviceOrderByUser[String(user)] : null;
+      const deviceOrder = Array.isArray(perUserOrder)
+        ? perUserOrder.map(String)
+        : Array.isArray(options.deviceOrder) ? options.deviceOrder.map(String) : [];
       const deviceRank = new Map(deviceOrder.map((device, index) => [device, index]));
       const orderedEntries = deviceField && deviceOrder.length ? entries.slice().sort((a, b) =>
         (deviceRank.get(String(a.row[deviceField] || "")) ?? deviceRank.size) -

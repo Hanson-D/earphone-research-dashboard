@@ -106,6 +106,38 @@ class NativeCoreTests(unittest.TestCase):
         self.assertEqual(by_user_device[("U1", "C")], "U1/2.jpg")
         self.assertEqual(by_user_device[("U1", "A")], "U1/3.jpg")
 
+    def test_sequence_mapping_supports_user_specific_device_order(self) -> None:
+        rows = [{"用户编号": user, "设备": device} for user in ("U1", "U2") for device in ("A", "B")]
+        photos = [
+            PhotoFile(f"{user}/{index}.jpg", f"/tmp/{user}-{index}.jpg", f"{index}.jpg", user)
+            for user in ("U1", "U2") for index in (1, 2)
+        ]
+        result = map_photos(rows, photos, MappingConfig(
+            mode="sequence", user_field="用户编号", device_field="设备", views=["正面"],
+            device_order=["A", "B"], device_order_by_user={"U1": ["B", "A"]},
+        ))
+        by_user_device = {(slot["user"], slot["device"]): slot["value"] for slot in result.slots}
+        self.assertEqual(by_user_device[("U1", "B")], "U1/1.jpg")
+        self.assertEqual(by_user_device[("U1", "A")], "U1/2.jpg")
+        self.assertEqual(by_user_device[("U2", "A")], "U2/1.jpg")
+        self.assertEqual(by_user_device[("U2", "B")], "U2/2.jpg")
+
+    def test_device_reorder_can_apply_to_only_the_selected_user(self) -> None:
+        rows = [{"用户编号": user, "设备": device} for user in ("U1", "U2") for device in ("A", "B")]
+        photos = [
+            PhotoFile(f"{user}/{index}.jpg", f"/tmp/{user}-{index}.jpg", f"{index}.jpg", user)
+            for user in ("U1", "U2") for index in (1, 2)
+        ]
+        result = map_photos(rows, photos, MappingConfig(
+            mode="sequence", user_field="用户编号", device_field="设备", views=["正面"],
+        ))
+        u2_before = [slot["value"] for slot in result.slots if slot["user"] == "U2"]
+        reorder_device_groups(result, ["A", "B"], ["B", "A"], "U1")
+        by_user_device = {(slot["user"], slot["device"]): slot["value"] for slot in result.slots}
+        self.assertEqual(by_user_device[("U1", "B")], "U1/1.jpg")
+        self.assertEqual(by_user_device[("U1", "A")], "U1/2.jpg")
+        self.assertEqual([slot["value"] for slot in result.slots if slot["user"] == "U2"], u2_before)
+
     def test_unused_photo_can_be_promoted_to_named_view_for_matching_user(self) -> None:
         rows = [{"用户编号": "U1", "设备": "A"}, {"用户编号": "U2", "设备": "A"}]
         photos = [

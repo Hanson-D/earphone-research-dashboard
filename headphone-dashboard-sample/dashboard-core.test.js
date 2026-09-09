@@ -356,6 +356,21 @@ test("sequence photo mapping honors a shared device capture order", () => {
   assert.equal(result.mapped[0].photo_正面, "U1/3.jpg");
 });
 
+test("sequence photo mapping can override device order for one user", () => {
+  const rows = ["U1", "U2"].flatMap(user_id => ["A", "B"].map(device_name => ({ user_id, device_name })));
+  const files = ["U1", "U2"].flatMap(user => [1, 2].map(index => ({
+    name: `${index}.jpg`, relative_path: `${user}/${index}.jpg`, user_folder: user
+  })));
+  const result = core.mapPhotosToRows(rows, files, {
+    mode: "sequence", userField: "user_id", deviceField: "device_name", earField: "", views: ["正面"],
+    deviceOrder: ["A", "B"], deviceOrderByUser: { U1: ["B", "A"] }
+  });
+  assert.equal(result.mapped[0].photo_正面, "U1/2.jpg");
+  assert.equal(result.mapped[1].photo_正面, "U1/1.jpg");
+  assert.equal(result.mapped[2].photo_正面, "U2/1.jpg");
+  assert.equal(result.mapped[3].photo_正面, "U2/2.jpg");
+});
+
 test("unused sequence photo can become a persisted user named view", () => {
   const rows = [{ user_id: "U1", device_name: "A" }, { user_id: "U2", device_name: "A" }];
   const files = [
